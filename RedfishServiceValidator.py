@@ -1,6 +1,6 @@
 # Copyright Notice:
 # Copyright 2016 Distributed Management Task Force, Inc. All rights reserved.
-# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Tools/LICENSE.md
+# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/LICENSE.md
 
 from traceback import format_exc
 from bs4 import BeautifulSoup
