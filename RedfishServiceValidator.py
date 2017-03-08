@@ -15,11 +15,14 @@ import os
 # Read config info from ini file placed in config folder of tool
 config = ConfigParser.ConfigParser()
 config.read(os.path.join('.', 'config', 'config.ini'))
-ConfigURI = 'https://'+config.get('SystemInformation', 'TargetIP')
+useSSL = config.getboolean('Options', 'UseSSL')
+ConfigURI = ( 'https' if useSSL else 'http' ) + '://'+config.get('SystemInformation', 'TargetIP')
 User = config.get('SystemInformation', 'UserName')
 Passwd = config.get('SystemInformation', 'Password')
 SchemaLocation = config.get('Options', 'MetadataFilePath')
-chkCert = config.get('Options', 'CertificateCheck')
+chkCert = config.getboolean('Options', 'CertificateCheck')
+getOnly = config.getboolean('Options', 'GetOnlyMode') 
+
 
 ComplexTypeLinksDictionary = {'SubLinks':[]}
 ComplexLinksIndex = 0
@@ -38,10 +41,7 @@ def getRootURI():
         global countTotProp
         countTotProp+=1
         try:
-                if chkCert == 'On':
-                        geturl = requests.get(ConfigURI+'/redfish/v1')
-                else:
-                        geturl = requests.get(ConfigURI+'/redfish/v1', verify=False)
+                geturl = requests.get(ConfigURI+'/redfish/v1', verify=False)
                 statusCode = geturl.status_code
                 decoded = geturl.json()
                 if statusCode == 200:
@@ -55,64 +55,36 @@ def getRootURI():
 
 # Function to GET/PATCH/POST resource URI
 # Certificate check is conditional based on input from config ini file
-def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None):
+# 
+def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = False):
         URILink = URILink.replace("#", "%23")
         statusCode = ""
         global countTotProp
         if Method == 'GET':
                 countTotProp+=1
         try:
-                if chkCert == 'On':
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, auth = (User, Passwd))
-                else:
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, verify=False, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, verify=False, auth = (User, Passwd))
-                statusCode = response.status_code
                 if Method == 'GET' or Method == 'ReGET':
+                        response = requests.get(ConfigURI+URILink, auth = (User, Passwd), verify=chkCert)
                         expCode = [200, 204]
                 elif Method == 'PATCH':
+                        response = requests.patch(ConfigURI+URILink, data = payload, auth = (User, Passwd),verify=chkCert)
                         expCode = [200, 204, 400, 405]
-                print Method, statusCode, expCode
-                if ((Method == 'GET' or Method == 'ReGET') and statusCode in expCode):
-                        if Method == 'GET':
-                                generateLog("Retrieving Resource "+SchemaName+" ("+ConfigURI+URILink+")", str(expCode), str(statusCode))
-                        decoded = response.json()
-                        return statusCode, True, decoded, response.headers
-                elif (Method == 'PATCH' and statusCode in expCode):
-                        return statusCode, True, '', response.headers
-                else:
-                        if Method == 'GET':
-                                generateLog(SchemaName+" Resource ("+ConfigURI+URILink+")", str(expCode), str(statusCode), logPass = False)
-                        return statusCode, False, statusCode, ''
-        except Exception:
-                return statusCode, False, "ERROR: %s" % str(format_exc()), ''
-
-# Function to GET/PATCH/POST resource URI
-# Certificate check is conditional based on input from config ini file
-def ResetPatchedAttribute(SchemaName, URILink, Method = 'GET', payload = None):
-        URILink = URILink.replace("#", "%23")
-        global countTotProp
-        if Method == 'GET':
-                countTotProp+=1
-        try:
-                if chkCert == 'On':
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, auth = (User, Passwd))
-                else:
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, verify=False, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, verify=False, auth = (User, Passwd))
                 statusCode = response.status_code
-                decoded = response.json()
-                return statusCode, True, decoded, response.headers
+                print Method, statusCode, expCode
+                if not mute:
+                    if ((Method == 'GET' or Method == 'ReGET') and statusCode in expCode):
+                            if Method == 'GET':
+                                    generateLog("Retrieving Resource "+SchemaName+" ("+ConfigURI+URILink+")", str(expCode), str(statusCode))
+                            decoded = response.json()
+                            return statusCode, True, decoded, response.headers
+                    elif (Method == 'PATCH' and statusCode in expCode):
+                            return statusCode, True, '', response.headers
+                    else:
+                        if Method == 'GET':
+                            generateLog(SchemaName+" Resource ("+ConfigURI+URILink+")", str(expCode), str(statusCode), logPass = False)
+                        return statusCode, False, statusCode, ''
+                else:
+                    return statusCode, True, decoded, response.headers
         except Exception:
                 return statusCode, False, "ERROR: %s" % str(format_exc()), ''
                         
@@ -128,7 +100,7 @@ def getSchemaDetails(SchemaAlias):
                         filehandle = open(filename, "r")
                         filedata = filehandle.read()
                         filehandle.close()
-                        soup = BeautifulSoup(filedata)
+                        soup = BeautifulSoup(filedata, "html.parser")
                         parentTag = soup.find_all('edmx:dataservices', limit=1)
                         for eachTag in parentTag:
                                 for child in eachTag.find_all('schema', limit=1):
@@ -140,7 +112,6 @@ def getSchemaDetails(SchemaAlias):
                 except:
                         return False, "ERROR: %s" % str(format_exc())
         return False, "Schema File not found for " + Alias
-
 
 # Function to search for all Property attributes in any target schema
 # Schema XML may be the initial file for local properties or referenced schema for foreign properties
@@ -179,7 +150,7 @@ def getEntityTypeDetails(soup, SchemaAlias):
                                                 PropertyList.append(PropLink)
                         except:
                                 print 'No properties defined for ', foreignEntityName
-
+        
         searchEntity = SchemaAlias.split('.')[-1]
         aliasCheck = SchemaAlias.split('.')[0]
         
@@ -1035,7 +1006,7 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                                 else:
                                                         logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
                                                 
-                                                statusCode, status, jsonSchema, headers = ResetPatchedAttribute('', PatchURI, 'PATCH', payload=payloadOriginalValue)
+                                                statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'PATCH', payload=payloadOriginalValue, mute=True)
 
                                         elif valueType == 'Bool':
                                                 if PropertyName.count(".") == 1:
@@ -1056,7 +1027,7 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                                 else:
                                                         logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
                                         
-                                                statusCode, status, jsonSchema, headers = ResetPatchedAttribute('', PatchURI, 'PATCH', payload=payloadOriginalValue)
+                                                statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'PATCH', payload=payloadOriginalValue, mute=True)
                                                 
                                         else:
                                                 if PropertyName.count(".") == 1:
@@ -1077,7 +1048,7 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                                 else:
                                                         logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
                                         
-                                                statusCode, status, jsonSchema, headers = ResetPatchedAttribute('', PatchURI, 'PATCH', payload=payloadOriginalValue)
+                                                statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'PATCH', payload=payloadOriginalValue, mute=True)
 
                                 else:
                                         continue
