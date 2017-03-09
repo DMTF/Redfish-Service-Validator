@@ -21,9 +21,10 @@ User = config.get('SystemInformation', 'UserName')
 Passwd = config.get('SystemInformation', 'Password')
 SchemaLocation = config.get('Options', 'MetadataFilePath')
 chkCert = config.getboolean('Options', 'CertificateCheck')
-getOnly = config.getboolean('Options', 'GetOnlyMode') 
+getOnly = config.getboolean('Options', 'GetOnlyMode')
+delay = config.getfloat('Options', 'Delay')
 
-print "Config details:" + str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,getOnly))
+print "Config details:" + str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,getOnly,delay))
 
 
 ComplexTypeLinksDictionary = {'SubLinks':[]}
@@ -64,7 +65,7 @@ def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = 
         global countTotProp
         if Method == 'GET':
             countTotProp+=1
-        elif GetOnlyMode and not Method == 'ReGET':
+        elif getOnly and not Method == 'ReGET':
             print "__We should ignore PATCH, PUT, etc.__"
             return None, False, "Ignore this", ''
         try:
@@ -808,7 +809,7 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                         if not(status):
                                 failMessage = "Update Failed - " + str(statusCode)
                                 return statusCode, status, failMessage
-                        time.sleep(5)
+                        time.sleep(delay)
                         statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'ReGET')
                         if not(status):
                                 failMessage = "GET after Update Failed - " + str(statusCode)
@@ -842,18 +843,22 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                 return statusCode, False, propNewValue
                         
                 def logPatchResult(status, patchTable, logText, expValue, actValue, WarnCheck = None):
-                        global countTotProp, countPassProp, countFailProp, countWarnProp
+                        global countTotProp, countPassProp, countFailProp, countWarnProp, countSkipProp
+                        print "____ log patch result ____"
                         countTotProp+=1
                         colorMessage = "black"
                         successMessage = "none"
+                        print "____ log patch result 2 ____"
                         if isinstance(expValue, int):
                                 expValue = str(expValue)
                         if isinstance(actValue, int):
                                 actValue = str(actValue)
+                        print "____ log patch result 3 ____"
                         if status:
                                 colorMessage = "green"
                                 successMessage = "PASS" 
                                 countPassProp+=1
+                                print "____ log patch result 8 ____"
                         else:
                                 if WarnCheck == "Skip":
                                         colorMessage = "green"
@@ -867,11 +872,18 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                         colorMessage = "red"
                                         successMessage = "Fail" 
                                         countFailProp+=1        
+                        print "____ log patch result 9 ____"
                         propRow = patchTable.tr(style="color: " + colorMessage)
-                        propRow.td(successMessage, align = "center")
+                        print propRow
                         propRow.td(logText)
+                        print propRow
                         propRow.td(expValue)
+                        print propRow
                         propRow.td(actValue)
+                        print propRow
+                        propRow.td(successMessage, align = "center")
+                        print propRow
+                        print " ____ PROPROW ____ "
                                         
                 for PropertyName in PropertyList:
                         try:
@@ -949,10 +961,12 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                         header.th("Actual Value", style="width: 20%")
                                         header.th("Result", style="width: 20%")         
                                         
-                                        if GetOnlyMode:
-                                            print "NonGet Property Skipped??"
-                                            logPatchResult(False, patchTable, "Skipped", None, None, WarnCheck="Skip")
-                                            return
+                                        print "______Patch Compliance Block______"
+
+                                        if getOnly:
+                                                print "NonGet Property Skipped"
+                                                logPatchResult(False, patchTable, "Skipped", "xxx", "xxx", WarnCheck="Skip")
+                                                return
                                         else:
                                                 if valueType == 'Int':
                                                         propMinValue = propMaxValue = None
@@ -1056,10 +1070,10 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
 
                                 else:
                                         continue
-                        except:
-                                pass
-        except:
-                pass
+                        except Exception as ex:
+                            pass
+        except Exception as ex:
+            pass
 
 #Check all the GET property comparison with Schema files                
 def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propMandatory, soup, SchemaName):
