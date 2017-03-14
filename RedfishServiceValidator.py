@@ -23,9 +23,10 @@ SchemaLocation = config.get('Options', 'MetadataFilePath')
 chkCert = config.getboolean('Options', 'CertificateCheck')
 getOnly = config.getboolean('Options', 'GetOnlyMode')
 delay = config.getfloat('Options', 'Delay')
+debug = 0
 
-print "Config details:" + str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,getOnly,delay))
-
+if debug:
+    print "Config details:" + str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,getOnly,delay))
 
 ComplexTypeLinksDictionary = {'SubLinks':[]}
 ComplexLinksIndex = 0
@@ -66,7 +67,8 @@ def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = 
         if Method == 'GET':
             countTotProp+=1
         elif getOnly and not Method == 'ReGET':
-            print "__We should ignore PATCH, PUT, etc.__"
+            if debug:
+                print "__We should ignore PATCH, PUT, etc.__"
             return None, False, "Ignore this", ''
         try:
                 if Method == 'GET' or Method == 'ReGET':
@@ -77,7 +79,8 @@ def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = 
                         expCode = [200, 204, 400, 405]
 
                 statusCode = response.status_code
-                print Method, statusCode, expCode
+                if debug:
+                    print Method, statusCode, expCode
                 if not mute:
                     if ((Method == 'GET' or Method == 'ReGET') and statusCode in expCode):
                             if Method == 'GET':
@@ -174,7 +177,8 @@ def getEntityTypeDetails(soup, SchemaAlias):
                                 Alias = EntityBaseType.split('.')[0]
                                 subProperty = EntityBaseType.split('.')[-1]
                                 if Alias == aliasCheck:
-                                        print "Already covered Schema 1"
+                                        if debug:
+                                            print "Already covered Schema 1"
                                 else:
                                         status, moreSoup = getSchemaDetails(Alias)
                                         getResourceProperties(Alias, moreSoup, subProperty)
@@ -204,7 +208,8 @@ def getEntityTypeDetails(soup, SchemaAlias):
                                                                 ComplexAlias = ComplexBaseType.split('.')[0]
                                                                 subComplexProperty = ComplexBaseType.split('.')[-1]
                                                                 if ComplexAlias == aliasCheck:
-                                                                        print "Already covered Schema 2"
+                                                                        if debug:
+                                                                            print "Already covered Schema 2"
                                                                         FindComplexInnerType = soup.find('complextype', attrs={'name':subComplexProperty})                                                      
                                                                         if FindComplexInnerType:
                                                                                 for EachProperty in FindComplexInnerType.find_all('property'):
@@ -294,7 +299,8 @@ def getEntityTypeDetails(soup, SchemaAlias):
                                 else:
                                         PropertyList.append(propName)
         
-        print "PropertyList:::::::::::::::::::::::::::::::::::::::::::::::::::::::", PropertyList
+        if debug:
+            print "PropertyList:::::::::::::::::::::::::::::::::::::::::::::::::::::::", PropertyList
         return EntityName, PropertyList
 
 #Get the Mapped schema details for navigating to the resource schema    
@@ -307,8 +313,8 @@ def getMappedSchema(ResourceName, soup):
                                 listType = child['type']
                                 if listName == ResourceName:
                                         return True, listType
-        except:
-                pass
+        except Exception as e:
+             if debug > 1: print "Exception has occurred: ", e  
                 
         return False, "Schema Alias not found for " + ResourceName
 
@@ -335,12 +341,12 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                 if PropertyDetails == None or PropertyDetails == "":
                                                         status, moreSoup = getSchemaDetails("Resource")
                                                         PropertyDetails = moreSoup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                 else:
                                         PropertyDetails = soup.find('property', attrs={'name':PropertyName})
-                        except:
-                                pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
                         try:
                                 status, moreSoup = getSchemaDetails("Resource")
                                 key = "Resource." + PropertyName
@@ -353,8 +359,8 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                         FindAll = moreSoup.find('typedefinition', attrs={'name':PropertyDetails.attrs['type'].split(".")[-1]})
                                                         try:
                                                                 FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                        except:
-                                                                pass
+                                                        except Exception as e:
+                                                             if debug > 1: print "Exception has occurred: ", e 
                                                         PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
                                                         for propertyTerm in FindAll.find_all('annotation'):
                                                                 PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
@@ -370,8 +376,8 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                         FindAll = soup.find('typedefinition', attrs={'name':PropertyDetails.attrs['type'].split(".")[-1]})
                                                         try:
                                                                 FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                        except:
-                                                                pass
+                                                        except Exception as e:
+                                                                     if debug > 1: print "Exception has occurred: ", e  
                                                         PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
                                                         for propertyTerm in FindAll.find_all('annotation'):
                                                                 PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
@@ -382,14 +388,15 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                                 PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
                                 
                                 else:
-                                        print "No details present"
+                                        if debug:
+                                            print "No details present"
                                         try:
                                                 
                                                 FindAll = soup.find('typedefinition', attrs={'name':PropertyName.split(".")[-1]})
                                                 try:
                                                         FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                except:
-                                                        pass
+                                                except Exception as e:
+                                                     if debug > 1: print "Exception has occurred: ", e  
                                                 PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
                                                 for propertyTerm in FindAll.find_all('annotation'):
                                                         PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
@@ -399,10 +406,10 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                 for propertyTerm in PropertyDetails.find_all('annotation'):
                                                         PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
                                 
-                        except:
-                                pass
-                except:
-                        pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
 
         SchemaList = []
         for PropertyName in PropertyList:
@@ -484,7 +491,8 @@ def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
                                         propMandatory = True
                                         countTotMandatoryProp+=1
                                 propAttr = PropertyDictionary[SchemaName + "-" + PropertyName+'.Attributes']
-                                print "propAttr:::::::::::::::::::::::::::", propAttr
+                                if debug: 
+                                    print "propAttr:::::::::::::::::::::::::::", propAttr
                                 
                                 optionalFlag = True
                                 if (propAttr.has_key('type')):
@@ -529,15 +537,15 @@ def     getAllLinks(jsonData):
                                                         ResourceName = elem
                                                         SchemaURI = jsonData[ResourceName][eachkey]
                                                         linkList[ResourceName] = SchemaURI
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         try:    
                                                 if jsonData[elem][eachkey].has_key('@odata.id'):
                                                         ResourceName = eachkey
                                                         SchemaURI = jsonData[elem][ResourceName]['@odata.id']
                                                         linkList[ResourceName] = SchemaURI
-                                        except:
-                                                pass                                    
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         try:
                                                 if type(eachvalue) is list:             
                                                         temp = {}
@@ -549,12 +557,12 @@ def     getAllLinks(jsonData):
                                                                                         SchemaURI = eachattr['@odata.id']
                                                                                         temp[i] = SchemaURI
                                                                                         i+=1
-                                                                except:
-                                                                        pass
+                                                                except Exception as e:
+                                                                     if debug > 1: print "Exception has occurred: ", e  
                                                         ResourceName = eachkey          
                                                         linkList[ResourceName] = temp           
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                         elif type(value) is list:       
                                 try:
                                         temp = {}
@@ -565,22 +573,22 @@ def     getAllLinks(jsonData):
                                                                 if eachattr.has_key('@odata.id'):
                                                                         temp[i] = eachattr['@odata.id']
                                                                         i+=1                                                                    
-                                                except:
-                                                        pass
+                                                except Exception as e:
+                                                         if debug > 1: print "Exception has occurred: ", e  
                                         ResourceName = elem             
                                         linkList[ResourceName] = temp
-                                except:
-                                        pass
+                                except Exception as e:
+                                         if debug > 1: print "Exception has occurred: ", e  
                         elif jsonData[elem].has_key('@odata.id'):
                                 ResourceName = elem
                                 SchemaURI = jsonData[ResourceName]['@odata.id']
                                 linkList[ResourceName] = SchemaURI
                         else:
                                 pass
-                except:
-                        pass
-        
-        print "linkList::::::::::::::::::::::::::::::::::::::::::::::", linkList
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
+        if debug:
+            print "linkList::::::::::::::::::::::::::::::::::::::::::::::", linkList
         return linkList
 
 # Function to handle sub-Links retrieved from parent URI's which are not directly accessible from ServiceRoot
@@ -591,16 +599,16 @@ def getChildLinks(PropertyList, decoded, soup):
         linkList = getAllLinks(jsonData= decoded)
 
         for PropertyName, value in linkList.iteritems():
-                
-                print "PropertyName::::::::::::::::::::::::::::::::::::::::::::::", PropertyName
-                print "value:::::::::::::::::::::::::::::::::::::::::::::::::::::", value
+                if debug: 
+                    print "PropertyName::::::::::::::::::::::::::::::::::::::::::::::", PropertyName
+                    print "value:::::::::::::::::::::::::::::::::::::::::::::::::::::", value
                         
                 SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
                 try:
                         AllComplexTypeDetails = soup.find_all('entitytype')
-                except:
-                        pass
-                        #ComplexTypeDetails = soup.find_all('entitytype')[0]
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
+                #ComplexTypeDetails = soup.find_all('entitytype')[0]
                 i = 0
                 for ComplexTypeDetails in AllComplexTypeDetails: 
                         for child in ComplexTypeDetails.find_all('navigationproperty'):
@@ -653,14 +661,15 @@ def getChildLinks(PropertyList, decoded, soup):
                                                                 continue
                                                         else:
                                                                 GlobalCount = GlobalCount + 1
-                                                except:
-                                                        pass
-                                                        
+                                                except Exception as e:
+                                                         if debug > 1: print "Exception has occurred: ", e  
+                                                            
                                                 ComplexTypeLinksDictionary['SubLinks'].append(PropIndexAppend)                                  
                                                 ComplexTypeLinksDictionary[PropIndexAppend+'.Schema'] = NavigationPropertyType
                                                 ComplexTypeLinksDictionary[PropIndexAppend+'.Link'] = NavigationPropertyLink
-                                                print "ComplexTypeLinksDictionary[PropIndex+'.Schema']:::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Schema']
-                                                print "ComplexTypeLinksDictionary[PropIndex+'.Link']:::::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Link']
+                                                if debug:
+                                                    print "ComplexTypeLinksDictionary[PropIndex+'.Schema']:::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Schema']
+                                                    print "ComplexTypeLinksDictionary[PropIndex+'.Link']:::::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Link']
                                                 
                                 ComplexLinksFlag = True                         
                 i = 0
@@ -706,7 +715,8 @@ def getChildLinks(PropertyList, decoded, soup):
                                                         tempFlag = False
                                                         temp = ""
                                                         for eachCount in range(0, GlobalCount):
-                                                                print "GlobalCount::::::::::::::::::::::::::::::::::::::::::::", GlobalCount
+                                                                if debug:
+                                                                    print "GlobalCount::::::::::::::::::::::::::::::::::::::::::::", GlobalCount
                                                                 temp = PropIndex + "_" + str(eachCount)
                                                                 if (temp in ComplexTypeLinksDictionary['SubLinks']) and (NavigationPropertyLink in ComplexTypeLinksDictionary[temp+'.Link']):
                                                                         tempFlag = True # Skip duplicate sublink addition
@@ -715,8 +725,8 @@ def getChildLinks(PropertyList, decoded, soup):
                                                                 continue
                                                         else:
                                                                 GlobalCount = GlobalCount + 1
-                                                except:
-                                                        pass    
+                                                except Exception as e:
+                                                     if debug > 1: print "Exception has occurred: ", e  
                                                 
                                                 ComplexTypeLinksDictionary['SubLinks'].append(PropIndex)
                                                 
@@ -724,8 +734,8 @@ def getChildLinks(PropertyList, decoded, soup):
                                                 ComplexTypeLinksDictionary[PropIndex+'.Link'] = NavigationPropertyLink          
                                 ComplexLinksFlag = True         
 
-                except:
-                        pass
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
         return ComplexLinksFlag
         
         
@@ -795,14 +805,13 @@ def getRandomValue(PropertyName, SchemaAlias, soup, propOrigValue, SchemaName):
                 else:
                         propUpdateValue = "None"
                         valueType = 'Str'
-        except:
-                pass
+        except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
         return propUpdateValue, valueType
 
 # Function to handle Patch functionality checks for ReadWrite attributes
 def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers, SchemaName):
         global countTotProp, countPassProp, countFailProp, countSkipProp
-        print "entering checkPropertyPatchCompliance"
         try:    
                 def propertyUpdate(PropertyName, PatchURI, payload):
                         statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'PATCH', payload)
@@ -844,21 +853,17 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                         
                 def logPatchResult(status, patchTable, logText, expValue, actValue, WarnCheck = None):
                         global countTotProp, countPassProp, countFailProp, countWarnProp, countSkipProp
-                        print "____ log patch result ____"
                         countTotProp+=1
                         colorMessage = "black"
                         successMessage = "none"
-                        print "____ log patch result 2 ____"
                         if isinstance(expValue, int):
                                 expValue = str(expValue)
                         if isinstance(actValue, int):
                                 actValue = str(actValue)
-                        print "____ log patch result 3 ____"
                         if status:
                                 colorMessage = "green"
                                 successMessage = "PASS" 
                                 countPassProp+=1
-                                print "____ log patch result 8 ____"
                         else:
                                 if WarnCheck == "Skip":
                                         colorMessage = "green"
@@ -872,18 +877,11 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                         colorMessage = "red"
                                         successMessage = "Fail" 
                                         countFailProp+=1        
-                        print "____ log patch result 9 ____"
                         propRow = patchTable.tr(style="color: " + colorMessage)
-                        print propRow
                         propRow.td(logText)
-                        print propRow
                         propRow.td(expValue)
-                        print propRow
                         propRow.td(actValue)
-                        print propRow
                         propRow.td(successMessage, align = "center")
-                        print propRow
-                        print " ____ PROPROW ____ "
                                         
                 for PropertyName in PropertyList:
                         try:
@@ -904,7 +902,6 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                         if (propAttr.has_key('type')):
                                                 propType = propAttr['type']                             
                                         if PropertyName in ("Links","Enabled","Locked") or any(s in PropertyName for s in ("UserName","Password","HTTP")):
-                                                print "skipped upon"
                                                 continue
 
                                         SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
@@ -961,8 +958,6 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                         header.th("Actual Value", style="width: 20%")
                                         header.th("Result", style="width: 20%")         
                                         
-                                        print "______Patch Compliance Block______"
-
                                         if getOnly:
                                                 print "NonGet Property Skipped"
                                                 logPatchResult(False, patchTable, "Skipped", "xxx", "xxx", WarnCheck="Skip")
@@ -1070,10 +1065,10 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
 
                                 else:
                                         continue
-                        except Exception as ex:
-                            pass
-        except Exception as ex:
-            pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
+        except Exception as e:
+             if debug > 1: print "Exception has occurred: ", e  
 
 #Check all the GET property comparison with Schema files                
 def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propMandatory, soup, SchemaName):
@@ -1105,20 +1100,20 @@ def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propManda
                         propValueCheck = propValue[:19]
                         d1 = strptime(propValueCheck, "%Y-%m-%dT%H:%M:%S" )
                         temp = True
-                except:
-                        pass
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
                 try: 
                         propValueCheck = propValue.split("T")[0]
                         d1 = strptime(propValueCheck, "%Y-%m-%d" )
                         temp = True
-                except:
-                        pass
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
                 try:
                         propValueCheck = propValue.split(" ")[0]
                         d1 = strptime(propValueCheck, "%Y-%m-%d" )
                         temp = True
-                except:
-                        pass                    
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
                 if (temp):
                         generateLog(PropertyName, "DateTime Value", propValue, propMandatory)
                 else:
@@ -1153,7 +1148,8 @@ def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propManda
         else:
                 validList = temp = ""
                 templist = []
-                print "Inside Complex Data Type"
+                if debug:
+                    print "Inside Complex Data Type"
                 if propType.__contains__("Resource"):
                         status, soup = getSchemaDetails("Resource")
                         SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
@@ -1334,15 +1330,16 @@ def corelogic(ResourceName, SchemaURI):
                                 SchemaName = SchemaAlias.split(".")[-1]
                                 checkPropertyCompliance(PropertyList, jsonSchema, schemaSoup, SchemaName)
                                 checkPropertyPatchCompliance(PropertyList, SchemaURI, jsonSchema, schemaSoup, headers, SchemaName)
-                        except:
-                                pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
                         try:
                                 ComplexLinksFlag = getChildLinks(PropertyList, jsonSchema, schemaSoup)
-                        except:
-                                pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
                 else:
                         print 80*'*'
-                        print schemaSoup
+                        if debug:
+                            print schemaSoup
                         print 80*'*'
                         
                 generateLog("Properties checked for Schema %s: %s || Pass: %s || Fail: %s || Warning: %s " %(SchemaAlias, countTotProp-countTotSchemaProp, countPassProp-countPassSchemaProp, countFailProp-countFailSchemaProp, countWarnProp-countWarnSchemaProp), None, None)
@@ -1406,16 +1403,17 @@ def corelogic(ResourceName, SchemaURI):
                                                 checkPropertyCompliance(PropertyList, jsonSchema, schemaSoup, SchemaName)
                                                 checkPropertyPatchCompliance(PropertyList, subLinkURI, jsonSchema, schemaSoup, headers, SchemaName)
                                                 #checkPropertyPostCompliance(PropertyList, subLinkURI, jsonSchema, schemaSoup)
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         try:
                                                 ComplexLinksFlag = getChildLinks(PropertyList, jsonSchema, schemaSoup)
 
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                 else:
                                         print 80*'*'
-                                        print schemaSoup
+                                        if debug:
+                                            print schemaSoup
                                         print 80*'*'
                                 
                                 ResourceURIlink3 = ResourceURIlink2 + " -> " + SchemaAlias.split(".")[0]
@@ -1482,8 +1480,8 @@ propTable = insertResultTable()
 generateLog(linkvar, None, None)
 
 # Retrieve output of ServiceRoot URI
-status, jsonData = getRootURI()
-                                                        
+status, jsonData = getRootURI()                                                        
+
 ResourceURIlink1 = "ServiceRoot"
 if status:
         # Check compliance for ServiceRoot
@@ -1493,6 +1491,7 @@ if status:
         
         PropertyDictionary = {}
         ComplexLinksFlag = False
+
         getPropertyDetails(schemaSoup, PropertyList, 'ServiceRoot')
         
         propTable = insertResultTable()
@@ -1516,7 +1515,6 @@ if status:
         header = propTable.tr(style="background-color: #FFFFA3")
         header.th("Resource Name", style="width: 30%")
         header.th("URI", style="width: 70%")
-
         
 ### Only for output
         
@@ -1540,8 +1538,8 @@ if status:
                                                         propRow.td(SchemaURI)                                           
                                                 else:
                                                         pass
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         
                         elif jsonData[elem].has_key('@odata.id'):
                                 ResourceName = elem
@@ -1551,8 +1549,8 @@ if status:
                                 propRow.td(SchemaURI)
                         else:
                                 pass
-                except:
-                        pass    
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
         
 ### Executing all the links on root URI         
         for elem, value in jsonData.iteritems():
@@ -1571,8 +1569,8 @@ if status:
                                                         corelogic(ResourceName, SchemaURI)
                                                 else:
                                                         pass
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         
                         elif jsonData[elem].has_key('@odata.id'):
                                 ResourceName = elem
@@ -1580,11 +1578,12 @@ if status:
                                 corelogic(ResourceName, SchemaURI)
                         else:
                                 pass
-                except:
-                        pass
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
                         
 #        generateLog("Total Properties checked: %s || Pass: %s || Fail: %s" %(countTotProp, countPassProp, countFailProp), None, None)
 #        generateLog("Total Mandatory Properties checked: %s || Pass: %s || Fail: %s" %(countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp), None, None)
+        
         generateLog(None, None, None, spacer = True, summaryLog = True)
         summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
         header = summaryLogTable.tr(style="background-color: #FFFFA3")
