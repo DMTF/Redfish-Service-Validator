@@ -11,6 +11,7 @@ import random, string, re
 from html import HTML
 import time
 import os
+import sys
 
 # Read config info from ini file placed in config folder of tool
 config = ConfigParser.ConfigParser()
@@ -63,12 +64,16 @@ def getRootURI():
 def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = False):
         URILink = URILink.replace("#", "%23")
         statusCode = ""
-        global countTotProp
+        global countTotProp, countSkipProp
         if Method == 'GET':
             countTotProp+=1
         elif getOnly and not Method == 'ReGET':
             if debug:
                 print "__We should ignore PATCH, PUT, etc.__"
+            return None, False, "Ignore this", ''
+        if "%23" in URILink:
+            print "__Ignoring pound sign URIs for now__"
+            countSkipProp+=1
             return None, False, "Ignore this", ''
         try:
                 if Method == 'GET' or Method == 'ReGET':
@@ -1453,6 +1458,7 @@ logSumhead = logSummary.head
 logSumbody = logSummary.body
 logSumhead.title('Compliance Test Summary')
 startTime = DT.now()
+validated = 1
 
 htmlTable = logbody.table(border='1', style="font-family: calibri; width: 100%; font-size: 14px")
 generateLog("#####         Starting Redfish Compliance Test || System: %s as User: %s     #####" %(ConfigURI, User), None, None, header = True)
@@ -1581,8 +1587,8 @@ if status:
                 except Exception as e:
                      if debug > 1: print "Exception has occurred: ", e  
                         
-#        generateLog("Total Properties checked: %s || Pass: %s || Fail: %s" %(countTotProp, countPassProp, countFailProp), None, None)
-#        generateLog("Total Mandatory Properties checked: %s || Pass: %s || Fail: %s" %(countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp), None, None)
+        generateLog("Total Properties checked: %s || Pass: %s || Fail: %s || Warn: %s || Skip: %s" %(countTotProp, countPassProp, countFailProp, countWarnProp, countSkipProp), None, None)
+        generateLog("Total Mandatory Properties checked: %s || Pass: %s || Fail: %s" %(countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp), None, None)
         
         generateLog(None, None, None, spacer = True, summaryLog = True)
         summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
@@ -1620,6 +1626,7 @@ if status:
         elif (countPassProp > 0):
                 logComment = "Compliance Test Result: PASS"
                 summaryRow = htmlSumTable.tr(align = "center", style = "font-size: 18px; background-color: #E6E6F0; color: #006B24")
+                validated = 0
         else:
                 logComment = "Compliance Test Result: INCOMPLETE"
         summaryRow.td(logComment)
@@ -1644,3 +1651,5 @@ filehandle.close()
 
 generateLog("#####        End of Compliance Check. Please refer logs.    #####", None, None)
 print 80*'*'
+
+sys.exit(validated)
