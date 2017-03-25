@@ -23,11 +23,10 @@ Passwd = config.get('SystemInformation', 'Password')
 SchemaLocation = config.get('Options', 'MetadataFilePath')
 chkCert = config.getboolean('Options', 'CertificateCheck')
 getOnly = config.getboolean('Options', 'GetOnlyMode')
-delay = config.getfloat('Options', 'Delay')
 debug = 0
 
 if debug:
-    print "Config details:" + str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,getOnly,delay))
+    print "Config details:" + str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,getOnly))
 
 ComplexTypeLinksDictionary = {'SubLinks':[]}
 ComplexLinksIndex = 0
@@ -71,10 +70,11 @@ def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = 
             if debug:
                 print "__We should ignore PATCH, PUT, etc.__"
             return None, False, "Ignore this", ''
-        if "%23" in URILink:
-            print "__Ignoring pound sign URIs for now__"
-            countSkipProp+=1
-            return None, False, "Ignore this", ''
+        #if "%23" in URILink:
+        #    print "__Ignoring pound sign URIs for now__"
+        #    countSkipProp+=1
+        #    countTotProp-=1
+        #    return None, False, "Ignore this", ''
         try:
                 if Method == 'GET' or Method == 'ReGET':
                         response = requests.get(ConfigURI+URILink, auth = (User, Passwd), verify=chkCert)
@@ -524,11 +524,10 @@ def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
                                         generateLog(PropertyName, propType, propValue, propMandatory)
                                 else:
                                         generateLog(PropertyName, "No Value Specified", propValue, propMandatory)
-                        except:
-                                print "Inside inner exception"
-        except:
-                print "Inside exception"
-        
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
+        except Exception as e:
+             if debug > 1: print "Exception has occurred: ", e  
 
 # Function to collect all links in current resource schema
 def     getAllLinks(jsonData):
@@ -823,7 +822,7 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                         if not(status):
                                 failMessage = "Update Failed - " + str(statusCode)
                                 return statusCode, status, failMessage
-                        time.sleep(delay)
+                        time.sleep(5)
                         statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'ReGET')
                         if not(status):
                                 failMessage = "GET after Update Failed - " + str(statusCode)
@@ -874,6 +873,7 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                         colorMessage = "green"
                                         successMessage = "SKIP" 
                                         countSkipProp+=1                                
+                                        countTotProp-=1
                                 elif WarnCheck:
                                         colorMessage = "blue"
                                         successMessage = "Warning" 
