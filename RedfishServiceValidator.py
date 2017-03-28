@@ -42,20 +42,7 @@ countTotMandatoryProp = countPassMandatoryProp = countFailMandatoryProp = countW
 # Function to GET ServiceRoot response from test system
 # This call should not require authentication
 def getRootURI():
-        global countTotProp
-        countTotProp+=1
-        try:
-                geturl = requests.get(ConfigURI+'/redfish/v1', verify=chkCert)
-                statusCode = geturl.status_code
-                decoded = geturl.json()
-                if statusCode == 200:
-                        generateLog("Retrieving Resource ServiceRoot ("+ConfigURI+"/redfish/v1)", '200', str(statusCode))
-                        return True, decoded
-                else:
-                        generateLog("Retrieving Resource ServiceRoot ("+ConfigURI+"/redfish/v1)", '200', str(statusCode), logPass = False)
-                        return False, statusCode
-        except Exception:
-                return False, "ERROR: %s" % str(format_exc())
+    return callResourceURI("ServiceRoot", '/redfish/v1')[1:3]
 
 # Function to GET/PATCH/POST resource URI
 # Certificate check is conditional based on input from config ini file
