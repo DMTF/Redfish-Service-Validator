@@ -21,7 +21,7 @@ ConfigURI = ( 'https' if useSSL else 'http' ) + '://'+config.get('SystemInformat
 User = config.get('SystemInformation', 'UserName')
 Passwd = config.get('SystemInformation', 'Password')
 SchemaLocation = config.get('Options', 'MetadataFilePath')
-chkCert = config.getboolean('Options', 'CertificateCheck')
+chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
 getOnly = config.getboolean('Options', 'GetOnlyMode')
 debug = 0
 
@@ -45,7 +45,7 @@ def getRootURI():
         global countTotProp
         countTotProp+=1
         try:
-                geturl = requests.get(ConfigURI+'/redfish/v1', verify=False)
+                geturl = requests.get(ConfigURI+'/redfish/v1', verify=chkCert)
                 statusCode = geturl.status_code
                 decoded = geturl.json()
                 if statusCode == 200:
@@ -965,8 +965,8 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                         
                                         if getOnly:
                                                 print "NonGet Property Skipped"
-                                                logPatchResult(False, patchTable, "Skipped", "xxx", "xxx", WarnCheck="Skip")
-                                                return
+                                                logPatchResult(False, patchTable, "Skipped", "-", "-", WarnCheck="Skip")
+                                                continue
                                         else:
                                                 if valueType == 'Int':
                                                         propMinValue = propMaxValue = None
@@ -1458,7 +1458,7 @@ logSumhead = logSummary.head
 logSumbody = logSummary.body
 logSumhead.title('Compliance Test Summary')
 startTime = DT.now()
-validated = 1
+status_code = 1
 
 htmlTable = logbody.table(border='1', style="font-family: calibri; width: 100%; font-size: 14px")
 generateLog("#####         Starting Redfish Compliance Test || System: %s as User: %s     #####" %(ConfigURI, User), None, None, header = True)
@@ -1626,7 +1626,7 @@ if status:
         elif (countPassProp > 0):
                 logComment = "Compliance Test Result: PASS"
                 summaryRow = htmlSumTable.tr(align = "center", style = "font-size: 18px; background-color: #E6E6F0; color: #006B24")
-                validated = 0
+                status_code = 0
         else:
                 logComment = "Compliance Test Result: INCOMPLETE"
         summaryRow.td(logComment)
@@ -1652,4 +1652,4 @@ filehandle.close()
 generateLog("#####        End of Compliance Check. Please refer logs.    #####", None, None)
 print 80*'*'
 
-sys.exit(validated)
+sys.exit(status_code)

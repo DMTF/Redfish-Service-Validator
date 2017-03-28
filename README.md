@@ -16,7 +16,7 @@ The Redfish Service Validator is based on Python 2.7 and the client system is re
 There is no dependency based on Windows or Linux OS. The result logs are generated in HTML format and an appropriate browser (Chrome, Firefox, IE, etc.) is required to view the logs on the client system.
 
 ## Installation
-The RedfishConformanceTool_v*.py into the desired tool root directory.  Create the following subdirectories in the tool root directory: "config", "logs", "SchemaFiles".  Place the example config.ini file in the "config" directory.  Place the CSDL Schema files to be used by the tool in the "SchemaFiles" directory.
+The RedfishServiceValidator.py into the desired tool root directory.  Create the following subdirectories in the tool root directory: "config", "logs", "SchemaFiles".  Place the example config.ini file in the "config" directory.  Place the CSDL Schema files to be used by the tool in the root of the schema directory, or the directory given in config.ini.
 
 ## Execution Steps
 The Redfish Service Validator is designed to execute as a purely command line interface tool with no intermediate inputs expected during tool execution. However, the tool requires various inputs regarding system details, DMTF schema files etc. which are consumed by the tool during execution to generate the conformance report logs. Below are the step by step instructions on setting up the tool for execution on any identified Redfish device for conformance test:
@@ -25,10 +25,12 @@ The Redfish Service Validator is designed to execute as a purely command line in
 TargetIP = <<IPv4 address of the system under test>>
 UserName = <<User ID of Administrator on the system>>
 Password = <<Password of the Administrator>>
-* 2.	The Tool has an option to ignore SSL certificate check if certificate is not installed on the client system. The certificate check can be switched on or off using the below parameter of the config.ini file. By default the parameter is set to ‘Off’
+* 2.	The Tool has an option to ignore SSL certificate check if certificate is not installed on the client system. The certificate check can be switched on or off using the below parameter of the config.ini file. By default the parameter is set to ‘Off’.  UseSSL determines whether or not the https protocol is used.  If it is `Off`, it will also disable certification.
 [Options]
+UseSSL = <<On / Off>>
 CertificateCheck = <<On / Off>>
 * 3.	Other  attributes under the “[Options]” section have schema specific implementations as described below
+GetOnlyMode - Only test properties that require GET responses, ignoring PATCH, PUT and other modifying requests.
 MetadataFilePath – This attribute points to the location of the DMTF schema file location. This need not be modified and defaults to .\SchemaFiles\*
 SystemState – This attribute value is used in specific schemas where Power or Reset actions are checked for conformance. Set this value to ‘On’ if system should be powered up after each test or ‘Off’ if system should be shut down after each test.
 Session_UserName & Session_Password – These attributes are used to create a session in addition to the default UserName/Password combination available under [SystemInformation] section. Leave these attributes blank if only Administrator credentials are to be used for session specific tests.
