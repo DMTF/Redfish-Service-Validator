@@ -53,15 +53,6 @@ def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = 
         global countTotProp, countSkipProp
         if Method == 'GET':
             countTotProp+=1
-        elif getOnly and not Method == 'ReGET':
-            if debug:
-                print "__We should ignore PATCH, PUT, etc.__"
-            return None, False, "Ignore this", ''
-        #if "%23" in URILink:
-        #    print "__Ignoring pound sign URIs for now__"
-        #    countSkipProp+=1
-        #    countTotProp-=1
-        #    return None, False, "Ignore this", ''
         try:
                 if Method == 'GET' or Method == 'ReGET':
                         response = requests.get(ConfigURI+URILink, auth = (User, Passwd), verify=chkCert)
@@ -98,6 +89,8 @@ def getSchemaDetails(SchemaAlias):
         else:
                 Alias = SchemaAlias
         for filename in glob.glob(SchemaLocation):
+                if Alias not in filename:
+                    continue
                 try:
                         filehandle = open(filename, "r")
                         filedata = filehandle.read()
@@ -1433,210 +1426,211 @@ def corelogic(ResourceName, SchemaURI):
 ######################          Script starts here              ######################
 ##########################################################################
 
-# Initialize Log files for HTML report
-HTMLLogFile = strftime("ComplianceTestDetailedResult_%m_%d_%Y_%H%M%S.html")
-SummaryLogFile = strftime("ComplianceTestSummary_%m_%d_%Y_%H%M%S.html")
-logHTML = HTML('html')
-logSummary = HTML('html')
-loghead = logHTML.head
-logbody = logHTML.body
-loghead.title('Compliance Log')
-logSumhead = logSummary.head
-logSumbody = logSummary.body
-logSumhead.title('Compliance Test Summary')
-startTime = DT.now()
-status_code = 1
+if __name__ == '__main__':
+    # Initialize Log files for HTML report
+    HTMLLogFile = strftime("ComplianceTestDetailedResult_%m_%d_%Y_%H%M%S.html")
+    SummaryLogFile = strftime("ComplianceTestSummary_%m_%d_%Y_%H%M%S.html")
+    logHTML = HTML('html')
+    logSummary = HTML('html')
+    loghead = logHTML.head
+    logbody = logHTML.body
+    loghead.title('Compliance Log')
+    logSumhead = logSummary.head
+    logSumbody = logSummary.body
+    logSumhead.title('Compliance Test Summary')
+    startTime = DT.now()
+    status_code = 1
 
-htmlTable = logbody.table(border='1', style="font-family: calibri; width: 100%; font-size: 14px")
-generateLog("#####         Starting Redfish Compliance Test || System: %s as User: %s     #####" %(ConfigURI, User), None, None, header = True)
-htmlSumTable = logSumbody.table(border='1', style="font-family: calibri; width: 80%; font-size: 14px", align = "center")
-generateLog("#####         Redfish Compliance Test Report         #####", None, None, header = True, summaryLog = True)
-generateLog("System: %s" %ConfigURI[ConfigURI.find("//")+2:], None, None, summaryLog = True)
-generateLog("User: %s" %(User), None, None, summaryLog = True)
-generateLog("Execution Date: %s" %strftime("%m/%d/%Y %H:%M:%S"), None, None, summaryLog = True)
-generateLog(None, None, None, spacer = True, summaryLog = True)
+    htmlTable = logbody.table(border='1', style="font-family: calibri; width: 100%; font-size: 14px")
+    generateLog("#####         Starting Redfish Compliance Test || System: %s as User: %s     #####" %(ConfigURI, User), None, None, header = True)
+    htmlSumTable = logSumbody.table(border='1', style="font-family: calibri; width: 80%; font-size: 14px", align = "center")
+    generateLog("#####         Redfish Compliance Test Report         #####", None, None, header = True, summaryLog = True)
+    generateLog("System: %s" %ConfigURI[ConfigURI.find("//")+2:], None, None, summaryLog = True)
+    generateLog("User: %s" %(User), None, None, summaryLog = True)
+    generateLog("Execution Date: %s" %strftime("%m/%d/%Y %H:%M:%S"), None, None, summaryLog = True)
+    generateLog(None, None, None, spacer = True, summaryLog = True)
 
-summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
-header = summaryLogTable.tr(style="background-color: #FFFFA3")
-header.th("Serial No", style="width: 5%")
-header.th("Resource Name", style="width: 30%")
-header.th("Resource URI", style="width: 40%")
-header.th("Passed", style="width: 5%")
-header.th("Failed", style="width: 5%")
-header.th("Skipped", style="width: 5%")
-header.th("Warning", style="width: 5%")
-header.th("Details", style="width: 5%")
-linkvar = "Compliance Check for Root Schema" + "-" + str(SerialNumber)
-print 80*'*'
-generateLog(None, None, None, spacer = True)
-propTable = insertResultTable()
-generateLog(linkvar, None, None)
+    summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
+    header = summaryLogTable.tr(style="background-color: #FFFFA3")
+    header.th("Serial No", style="width: 5%")
+    header.th("Resource Name", style="width: 30%")
+    header.th("Resource URI", style="width: 40%")
+    header.th("Passed", style="width: 5%")
+    header.th("Failed", style="width: 5%")
+    header.th("Skipped", style="width: 5%")
+    header.th("Warning", style="width: 5%")
+    header.th("Details", style="width: 5%")
+    linkvar = "Compliance Check for Root Schema" + "-" + str(SerialNumber)
+    print 80*'*'
+    generateLog(None, None, None, spacer = True)
+    propTable = insertResultTable()
+    generateLog(linkvar, None, None)
 
-# Retrieve output of ServiceRoot URI
-status, jsonData = getRootURI()                                                        
+    # Retrieve output of ServiceRoot URI
+    status, jsonData = getRootURI()                                                        
 
-ResourceURIlink1 = "ServiceRoot"
-if status:
-        # Check compliance for ServiceRoot
-        status, schemaSoup = getSchemaDetails('ServiceRoot')
+    ResourceURIlink1 = "ServiceRoot"
+    if status:
+            # Check compliance for ServiceRoot
+            status, schemaSoup = getSchemaDetails('ServiceRoot')
 
-        Name, PropertyList = getEntityTypeDetails(schemaSoup, 'ServiceRoot')
-        
-        PropertyDictionary = {}
-        ComplexLinksFlag = False
+            Name, PropertyList = getEntityTypeDetails(schemaSoup, 'ServiceRoot')
+            
+            PropertyDictionary = {}
+            ComplexLinksFlag = False
 
-        getPropertyDetails(schemaSoup, PropertyList, 'ServiceRoot')
-        
-        propTable = insertResultTable()
-        checkPropertyCompliance(PropertyList, jsonData, schemaSoup, 'ServiceRoot')
-        # Report log statistics for ServiceRoot schema
-        generateLog("Properties checked: %s || Pass: %s || Fail: %s || Warning: %s " %(countTotProp, countPassProp, countFailProp, countWarnProp), None, None)
-        propRow = summaryLogTable.tr(align = "center")
-        propRow.td(str(SerialNumber))
-        propRow.td(ResourceURIlink1, align = "left")
-        propRow.td("/redfish/v1", align = "left")
-        propRow.td(str(countPassProp-countPassSchemaProp))
-        propRow.td(str(countFailProp-countFailSchemaProp))
-        propRow.td(str(countSkipProp-countSkipSchemaProp))
-        propRow.td(str(countWarnProp-countWarnSchemaProp))
-        clickLink = propRow.td.a(href= HTMLLogFile + "#" + linkvar)
-        clickLink("Click")
+            getPropertyDetails(schemaSoup, PropertyList, 'ServiceRoot')
+            
+            propTable = insertResultTable()
+            checkPropertyCompliance(PropertyList, jsonData, schemaSoup, 'ServiceRoot')
+            # Report log statistics for ServiceRoot schema
+            generateLog("Properties checked: %s || Pass: %s || Fail: %s || Warning: %s " %(countTotProp, countPassProp, countFailProp, countWarnProp), None, None)
+            propRow = summaryLogTable.tr(align = "center")
+            propRow.td(str(SerialNumber))
+            propRow.td(ResourceURIlink1, align = "left")
+            propRow.td("/redfish/v1", align = "left")
+            propRow.td(str(countPassProp-countPassSchemaProp))
+            propRow.td(str(countFailProp-countFailSchemaProp))
+            propRow.td(str(countSkipProp-countSkipSchemaProp))
+            propRow.td(str(countWarnProp-countWarnSchemaProp))
+            clickLink = propRow.td.a(href= HTMLLogFile + "#" + linkvar)
+            clickLink("Click")
 
-        rootSoup = schemaSoup
-        generateLog(None, None, None, spacer = True)
-        propTable = htmlTable.tr.td.table(border='1', style="width: 100%")
-        header = propTable.tr(style="background-color: #FFFFA3")
-        header.th("Resource Name", style="width: 30%")
-        header.th("URI", style="width: 70%")
-        
-### Only for output
-        
-        for elem, value in jsonData.iteritems():
-                try:
-                        if type(value) is dict:
-                                for eachkey, eachvalue in value.iteritems():
-                                        try:
-                                                if eachkey == '@odata.id':
-                                                        ResourceName = elem
-                                                        SchemaURI = jsonData[ResourceName][eachkey]
-                                                        propRow = propTable.tr()
-                                                        propRow.td(ResourceName)
-                                                        propRow.td(SchemaURI)
-                                                        
-                                                elif jsonData[elem][eachkey].has_key('@odata.id'):
-                                                        ResourceName = eachkey
-                                                        SchemaURI = jsonData[elem][ResourceName]['@odata.id']
-                                                        propRow = propTable.tr()
-                                                        propRow.td(ResourceName)
-                                                        propRow.td(SchemaURI)                                           
-                                                else:
-                                                        pass
-                                        except Exception as e:
-                                             if debug > 1: print "Exception has occurred: ", e  
-                                        
-                        elif jsonData[elem].has_key('@odata.id'):
-                                ResourceName = elem
-                                SchemaURI = jsonData[ResourceName]['@odata.id']
-                                propRow = propTable.tr()
-                                propRow.td(ResourceName)
-                                propRow.td(SchemaURI)
-                        else:
-                                pass
-                except Exception as e:
-                     if debug > 1: print "Exception has occurred: ", e  
-        
-### Executing all the links on root URI         
-        for elem, value in jsonData.iteritems():
-                try:
-                        if type(value) is dict:
-                                for eachkey, eachvalue in value.iteritems():
-                                        try:
-                                                if eachkey == '@odata.id':
-                                                        ResourceName = elem
-                                                        SchemaURI = jsonData[ResourceName][eachkey]
-                                                        corelogic(ResourceName, SchemaURI)
-                                                        
-                                                elif jsonData[elem][eachkey].has_key('@odata.id'):
-                                                        ResourceName = eachkey
-                                                        SchemaURI = jsonData[elem][ResourceName]['@odata.id']
-                                                        corelogic(ResourceName, SchemaURI)
-                                                else:
-                                                        pass
-                                        except Exception as e:
-                                             if debug > 1: print "Exception has occurred: ", e  
-                                        
-                        elif jsonData[elem].has_key('@odata.id'):
-                                ResourceName = elem
-                                SchemaURI = jsonData[ResourceName]['@odata.id']
-                                corelogic(ResourceName, SchemaURI)
-                        else:
-                                pass
-                except Exception as e:
-                     if debug > 1: print "Exception has occurred: ", e  
-                        
-        generateLog("Total Properties checked: %s || Pass: %s || Fail: %s || Warn: %s || Skip: %s" %(countTotProp, countPassProp, countFailProp, countWarnProp, countSkipProp), None, None)
-        generateLog("Total Mandatory Properties checked: %s || Pass: %s || Fail: %s" %(countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp), None, None)
-        
-        generateLog(None, None, None, spacer = True, summaryLog = True)
-        summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
-        header = summaryLogTable.tr(style="background-color: #FFFFA3")
-        header.th("Compliance Test Summary", style="width: 40%")
-        header.th("Passed", style="width: 15%")
-        header.th("Failed", style="width: 15%")
-        header.th("Skipped", style="width: 15%")
-        header.th("Warning", style="width: 15%")
+            rootSoup = schemaSoup
+            generateLog(None, None, None, spacer = True)
+            propTable = htmlTable.tr.td.table(border='1', style="width: 100%")
+            header = propTable.tr(style="background-color: #FFFFA3")
+            header.th("Resource Name", style="width: 30%")
+            header.th("URI", style="width: 70%")
+            
+    ### Only for output
+            
+            for elem, value in jsonData.iteritems():
+                    try:
+                            if type(value) is dict:
+                                    for eachkey, eachvalue in value.iteritems():
+                                            try:
+                                                    if eachkey == '@odata.id':
+                                                            ResourceName = elem
+                                                            SchemaURI = jsonData[ResourceName][eachkey]
+                                                            propRow = propTable.tr()
+                                                            propRow.td(ResourceName)
+                                                            propRow.td(SchemaURI)
+                                                            
+                                                    elif jsonData[elem][eachkey].has_key('@odata.id'):
+                                                            ResourceName = eachkey
+                                                            SchemaURI = jsonData[elem][ResourceName]['@odata.id']
+                                                            propRow = propTable.tr()
+                                                            propRow.td(ResourceName)
+                                                            propRow.td(SchemaURI)                                           
+                                                    else:
+                                                            pass
+                                            except Exception as e:
+                                                 if debug > 1: print "Exception has occurred: ", e  
+                                            
+                            elif jsonData[elem].has_key('@odata.id'):
+                                    ResourceName = elem
+                                    SchemaURI = jsonData[ResourceName]['@odata.id']
+                                    propRow = propTable.tr()
+                                    propRow.td(ResourceName)
+                                    propRow.td(SchemaURI)
+                            else:
+                                    pass
+                    except Exception as e:
+                         if debug > 1: print "Exception has occurred: ", e  
+            
+    ### Executing all the links on root URI         
+            for elem, value in jsonData.iteritems():
+                    try:
+                            if type(value) is dict:
+                                    for eachkey, eachvalue in value.iteritems():
+                                            try:
+                                                    if eachkey == '@odata.id':
+                                                            ResourceName = elem
+                                                            SchemaURI = jsonData[ResourceName][eachkey]
+                                                            corelogic(ResourceName, SchemaURI)
+                                                            
+                                                    elif jsonData[elem][eachkey].has_key('@odata.id'):
+                                                            ResourceName = eachkey
+                                                            SchemaURI = jsonData[elem][ResourceName]['@odata.id']
+                                                            corelogic(ResourceName, SchemaURI)
+                                                    else:
+                                                            pass
+                                            except Exception as e:
+                                                 if debug > 1: print "Exception has occurred: ", e  
+                                            
+                            elif jsonData[elem].has_key('@odata.id'):
+                                    ResourceName = elem
+                                    SchemaURI = jsonData[ResourceName]['@odata.id']
+                                    corelogic(ResourceName, SchemaURI)
+                            else:
+                                    pass
+                    except Exception as e:
+                         if debug > 1: print "Exception has occurred: ", e  
+                            
+            generateLog("Total Properties checked: %s || Pass: %s || Fail: %s || Warn: %s || Skip: %s" %(countTotProp, countPassProp, countFailProp, countWarnProp, countSkipProp), None, None)
+            generateLog("Total Mandatory Properties checked: %s || Pass: %s || Fail: %s" %(countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp), None, None)
+            
+            generateLog(None, None, None, spacer = True, summaryLog = True)
+            summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
+            header = summaryLogTable.tr(style="background-color: #FFFFA3")
+            header.th("Compliance Test Summary", style="width: 40%")
+            header.th("Passed", style="width: 15%")
+            header.th("Failed", style="width: 15%")
+            header.th("Skipped", style="width: 15%")
+            header.th("Warning", style="width: 15%")
 
-        summaryRow = summaryLogTable.tr(align = "center")
-        summaryRow.td("Mandatory Properties", align = "left")
-        summaryRow.td(str(countPassMandatoryProp))
-        summaryRow.td(str(countFailMandatoryProp))
-        summaryRow.td('0')
-        summaryRow.td(str(countWarnMandatoryProp))
-        
-        summaryRow = summaryLogTable.tr(align = "center")
-        summaryRow.td("Optional Properties", align = "left")
-        summaryRow.td(str(countPassProp - countPassMandatoryProp))
-        summaryRow.td(str(countFailProp - countFailMandatoryProp))
-        summaryRow.td(str(countSkipProp))
-        summaryRow.td(str(countWarnProp - countWarnMandatoryProp))
-        summaryRow = summaryLogTable.tr(align = "center", style = "background-color: #E6E6F0")
-        summaryRow.td("Total Properties", align = "left")
-        summaryRow.td(str(countPassProp))
-        summaryRow.td(str(countFailProp))
-        summaryRow.td(str(countSkipProp))
-        summaryRow.td(str(countWarnProp))
+            summaryRow = summaryLogTable.tr(align = "center")
+            summaryRow.td("Mandatory Properties", align = "left")
+            summaryRow.td(str(countPassMandatoryProp))
+            summaryRow.td(str(countFailMandatoryProp))
+            summaryRow.td('0')
+            summaryRow.td(str(countWarnMandatoryProp))
+            
+            summaryRow = summaryLogTable.tr(align = "center")
+            summaryRow.td("Optional Properties", align = "left")
+            summaryRow.td(str(countPassProp - countPassMandatoryProp))
+            summaryRow.td(str(countFailProp - countFailMandatoryProp))
+            summaryRow.td(str(countSkipProp))
+            summaryRow.td(str(countWarnProp - countWarnMandatoryProp))
+            summaryRow = summaryLogTable.tr(align = "center", style = "background-color: #E6E6F0")
+            summaryRow.td("Total Properties", align = "left")
+            summaryRow.td(str(countPassProp))
+            summaryRow.td(str(countFailProp))
+            summaryRow.td(str(countSkipProp))
+            summaryRow.td(str(countWarnProp))
 
-        generateLog(None, None, None, spacer = True, summaryLog = True)
-        if (countFailProp > 0 or countFailMandatoryProp > 0):
-                logComment = "Compliance Test Result: FAIL"
-                summaryRow = htmlSumTable.tr(align = "center", style = "font-size: 18px; background-color: #E6E6F0; color: #ff0000")
-        elif (countPassProp > 0):
-                logComment = "Compliance Test Result: PASS"
-                summaryRow = htmlSumTable.tr(align = "center", style = "font-size: 18px; background-color: #E6E6F0; color: #006B24")
-                status_code = 0
-        else:
-                logComment = "Compliance Test Result: INCOMPLETE"
-        summaryRow.td(logComment)
-else:
-        print "Compliance FAIL for ServiceRoot. Error:", jsonData
+            generateLog(None, None, None, spacer = True, summaryLog = True)
+            if (countFailProp > 0 or countFailMandatoryProp > 0):
+                    logComment = "Compliance Test Result: FAIL"
+                    summaryRow = htmlSumTable.tr(align = "center", style = "font-size: 18px; background-color: #E6E6F0; color: #ff0000")
+            elif (countPassProp > 0):
+                    logComment = "Compliance Test Result: PASS"
+                    summaryRow = htmlSumTable.tr(align = "center", style = "font-size: 18px; background-color: #E6E6F0; color: #006B24")
+                    status_code = 0
+            else:
+                    logComment = "Compliance Test Result: INCOMPLETE"
+            summaryRow.td(logComment)
+    else:
+            print "Compliance FAIL for ServiceRoot. Error:", jsonData
 
-endTime = DT.now()
-execTime = endTime - startTime
-timeLog = htmlSumTable.tr(align = "left", style="font-size: 11px")
-timeLog.td("Execution Time: " + str(execTime))
+    endTime = DT.now()
+    execTime = endTime - startTime
+    timeLog = htmlSumTable.tr(align = "left", style="font-size: 11px")
+    timeLog.td("Execution Time: " + str(execTime))
 
-timeLog = htmlSumTable.tr(align = "left", style="font-size: 11px")
-timeLog.td("* Warning: " + str("Value which we are trying to configure is not getting set using compliance tool are may be due to external dependency."))
+    timeLog = htmlSumTable.tr(align = "left", style="font-size: 11px")
+    timeLog.td("* Warning: " + str("Value which we are trying to configure is not getting set using compliance tool are may be due to external dependency."))
 
-# Save HTML Log Files
-filehandle = open(os.path.join('.', 'logs', HTMLLogFile), "w")
-filehandle.write(str(logHTML))
-filehandle.close()
-filehandle = open(os.path.join('.', 'logs', SummaryLogFile), "w")
-filehandle.write(str(logSummary))
-filehandle.close()
+    # Save HTML Log Files
+    filehandle = open(os.path.join('.', 'logs', HTMLLogFile), "w")
+    filehandle.write(str(logHTML))
+    filehandle.close()
+    filehandle = open(os.path.join('.', 'logs', SummaryLogFile), "w")
+    filehandle.write(str(logSummary))
+    filehandle.close()
 
-generateLog("#####        End of Compliance Check. Please refer logs.    #####", None, None)
-print 80*'*'
+    generateLog("#####        End of Compliance Check. Please refer logs.    #####", None, None)
+    print 80*'*'
 
-sys.exit(status_code)
+    sys.exit(status_code)
