@@ -11,15 +11,22 @@ import random, string, re
 from html import HTML
 import time
 import os
+import sys
 
 # Read config info from ini file placed in config folder of tool
 config = ConfigParser.ConfigParser()
 config.read(os.path.join('.', 'config', 'config.ini'))
-ConfigURI = 'https://'+config.get('SystemInformation', 'TargetIP')
+useSSL = config.getboolean('Options', 'UseSSL')
+ConfigURI = ( 'https' if useSSL else 'http' ) + '://'+config.get('SystemInformation', 'TargetIP')
 User = config.get('SystemInformation', 'UserName')
 Passwd = config.get('SystemInformation', 'Password')
 SchemaLocation = config.get('Options', 'MetadataFilePath')
-chkCert = config.get('Options', 'CertificateCheck')
+chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
+getOnly = config.getboolean('Options', 'GetOnlyMode')
+debug = 0
+
+if debug:
+    print "Config details:" + str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,getOnly))
 
 ComplexTypeLinksDictionary = {'SubLinks':[]}
 ComplexLinksIndex = 0
@@ -38,10 +45,7 @@ def getRootURI():
         global countTotProp
         countTotProp+=1
         try:
-                if chkCert == 'On':
-                        geturl = requests.get(ConfigURI+'/redfish/v1')
-                else:
-                        geturl = requests.get(ConfigURI+'/redfish/v1', verify=False)
+                geturl = requests.get(ConfigURI+'/redfish/v1', verify=chkCert)
                 statusCode = geturl.status_code
                 decoded = geturl.json()
                 if statusCode == 200:
@@ -55,64 +59,47 @@ def getRootURI():
 
 # Function to GET/PATCH/POST resource URI
 # Certificate check is conditional based on input from config ini file
-def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None):
+# 
+def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = False):
         URILink = URILink.replace("#", "%23")
         statusCode = ""
-        global countTotProp
+        global countTotProp, countSkipProp
         if Method == 'GET':
-                countTotProp+=1
+            countTotProp+=1
+        elif getOnly and not Method == 'ReGET':
+            if debug:
+                print "__We should ignore PATCH, PUT, etc.__"
+            return None, False, "Ignore this", ''
+        #if "%23" in URILink:
+        #    print "__Ignoring pound sign URIs for now__"
+        #    countSkipProp+=1
+        #    countTotProp-=1
+        #    return None, False, "Ignore this", ''
         try:
-                if chkCert == 'On':
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, auth = (User, Passwd))
-                else:
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, verify=False, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, verify=False, auth = (User, Passwd))
-                statusCode = response.status_code
                 if Method == 'GET' or Method == 'ReGET':
+                        response = requests.get(ConfigURI+URILink, auth = (User, Passwd), verify=chkCert)
                         expCode = [200, 204]
                 elif Method == 'PATCH':
+                        response = requests.patch(ConfigURI+URILink, data = payload, auth = (User, Passwd),verify=chkCert)
                         expCode = [200, 204, 400, 405]
-                print Method, statusCode, expCode
-                if ((Method == 'GET' or Method == 'ReGET') and statusCode in expCode):
-                        if Method == 'GET':
-                                generateLog("Retrieving Resource "+SchemaName+" ("+ConfigURI+URILink+")", str(expCode), str(statusCode))
-                        decoded = response.json()
-                        return statusCode, True, decoded, response.headers
-                elif (Method == 'PATCH' and statusCode in expCode):
-                        return statusCode, True, '', response.headers
-                else:
-                        if Method == 'GET':
-                                generateLog(SchemaName+" Resource ("+ConfigURI+URILink+")", str(expCode), str(statusCode), logPass = False)
-                        return statusCode, False, statusCode, ''
-        except Exception:
-                return statusCode, False, "ERROR: %s" % str(format_exc()), ''
 
-# Function to GET/PATCH/POST resource URI
-# Certificate check is conditional based on input from config ini file
-def ResetPatchedAttribute(SchemaName, URILink, Method = 'GET', payload = None):
-        URILink = URILink.replace("#", "%23")
-        global countTotProp
-        if Method == 'GET':
-                countTotProp+=1
-        try:
-                if chkCert == 'On':
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, auth = (User, Passwd))
-                else:
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, verify=False, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, verify=False, auth = (User, Passwd))
                 statusCode = response.status_code
-                decoded = response.json()
-                return statusCode, True, decoded, response.headers
+                if debug:
+                    print Method, statusCode, expCode
+                if not mute:
+                    if ((Method == 'GET' or Method == 'ReGET') and statusCode in expCode):
+                            if Method == 'GET':
+                                    generateLog("Retrieving Resource "+SchemaName+" ("+ConfigURI+URILink+")", str(expCode), str(statusCode))
+                            decoded = response.json()
+                            return statusCode, True, decoded, response.headers
+                    elif (Method == 'PATCH' and statusCode in expCode):
+                            return statusCode, True, '', response.headers
+                    else:
+                        if Method == 'GET':
+                            generateLog(SchemaName+" Resource ("+ConfigURI+URILink+")", str(expCode), str(statusCode), logPass = False)
+                        return statusCode, False, statusCode, ''
+                else:
+                    return statusCode, True, decoded, response.headers
         except Exception:
                 return statusCode, False, "ERROR: %s" % str(format_exc()), ''
                         
@@ -128,7 +115,7 @@ def getSchemaDetails(SchemaAlias):
                         filehandle = open(filename, "r")
                         filedata = filehandle.read()
                         filehandle.close()
-                        soup = BeautifulSoup(filedata)
+                        soup = BeautifulSoup(filedata, "html.parser")
                         parentTag = soup.find_all('edmx:dataservices', limit=1)
                         for eachTag in parentTag:
                                 for child in eachTag.find_all('schema', limit=1):
@@ -140,7 +127,6 @@ def getSchemaDetails(SchemaAlias):
                 except:
                         return False, "ERROR: %s" % str(format_exc())
         return False, "Schema File not found for " + Alias
-
 
 # Function to search for all Property attributes in any target schema
 # Schema XML may be the initial file for local properties or referenced schema for foreign properties
@@ -179,7 +165,7 @@ def getEntityTypeDetails(soup, SchemaAlias):
                                                 PropertyList.append(PropLink)
                         except:
                                 print 'No properties defined for ', foreignEntityName
-
+        
         searchEntity = SchemaAlias.split('.')[-1]
         aliasCheck = SchemaAlias.split('.')[0]
         
@@ -196,7 +182,8 @@ def getEntityTypeDetails(soup, SchemaAlias):
                                 Alias = EntityBaseType.split('.')[0]
                                 subProperty = EntityBaseType.split('.')[-1]
                                 if Alias == aliasCheck:
-                                        print "Already covered Schema 1"
+                                        if debug:
+                                            print "Already covered Schema 1"
                                 else:
                                         status, moreSoup = getSchemaDetails(Alias)
                                         getResourceProperties(Alias, moreSoup, subProperty)
@@ -226,7 +213,8 @@ def getEntityTypeDetails(soup, SchemaAlias):
                                                                 ComplexAlias = ComplexBaseType.split('.')[0]
                                                                 subComplexProperty = ComplexBaseType.split('.')[-1]
                                                                 if ComplexAlias == aliasCheck:
-                                                                        print "Already covered Schema 2"
+                                                                        if debug:
+                                                                            print "Already covered Schema 2"
                                                                         FindComplexInnerType = soup.find('complextype', attrs={'name':subComplexProperty})                                                      
                                                                         if FindComplexInnerType:
                                                                                 for EachProperty in FindComplexInnerType.find_all('property'):
@@ -316,32 +304,23 @@ def getEntityTypeDetails(soup, SchemaAlias):
                                 else:
                                         PropertyList.append(propName)
         
-        print "PropertyList:::::::::::::::::::::::::::::::::::::::::::::::::::::::", PropertyList
+        if debug:
+            print "PropertyList:::::::::::::::::::::::::::::::::::::::::::::::::::::::", PropertyList
         return EntityName, PropertyList
 
 #Get the Mapped schema details for navigating to the resource schema    
 def getMappedSchema(ResourceName, soup):
         try:
-                containerlist = soup.find_all('complextype')
-                for containerlist1 in containerlist:
-                        for child in containerlist1.find_all('navigationproperty'):
+                containerlist = soup.find_all('complextype') + soup.find_all('entitytype')
+                for innerlist in containerlist:
+                        for child in innerlist.find_all('navigationproperty'):
                                 listName = child['name']
                                 listType = child['type']
                                 if listName == ResourceName:
                                         return True, listType
-        except:
-                pass
+        except Exception as e:
+             if debug > 1: print "Exception has occurred: ", e  
                 
-        try:
-                containerlist = soup.find_all('entitytype')
-                for containerlist2 in containerlist:
-                        for child in containerlist2.find_all('navigationproperty'):
-                                listName = child['name']
-                                listType = child['type']
-                                if listName == ResourceName:
-                                        return True, listType
-        except:
-                pass
         return False, "Schema Alias not found for " + ResourceName
 
 # Function to retrieve the detailed Property attributes and store in a dictionary format
@@ -367,12 +346,12 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                 if PropertyDetails == None or PropertyDetails == "":
                                                         status, moreSoup = getSchemaDetails("Resource")
                                                         PropertyDetails = moreSoup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                 else:
                                         PropertyDetails = soup.find('property', attrs={'name':PropertyName})
-                        except:
-                                pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
                         try:
                                 status, moreSoup = getSchemaDetails("Resource")
                                 key = "Resource." + PropertyName
@@ -385,8 +364,8 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                         FindAll = moreSoup.find('typedefinition', attrs={'name':PropertyDetails.attrs['type'].split(".")[-1]})
                                                         try:
                                                                 FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                        except:
-                                                                pass
+                                                        except Exception as e:
+                                                             if debug > 1: print "Exception has occurred: ", e 
                                                         PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
                                                         for propertyTerm in FindAll.find_all('annotation'):
                                                                 PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
@@ -402,8 +381,8 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                         FindAll = soup.find('typedefinition', attrs={'name':PropertyDetails.attrs['type'].split(".")[-1]})
                                                         try:
                                                                 FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                        except:
-                                                                pass
+                                                        except Exception as e:
+                                                                     if debug > 1: print "Exception has occurred: ", e  
                                                         PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
                                                         for propertyTerm in FindAll.find_all('annotation'):
                                                                 PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
@@ -414,14 +393,15 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                                 PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
                                 
                                 else:
-                                        print "No details present"
+                                        if debug:
+                                            print "No details present"
                                         try:
                                                 
                                                 FindAll = soup.find('typedefinition', attrs={'name':PropertyName.split(".")[-1]})
                                                 try:
                                                         FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                except:
-                                                        pass
+                                                except Exception as e:
+                                                     if debug > 1: print "Exception has occurred: ", e  
                                                 PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
                                                 for propertyTerm in FindAll.find_all('annotation'):
                                                         PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
@@ -431,10 +411,10 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                                                 for propertyTerm in PropertyDetails.find_all('annotation'):
                                                         PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
                                 
-                        except:
-                                pass
-                except:
-                        pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
 
         SchemaList = []
         for PropertyName in PropertyList:
@@ -516,7 +496,8 @@ def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
                                         propMandatory = True
                                         countTotMandatoryProp+=1
                                 propAttr = PropertyDictionary[SchemaName + "-" + PropertyName+'.Attributes']
-                                print "propAttr:::::::::::::::::::::::::::", propAttr
+                                if debug: 
+                                    print "propAttr:::::::::::::::::::::::::::", propAttr
                                 
                                 optionalFlag = True
                                 if (propAttr.has_key('type')):
@@ -543,11 +524,10 @@ def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
                                         generateLog(PropertyName, propType, propValue, propMandatory)
                                 else:
                                         generateLog(PropertyName, "No Value Specified", propValue, propMandatory)
-                        except:
-                                print "Inside inner exception"
-        except:
-                print "Inside exception"
-        
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
+        except Exception as e:
+             if debug > 1: print "Exception has occurred: ", e  
 
 # Function to collect all links in current resource schema
 def     getAllLinks(jsonData):
@@ -561,15 +541,15 @@ def     getAllLinks(jsonData):
                                                         ResourceName = elem
                                                         SchemaURI = jsonData[ResourceName][eachkey]
                                                         linkList[ResourceName] = SchemaURI
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         try:    
                                                 if jsonData[elem][eachkey].has_key('@odata.id'):
                                                         ResourceName = eachkey
                                                         SchemaURI = jsonData[elem][ResourceName]['@odata.id']
                                                         linkList[ResourceName] = SchemaURI
-                                        except:
-                                                pass                                    
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         try:
                                                 if type(eachvalue) is list:             
                                                         temp = {}
@@ -581,12 +561,12 @@ def     getAllLinks(jsonData):
                                                                                         SchemaURI = eachattr['@odata.id']
                                                                                         temp[i] = SchemaURI
                                                                                         i+=1
-                                                                except:
-                                                                        pass
+                                                                except Exception as e:
+                                                                     if debug > 1: print "Exception has occurred: ", e  
                                                         ResourceName = eachkey          
                                                         linkList[ResourceName] = temp           
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                         elif type(value) is list:       
                                 try:
                                         temp = {}
@@ -597,22 +577,22 @@ def     getAllLinks(jsonData):
                                                                 if eachattr.has_key('@odata.id'):
                                                                         temp[i] = eachattr['@odata.id']
                                                                         i+=1                                                                    
-                                                except:
-                                                        pass
+                                                except Exception as e:
+                                                         if debug > 1: print "Exception has occurred: ", e  
                                         ResourceName = elem             
                                         linkList[ResourceName] = temp
-                                except:
-                                        pass
+                                except Exception as e:
+                                         if debug > 1: print "Exception has occurred: ", e  
                         elif jsonData[elem].has_key('@odata.id'):
                                 ResourceName = elem
                                 SchemaURI = jsonData[ResourceName]['@odata.id']
                                 linkList[ResourceName] = SchemaURI
                         else:
                                 pass
-                except:
-                        pass
-        
-        print "linkList::::::::::::::::::::::::::::::::::::::::::::::", linkList
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
+        if debug:
+            print "linkList::::::::::::::::::::::::::::::::::::::::::::::", linkList
         return linkList
 
 # Function to handle sub-Links retrieved from parent URI's which are not directly accessible from ServiceRoot
@@ -623,16 +603,16 @@ def getChildLinks(PropertyList, decoded, soup):
         linkList = getAllLinks(jsonData= decoded)
 
         for PropertyName, value in linkList.iteritems():
-                
-                print "PropertyName::::::::::::::::::::::::::::::::::::::::::::::", PropertyName
-                print "value:::::::::::::::::::::::::::::::::::::::::::::::::::::", value
+                if debug: 
+                    print "PropertyName::::::::::::::::::::::::::::::::::::::::::::::", PropertyName
+                    print "value:::::::::::::::::::::::::::::::::::::::::::::::::::::", value
                         
                 SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
                 try:
                         AllComplexTypeDetails = soup.find_all('entitytype')
-                except:
-                        pass
-                        #ComplexTypeDetails = soup.find_all('entitytype')[0]
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
+                #ComplexTypeDetails = soup.find_all('entitytype')[0]
                 i = 0
                 for ComplexTypeDetails in AllComplexTypeDetails: 
                         for child in ComplexTypeDetails.find_all('navigationproperty'):
@@ -685,14 +665,15 @@ def getChildLinks(PropertyList, decoded, soup):
                                                                 continue
                                                         else:
                                                                 GlobalCount = GlobalCount + 1
-                                                except:
-                                                        pass
-                                                        
+                                                except Exception as e:
+                                                         if debug > 1: print "Exception has occurred: ", e  
+                                                            
                                                 ComplexTypeLinksDictionary['SubLinks'].append(PropIndexAppend)                                  
                                                 ComplexTypeLinksDictionary[PropIndexAppend+'.Schema'] = NavigationPropertyType
                                                 ComplexTypeLinksDictionary[PropIndexAppend+'.Link'] = NavigationPropertyLink
-                                                print "ComplexTypeLinksDictionary[PropIndex+'.Schema']:::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Schema']
-                                                print "ComplexTypeLinksDictionary[PropIndex+'.Link']:::::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Link']
+                                                if debug:
+                                                    print "ComplexTypeLinksDictionary[PropIndex+'.Schema']:::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Schema']
+                                                    print "ComplexTypeLinksDictionary[PropIndex+'.Link']:::::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Link']
                                                 
                                 ComplexLinksFlag = True                         
                 i = 0
@@ -738,7 +719,8 @@ def getChildLinks(PropertyList, decoded, soup):
                                                         tempFlag = False
                                                         temp = ""
                                                         for eachCount in range(0, GlobalCount):
-                                                                print "GlobalCount::::::::::::::::::::::::::::::::::::::::::::", GlobalCount
+                                                                if debug:
+                                                                    print "GlobalCount::::::::::::::::::::::::::::::::::::::::::::", GlobalCount
                                                                 temp = PropIndex + "_" + str(eachCount)
                                                                 if (temp in ComplexTypeLinksDictionary['SubLinks']) and (NavigationPropertyLink in ComplexTypeLinksDictionary[temp+'.Link']):
                                                                         tempFlag = True # Skip duplicate sublink addition
@@ -747,8 +729,8 @@ def getChildLinks(PropertyList, decoded, soup):
                                                                 continue
                                                         else:
                                                                 GlobalCount = GlobalCount + 1
-                                                except:
-                                                        pass    
+                                                except Exception as e:
+                                                     if debug > 1: print "Exception has occurred: ", e  
                                                 
                                                 ComplexTypeLinksDictionary['SubLinks'].append(PropIndex)
                                                 
@@ -756,8 +738,8 @@ def getChildLinks(PropertyList, decoded, soup):
                                                 ComplexTypeLinksDictionary[PropIndex+'.Link'] = NavigationPropertyLink          
                                 ComplexLinksFlag = True         
 
-                except:
-                        pass
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
         return ComplexLinksFlag
         
         
@@ -827,8 +809,8 @@ def getRandomValue(PropertyName, SchemaAlias, soup, propOrigValue, SchemaName):
                 else:
                         propUpdateValue = "None"
                         valueType = 'Str'
-        except:
-                pass
+        except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
         return propUpdateValue, valueType
 
 # Function to handle Patch functionality checks for ReadWrite attributes
@@ -874,34 +856,37 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                 return statusCode, False, propNewValue
                         
                 def logPatchResult(status, patchTable, logText, expValue, actValue, WarnCheck = None):
-                        global countTotProp, countPassProp, countFailProp, countWarnProp
+                        global countTotProp, countPassProp, countFailProp, countWarnProp, countSkipProp
                         countTotProp+=1
+                        colorMessage = "black"
+                        successMessage = "none"
                         if isinstance(expValue, int):
                                 expValue = str(expValue)
                         if isinstance(actValue, int):
                                 actValue = str(actValue)
                         if status:
-                                propRow = patchTable.tr(style="color: #006B24")
-                                propRow.td(logText)
-                                propRow.td(expValue)
-                                propRow.td(actValue)
-                                propRow.td("PASS", align = "center")
+                                colorMessage = "green"
+                                successMessage = "PASS" 
                                 countPassProp+=1
                         else:
-                                if WarnCheck:
-                                        propRow = patchTable.tr(style="color: #0000ff")
-                                        propRow.td(logText)
-                                        propRow.td(expValue)
-                                        propRow.td(actValue)
-                                        propRow.td("Warning", align = "center")
+                                if WarnCheck == "Skip":
+                                        colorMessage = "green"
+                                        successMessage = "SKIP" 
+                                        countSkipProp+=1                                
+                                        countTotProp-=1
+                                elif WarnCheck:
+                                        colorMessage = "blue"
+                                        successMessage = "Warning" 
                                         countWarnProp+=1                                
                                 else:
-                                        propRow = patchTable.tr(style="color: #ff0000")
-                                        propRow.td(logText)
-                                        propRow.td(expValue)
-                                        propRow.td(actValue)
-                                        propRow.td("FAIL", align = "center")
+                                        colorMessage = "red"
+                                        successMessage = "Fail" 
                                         countFailProp+=1        
+                        propRow = patchTable.tr(style="color: " + colorMessage)
+                        propRow.td(logText)
+                        propRow.td(expValue)
+                        propRow.td(actValue)
+                        propRow.td(successMessage, align = "center")
                                         
                 for PropertyName in PropertyList:
                         try:
@@ -917,12 +902,11 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                 else:
                                         propPermissions = ""
                                 print "Property Name:", PropertyName, "Permission:", propPermissions
-                                
                                 if propPermissions == 'OData.Permissions/ReadWrite' or propPermissions == "":
                                         propAttr = PropertyDictionary[SchemaName + "-" + PropertyName+'.Attributes']
                                         if (propAttr.has_key('type')):
                                                 propType = propAttr['type']                             
-                                        if PropertyName.__contains__("UserName") or PropertyName.__contains__("Password") or PropertyName == "Links" or PropertyName.__contains__("HTTP") or PropertyName == "Enabled"  or PropertyName == "Locked":
+                                        if PropertyName in ("Links","Enabled","Locked") or any(s in PropertyName for s in ("UserName","Password","HTTP")):
                                                 continue
 
                                         SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
@@ -979,112 +963,117 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
                                         header.th("Actual Value", style="width: 20%")
                                         header.th("Result", style="width: 20%")         
                                         
-                                        if valueType == 'Int':
-                                                propMinValue = propMaxValue = None
-                                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Minimum'):
-                                                        propMinValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Minimum']['int'])
-                                                        if PropertyName.count(".") == 1:
-                                                                MainAttribute = PropertyName.split(".")[0]
-                                                                SubAttribute = PropertyName.split(".")[1]                                                       
-                                                                payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propMinValue)+"}}"
-                                                                
-                                                        else:
-                                                                payload = "{\""+PropertyName+"\":"+str(propMinValue)+"}"
-                                                                
-                                                        statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
-                                                        
-                                                        if retValue == propMinValue:
-                                                                logPatchResult(True, patchTable, "Valid Update Value", propMinValue, retValue)
-                                                        elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                                logPatchResult(False, patchTable, "Valid Update Value", propMinValue, retValue, WarnCheck = True)
-                                                        else:
-                                                                logPatchResult(False, patchTable, "Valid Update Value", propMinValue, retValue)                                                                 
-
-                                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Maximum'):
-                                                        propMaxValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Maximum']['int'])
-                                                        if PropertyName.count(".") == 1:
-                                                                MainAttribute = PropertyName.split(".")[0]
-                                                                SubAttribute = PropertyName.split(".")[1]                                                       
-                                                                payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propMaxValue)+"}}"
-                                                        else:
-                                                                payload = "{\""+PropertyName+"\":"+str(propMaxValue)+"}"
-                                                                
-                                                        statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
-
-                                                        if retValue == propMaxValue:
-                                                                logPatchResult(True, patchTable, "Valid Update Value", propMaxValue, retValue)
-                                                        elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                                logPatchResult(False, patchTable, "Valid Update Value", propMaxValue, retValue, WarnCheck = True)
-                                                        else:
-                                                                logPatchResult(False, patchTable, "Valid Update Value", propMaxValue, retValue)
-                                                                
-                                                if PropertyName.count(".") == 1:
-                                                        MainAttribute = PropertyName.split(".")[0]
-                                                        SubAttribute = PropertyName.split(".")[1]                                                       
-                                                        payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propUpdateValue)+"}}"
-                                                        payloadOriginalValue = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propOrigValue)+"}}"
-                                                else:                                                   
-                                                        payload = "{\""+PropertyName+"\":"+str(propUpdateValue)+"}"
-                                                        payloadOriginalValue = "{\""+PropertyName+"\":"+str(propOrigValue)+"}"
-                                                        
-                                                statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
-                                                if retValue == propUpdateValue:
-                                                        logPatchResult(True, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                                elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue, WarnCheck = True)
-                                                else:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                                
-                                                statusCode, status, jsonSchema, headers = ResetPatchedAttribute('', PatchURI, 'PATCH', payload=payloadOriginalValue)
-
-                                        elif valueType == 'Bool':
-                                                if PropertyName.count(".") == 1:
-                                                        MainAttribute = PropertyName.split(".")[0]
-                                                        SubAttribute = PropertyName.split(".")[1]                                                       
-                                                        payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propUpdateValue).lower() +"}}"
-                                                        payloadOriginalValue = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propOrigValue).lower() +"}}"
-                                                else:
-                                                        payload = "{\""+PropertyName+"\":"+str(propUpdateValue).lower()+"}"
-                                                        payloadOriginalValue = "{\""+PropertyName+"\":"+str(propOrigValue).lower()+"}"
-                                                        
-                                                statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
-
-                                                if str(retValue).lower() == str(propUpdateValue).lower():
-                                                        logPatchResult(True, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                                elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue, WarnCheck = True)
-                                                else:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                        
-                                                statusCode, status, jsonSchema, headers = ResetPatchedAttribute('', PatchURI, 'PATCH', payload=payloadOriginalValue)
-                                                
+                                        if getOnly:
+                                                print "NonGet Property Skipped"
+                                                logPatchResult(False, patchTable, "Skipped", "-", "-", WarnCheck="Skip")
+                                                continue
                                         else:
-                                                if PropertyName.count(".") == 1:
-                                                        MainAttribute = PropertyName.split(".")[0]
-                                                        SubAttribute = PropertyName.split(".")[1]                                                       
-                                                        payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":\""+str(propUpdateValue)+"\"}}"
-                                                        payloadOriginalValue = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":\""+str(propOrigValue)+"\"}}"
-                                                else:
-                                                        payload = "{\""+PropertyName+"\":\""+propUpdateValue+"\"}"
-                                                        payloadOriginalValue = "{\""+PropertyName+"\":\""+str(propOrigValue)+"\"}"
-                                                        
-                                                statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
+                                                if valueType == 'Int':
+                                                        propMinValue = propMaxValue = None
+                                                        if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Minimum'):
+                                                                propMinValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Minimum']['int'])
+                                                                if PropertyName.count(".") == 1:
+                                                                        MainAttribute = PropertyName.split(".")[0]
+                                                                        SubAttribute = PropertyName.split(".")[1]                                                       
+                                                                        payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propMinValue)+"}}"
+                                                                        
+                                                                else:
+                                                                        payload = "{\""+PropertyName+"\":"+str(propMinValue)+"}"
+                                                                        
+                                                                statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
+                                                                
+                                                                if retValue == propMinValue:
+                                                                        logPatchResult(True, patchTable, "Valid Update Value", propMinValue, retValue)
+                                                                elif str(statusCode) in ["200", "204", "400", "405"]:
+                                                                        logPatchResult(False, patchTable, "Valid Update Value", propMinValue, retValue, WarnCheck = True)
+                                                                else:
+                                                                        logPatchResult(False, patchTable, "Valid Update Value", propMinValue, retValue)                                                                 
 
-                                                if str(retValue).lower() == str(propUpdateValue).lower():
-                                                        logPatchResult(True, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                                elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue, WarnCheck = True)
+                                                        if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Maximum'):
+                                                                propMaxValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Maximum']['int'])
+                                                                if PropertyName.count(".") == 1:
+                                                                        MainAttribute = PropertyName.split(".")[0]
+                                                                        SubAttribute = PropertyName.split(".")[1]                                                       
+                                                                        payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propMaxValue)+"}}"
+                                                                else:
+                                                                        payload = "{\""+PropertyName+"\":"+str(propMaxValue)+"}"
+                                                                        
+                                                                statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
+
+                                                                if retValue == propMaxValue:
+                                                                        logPatchResult(True, patchTable, "Valid Update Value", propMaxValue, retValue)
+                                                                elif str(statusCode) in ["200", "204", "400", "405"]:
+                                                                        logPatchResult(False, patchTable, "Valid Update Value", propMaxValue, retValue, WarnCheck = True)
+                                                                else:
+                                                                        logPatchResult(False, patchTable, "Valid Update Value", propMaxValue, retValue)
+                                                                        
+                                                        if PropertyName.count(".") == 1:
+                                                                MainAttribute = PropertyName.split(".")[0]
+                                                                SubAttribute = PropertyName.split(".")[1]                                                       
+                                                                payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propUpdateValue)+"}}"
+                                                                payloadOriginalValue = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propOrigValue)+"}}"
+                                                        else:                                                   
+                                                                payload = "{\""+PropertyName+"\":"+str(propUpdateValue)+"}"
+                                                                payloadOriginalValue = "{\""+PropertyName+"\":"+str(propOrigValue)+"}"
+                                                                
+                                                        statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
+                                                        if retValue == propUpdateValue:
+                                                                logPatchResult(True, patchTable, "Valid Update Value", propUpdateValue, retValue)
+                                                        elif str(statusCode) in ["200", "204", "400", "405"]:
+                                                                logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue, WarnCheck = True)
+                                                        else:
+                                                                logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
+                                                        
+                                                        statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'PATCH', payload=payloadOriginalValue, mute=True)
+
+                                                elif valueType == 'Bool':
+                                                        if PropertyName.count(".") == 1:
+                                                                MainAttribute = PropertyName.split(".")[0]
+                                                                SubAttribute = PropertyName.split(".")[1]                                                       
+                                                                payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propUpdateValue).lower() +"}}"
+                                                                payloadOriginalValue = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propOrigValue).lower() +"}}"
+                                                        else:
+                                                                payload = "{\""+PropertyName+"\":"+str(propUpdateValue).lower()+"}"
+                                                                payloadOriginalValue = "{\""+PropertyName+"\":"+str(propOrigValue).lower()+"}"
+                                                                
+                                                        statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
+
+                                                        if str(retValue).lower() == str(propUpdateValue).lower():
+                                                                logPatchResult(True, patchTable, "Valid Update Value", propUpdateValue, retValue)
+                                                        elif str(statusCode) in ["200", "204", "400", "405"]:
+                                                                logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue, WarnCheck = True)
+                                                        else:
+                                                                logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
+                                                
+                                                        statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'PATCH', payload=payloadOriginalValue, mute=True)
+                                                        
                                                 else:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                        
-                                                statusCode, status, jsonSchema, headers = ResetPatchedAttribute('', PatchURI, 'PATCH', payload=payloadOriginalValue)
+                                                        if PropertyName.count(".") == 1:
+                                                                MainAttribute = PropertyName.split(".")[0]
+                                                                SubAttribute = PropertyName.split(".")[1]                                                       
+                                                                payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":\""+str(propUpdateValue)+"\"}}"
+                                                                payloadOriginalValue = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":\""+str(propOrigValue)+"\"}}"
+                                                        else:
+                                                                payload = "{\""+PropertyName+"\":\""+propUpdateValue+"\"}"
+                                                                payloadOriginalValue = "{\""+PropertyName+"\":\""+str(propOrigValue)+"\"}"
+                                                                
+                                                        statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
+
+                                                        if str(retValue).lower() == str(propUpdateValue).lower():
+                                                                logPatchResult(True, patchTable, "Valid Update Value", propUpdateValue, retValue)
+                                                        elif str(statusCode) in ["200", "204", "400", "405"]:
+                                                                logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue, WarnCheck = True)
+                                                        else:
+                                                                logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
+                                                
+                                                        statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'PATCH', payload=payloadOriginalValue, mute=True)
 
                                 else:
                                         continue
-                        except:
-                                pass
-        except:
-                pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
+        except Exception as e:
+             if debug > 1: print "Exception has occurred: ", e  
 
 #Check all the GET property comparison with Schema files                
 def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propMandatory, soup, SchemaName):
@@ -1116,20 +1105,20 @@ def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propManda
                         propValueCheck = propValue[:19]
                         d1 = strptime(propValueCheck, "%Y-%m-%dT%H:%M:%S" )
                         temp = True
-                except:
-                        pass
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
                 try: 
                         propValueCheck = propValue.split("T")[0]
                         d1 = strptime(propValueCheck, "%Y-%m-%d" )
                         temp = True
-                except:
-                        pass
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
                 try:
                         propValueCheck = propValue.split(" ")[0]
                         d1 = strptime(propValueCheck, "%Y-%m-%d" )
                         temp = True
-                except:
-                        pass                    
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
                 if (temp):
                         generateLog(PropertyName, "DateTime Value", propValue, propMandatory)
                 else:
@@ -1164,7 +1153,8 @@ def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propManda
         else:
                 validList = temp = ""
                 templist = []
-                print "Inside Complex Data Type"
+                if debug:
+                    print "Inside Complex Data Type"
                 if propType.__contains__("Resource"):
                         status, soup = getSchemaDetails("Resource")
                         SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
@@ -1345,15 +1335,16 @@ def corelogic(ResourceName, SchemaURI):
                                 SchemaName = SchemaAlias.split(".")[-1]
                                 checkPropertyCompliance(PropertyList, jsonSchema, schemaSoup, SchemaName)
                                 checkPropertyPatchCompliance(PropertyList, SchemaURI, jsonSchema, schemaSoup, headers, SchemaName)
-                        except:
-                                pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
                         try:
                                 ComplexLinksFlag = getChildLinks(PropertyList, jsonSchema, schemaSoup)
-                        except:
-                                pass
+                        except Exception as e:
+                             if debug > 1: print "Exception has occurred: ", e  
                 else:
                         print 80*'*'
-                        print schemaSoup
+                        if debug:
+                            print schemaSoup
                         print 80*'*'
                         
                 generateLog("Properties checked for Schema %s: %s || Pass: %s || Fail: %s || Warning: %s " %(SchemaAlias, countTotProp-countTotSchemaProp, countPassProp-countPassSchemaProp, countFailProp-countFailSchemaProp, countWarnProp-countWarnSchemaProp), None, None)
@@ -1417,16 +1408,17 @@ def corelogic(ResourceName, SchemaURI):
                                                 checkPropertyCompliance(PropertyList, jsonSchema, schemaSoup, SchemaName)
                                                 checkPropertyPatchCompliance(PropertyList, subLinkURI, jsonSchema, schemaSoup, headers, SchemaName)
                                                 #checkPropertyPostCompliance(PropertyList, subLinkURI, jsonSchema, schemaSoup)
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         try:
                                                 ComplexLinksFlag = getChildLinks(PropertyList, jsonSchema, schemaSoup)
 
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                 else:
                                         print 80*'*'
-                                        print schemaSoup
+                                        if debug:
+                                            print schemaSoup
                                         print 80*'*'
                                 
                                 ResourceURIlink3 = ResourceURIlink2 + " -> " + SchemaAlias.split(".")[0]
@@ -1466,6 +1458,7 @@ logSumhead = logSummary.head
 logSumbody = logSummary.body
 logSumhead.title('Compliance Test Summary')
 startTime = DT.now()
+status_code = 1
 
 htmlTable = logbody.table(border='1', style="font-family: calibri; width: 100%; font-size: 14px")
 generateLog("#####         Starting Redfish Compliance Test || System: %s as User: %s     #####" %(ConfigURI, User), None, None, header = True)
@@ -1493,8 +1486,8 @@ propTable = insertResultTable()
 generateLog(linkvar, None, None)
 
 # Retrieve output of ServiceRoot URI
-status, jsonData = getRootURI()
-                                                        
+status, jsonData = getRootURI()                                                        
+
 ResourceURIlink1 = "ServiceRoot"
 if status:
         # Check compliance for ServiceRoot
@@ -1504,6 +1497,7 @@ if status:
         
         PropertyDictionary = {}
         ComplexLinksFlag = False
+
         getPropertyDetails(schemaSoup, PropertyList, 'ServiceRoot')
         
         propTable = insertResultTable()
@@ -1527,7 +1521,6 @@ if status:
         header = propTable.tr(style="background-color: #FFFFA3")
         header.th("Resource Name", style="width: 30%")
         header.th("URI", style="width: 70%")
-
         
 ### Only for output
         
@@ -1551,8 +1544,8 @@ if status:
                                                         propRow.td(SchemaURI)                                           
                                                 else:
                                                         pass
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         
                         elif jsonData[elem].has_key('@odata.id'):
                                 ResourceName = elem
@@ -1562,8 +1555,8 @@ if status:
                                 propRow.td(SchemaURI)
                         else:
                                 pass
-                except:
-                        pass    
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
         
 ### Executing all the links on root URI         
         for elem, value in jsonData.iteritems():
@@ -1582,8 +1575,8 @@ if status:
                                                         corelogic(ResourceName, SchemaURI)
                                                 else:
                                                         pass
-                                        except:
-                                                pass
+                                        except Exception as e:
+                                             if debug > 1: print "Exception has occurred: ", e  
                                         
                         elif jsonData[elem].has_key('@odata.id'):
                                 ResourceName = elem
@@ -1591,11 +1584,12 @@ if status:
                                 corelogic(ResourceName, SchemaURI)
                         else:
                                 pass
-                except:
-                        pass
+                except Exception as e:
+                     if debug > 1: print "Exception has occurred: ", e  
                         
-#        generateLog("Total Properties checked: %s || Pass: %s || Fail: %s" %(countTotProp, countPassProp, countFailProp), None, None)
-#        generateLog("Total Mandatory Properties checked: %s || Pass: %s || Fail: %s" %(countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp), None, None)
+        generateLog("Total Properties checked: %s || Pass: %s || Fail: %s || Warn: %s || Skip: %s" %(countTotProp, countPassProp, countFailProp, countWarnProp, countSkipProp), None, None)
+        generateLog("Total Mandatory Properties checked: %s || Pass: %s || Fail: %s" %(countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp), None, None)
+        
         generateLog(None, None, None, spacer = True, summaryLog = True)
         summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
         header = summaryLogTable.tr(style="background-color: #FFFFA3")
@@ -1632,6 +1626,7 @@ if status:
         elif (countPassProp > 0):
                 logComment = "Compliance Test Result: PASS"
                 summaryRow = htmlSumTable.tr(align = "center", style = "font-size: 18px; background-color: #E6E6F0; color: #006B24")
+                status_code = 0
         else:
                 logComment = "Compliance Test Result: INCOMPLETE"
         summaryRow.td(logComment)
@@ -1656,3 +1651,5 @@ filehandle.close()
 
 generateLog("#####        End of Compliance Check. Please refer logs.    #####", None, None)
 print 80*'*'
+
+sys.exit(status_code)
