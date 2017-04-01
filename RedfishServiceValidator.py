@@ -54,6 +54,13 @@ def getRootURI():
 # Certificate check is conditional based on input from config ini file
 # 
 def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = False):
+        """
+        Makes a call to a given URI
+        
+        param URILink: path to URI "/example/1"
+        param Method: http message type, default 'GET'
+        param payload: data for PATCH
+        """
         URILink = URILink.replace("#", "%23")
         statusCode = ""
         try:
@@ -495,71 +502,30 @@ def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
 
 # Function to collect all links in current resource schema
 def     getAllLinks(jsonData):
-        linkList = {}
-        for elem, value in jsonData.iteritems():
-                try:
-                        if type(value) is dict:
-                                for eachkey, eachvalue in value.iteritems():
-                                        try:
-                                                if eachkey == '@odata.id':
-                                                        ResourceName = elem
-                                                        SchemaURI = jsonData[ResourceName][eachkey]
-                                                        linkList[ResourceName] = SchemaURI
-                                        except Exception as e:
-                                             if debug > 1: print "Exception has occurred: ", e  
-                                        try:    
-                                                if jsonData[elem][eachkey].has_key('@odata.id'):
-                                                        ResourceName = eachkey
-                                                        SchemaURI = jsonData[elem][ResourceName]['@odata.id']
-                                                        linkList[ResourceName] = SchemaURI
-                                        except Exception as e:
-                                             if debug > 1: print "Exception has occurred: ", e  
-                                        try:
-                                                if type(eachvalue) is list:             
-                                                        temp = {}
-                                                        i = 0
-                                                        for eachattr in eachvalue:
-                                                                try:
-                                                                        if type(eachattr) is dict:                                                                              
-                                                                                if eachattr.has_key('@odata.id'):
-                                                                                        SchemaURI = eachattr['@odata.id']
-                                                                                        temp[i] = SchemaURI
-                                                                                        i+=1
-                                                                except Exception as e:
-                                                                     if debug > 1: print "Exception has occurred: ", e  
-                                                        ResourceName = eachkey          
-                                                        linkList[ResourceName] = temp           
-                                        except Exception as e:
-                                             if debug > 1: print "Exception has occurred: ", e  
-                        elif type(value) is list:       
-                                try:
-                                        temp = {}
-                                        i = 0                                   
-                                        for eachattr in value:
-                                                try:
-                                                        if type(eachattr) is dict:                                                                              
-                                                                if eachattr.has_key('@odata.id'):
-                                                                        temp[i] = eachattr['@odata.id']
-                                                                        i+=1                                                                    
-                                                except Exception as e:
-                                                         if debug > 1: print "Exception has occurred: ", e  
-                                        ResourceName = elem             
-                                        linkList[ResourceName] = temp
-                                except Exception as e:
-                                         if debug > 1: print "Exception has occurred: ", e  
-                        elif jsonData[elem].has_key('@odata.id'):
-                                ResourceName = elem
-                                SchemaURI = jsonData[ResourceName]['@odata.id']
-                                linkList[ResourceName] = SchemaURI
-                        else:
-                                pass
-                except Exception as e:
-                     if debug > 1: print "Exception has occurred: ", e  
-        if debug:
-            print "linkList::::::::::::::::::::::::::::::::::::::::::::::", linkList
-        return linkList
+        """
+        Function that returns all links provided in a given JSON response.
+        This result will include a link to itself.
 
-# Function to handle sub-Links retrieved from parent URI's which are not directly accessible from ServiceRoot
+        :param jsonData: json dict
+        :return: list of links, including itself
+        """
+        linkList = list()
+        
+        if '@odata.id' in jsonData:
+            if debug:                
+                print jsonData['@odata.id']
+            linkList.append( jsonData['@odata.id'] )
+
+        for element in jsonData:
+                value = jsonData[element]
+                if type(value) is dict:
+                    linkList.extend( getAllLinks(value) )
+                if type(value) is list:
+                    for item in value:
+                        linkList.extend( getAllLinks(item) )
+        return linkList 
+
+# # Function to handle sub-Links retrieved from parent URI's which are not directly accessible from ServiceRoot
 def getChildLinks(PropertyList, decoded, soup):
         global ComplexTypeLinksDictionary
         global ComplexLinksFlag
@@ -1356,13 +1322,13 @@ if __name__ == '__main__':
         print "Get Root URI failed."
         sys.exit(1)
     
-    print jsonData
+    if debug:
+        print jsonData
     
     links = getAllLinks(jsonData)
     
-    while jsonData is not None:
-        print links
-        break
+    print links
+
     sys.exit(status_code)
 
     # Initialize Log files for HTML report
