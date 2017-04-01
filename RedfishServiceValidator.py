@@ -43,7 +43,12 @@ countTotMandatoryProp = countPassMandatoryProp = countFailMandatoryProp = countW
 # Function to GET ServiceRoot response from test system
 # This call should not require authentication
 def getRootURI():
-    return callResourceURI("ServiceRoot", '/redfish/v1')[1:3]
+    """
+    Get JSON response from the Root URI of a configured server.
+
+    :return: success, JSON dictionary, if failed then returns False, None 
+    """
+    return callResourceURI("ServiceRoot", '/redfish/v1')
 
 # Function to GET/PATCH/POST resource URI
 # Certificate check is conditional based on input from config ini file
@@ -52,6 +57,7 @@ def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = 
         URILink = URILink.replace("#", "%23")
         statusCode = ""
         try:
+                expCode = []
                 if Method == 'GET' or Method == 'ReGET':
                         response = requests.get(ConfigURI+URILink, auth = (User, Passwd), verify=chkCert)
                         expCode = [200, 204]
@@ -62,22 +68,12 @@ def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = 
                 statusCode = response.status_code
                 if debug:
                     print Method, statusCode, expCode
-                if not mute:
-                    if ((Method == 'GET' or Method == 'ReGET') and statusCode in expCode):
-                            if Method == 'GET':
-                                    generateLog("Retrieving Resource "+SchemaName+" ("+ConfigURI+URILink+")", str(expCode), str(statusCode))
-                            decoded = response.json()
-                            return statusCode, True, decoded, response.headers
-                    elif (Method == 'PATCH' and statusCode in expCode):
-                            return statusCode, True, '', response.headers
-                    else:
-                        if Method == 'GET':
-                            generateLog(SchemaName+" Resource ("+ConfigURI+URILink+")", str(expCode), str(statusCode), logPass = False)
-                        return statusCode, False, statusCode, ''
-                else:
-                    return statusCode, True, decoded, response.headers
-        except Exception:
-                return statusCode, False, "ERROR: %s" % str(format_exc()), ''
+                if statusCode in expCode:
+                   decoded = response.json()
+                   return True, decoded
+        except Exception as ex:
+                sys.stderr.write("Something went wrong: %s\n" % ex)
+                return False, None
                         
 # Function to parse individual Schema xml file and search for the Alias string
 # Returns the content of the xml file on successfully matching the Alias
@@ -1352,6 +1348,23 @@ def corelogic(ResourceName, SchemaURI):
 ##########################################################################
 
 if __name__ == '__main__':
+    # Rewrite here
+    status_code = 1
+    success, jsonData = getRootURI()
+    
+    if not success:
+        print "Get Root URI failed."
+        sys.exit(1)
+    
+    print jsonData
+    
+    links = getAllLinks(jsonData)
+    
+    while jsonData is not None:
+        print links
+        break
+    sys.exit(status_code)
+
     # Initialize Log files for HTML report
     HTMLLogFile = strftime("ComplianceTestDetailedResult_%m_%d_%Y_%H%M%S.html")
     SummaryLogFile = strftime("ComplianceTestSummary_%m_%d_%Y_%H%M%S.html")
@@ -1364,7 +1377,6 @@ if __name__ == '__main__':
     logSumbody = logSummary.body
     logSumhead.title('Compliance Test Summary')
     startTime = DT.now()
-    status_code = 1
 
     htmlTable = logbody.table(border='1', style="font-family: calibri; width: 100%; font-size: 14px")
     generateLog("#####         Starting Redfish Compliance Test || System: %s as User: %s     #####" %(ConfigURI, User), None, None, header = True)
@@ -1517,4 +1529,3 @@ if __name__ == '__main__':
     generateLog("#####        End of Compliance Check. Please refer logs.    #####", None, None)
     print 80*'*'
 
-    sys.exit(status_code)
