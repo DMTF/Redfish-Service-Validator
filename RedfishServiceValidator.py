@@ -129,10 +129,7 @@ def getType(string):
 # Schema XML may be the initial file for local properties or referenced schema for foreign properties
 baseTypeList = list()
 def getEntityTypeDetails(soup, SchemaAlias):
-        
-
-        
-        PropertyDict = dict()
+        PropertyList = list()
         PropLink = ""
         SchemaType = getType(SchemaAlias)
         SchemaNamespace = getNamespace(SchemaAlias)
@@ -145,7 +142,7 @@ def getEntityTypeDetails(soup, SchemaAlias):
         innersoup = soup.find_all('schema',attrs={'namespace':sns})
         
         if len(innersoup) == 0:
-            return '' ,PropertyDict
+            return PropertyList
         innersoup = innersoup[0]
         
         for element in innersoup.find_all('entitytype',attrs={'name': SchemaType}):
@@ -163,215 +160,35 @@ def getEntityTypeDetails(soup, SchemaAlias):
                 baseTypeList.append(baseType)
                 if getNamespace(baseType) != SchemaNamespace:
                     success, InnerSchemaSoup = getSchemaDetails(baseType)
-                    PropertyDict.update(getEntityTypeDetails(InnerSchemaSoup, baseType)[1])
+                    PropertyList.extend(getEntityTypeDetails(InnerSchemaSoup, baseType))
                     if not success:
                         print 'problem'
                         break
                 else: 
-                    PropertyDict.update(getEntityTypeDetails(soup, baseType)[1])
+                    PropertyList.extend(getEntityTypeDetails(soup, baseType))
 
             for innerelement in usableProperties:
                 print innerelement['name']
                 print innerelement['type']
                 print innerelement.attrs
                 newProp = innerelement['name']
-                if SchemaType:
-                    newProp = SchemaType + ':' + newProp
+                if SchemaAlias:
+                    newProp = SchemaAlias + '.' + newProp
                 print "ADDING ::::", newProp 
-                if newProp not in PropertyDict: 
-                    PropertyDict[newProp] = innerelement
+                if newProp not in PropertyList: 
+                    PropertyList.append( newProp )
 
-        return '', PropertyDict
-
-        def getResourceProperties(myAlias, soup, subProperty):
-                AllforeignEntityName = soup.find_all('entitytype', attrs={'name':subProperty})
-                for foreignEntityName in AllforeignEntityName:                  
-                        EntityBaseType = ""
-                        try:
-                                EntityBaseType = foreignEntityName['basetype']                          
-                        except:
-                                EntityBaseType = ''
-
-                        if '.' in EntityBaseType:
-                                Alias = EntityBaseType.split('.')[0]
-                                subProperty1 = EntityBaseType.split('.')[-1]
-                                if Alias == myAlias and Alias == subProperty1:
-                                        pass
-                                elif (Alias == myAlias) and (Alias != subProperty1):
-                                        if (subProperty1 == subProperty):
-                                                pass
-                                        else:
-                                                getResourceProperties(Alias, soup, subProperty1)
-                                else:   
-                                        status, moreSoup = getSchemaDetails(Alias)
-                                        getResourceProperties(Alias, moreSoup, subProperty1)
-                        try:
-                                for PropertyName in foreignEntityName.find_all('property'):
-                                        PropLink = myAlias+':'+PropertyName['name']
-                                        if PropLink in PropertyList:
-                                                continue
-                                        else:
-                                                PropertyList.append(PropLink)
-                        except:
-                                print 'No properties defined for ', foreignEntityName
-        
-        searchEntity = SchemaAlias.split('.')[-1]
-        aliasCheck = SchemaAlias.split('.')[0]
-        
-        for child in soup.find_all('entitytype'):
-                EntityName = child['name']
-
-                if EntityName == searchEntity:
-                        try:
-                                EntityBaseType = child['basetype']
-                        except:
-                                EntityBaseType = ''
-                        if '.' in EntityBaseType:
-
-                                Alias = EntityBaseType.split('.')[0]
-                                subProperty = EntityBaseType.split('.')[-1]
-                                if Alias == aliasCheck:
-                                        if debug:
-                                            print "Already covered Schema 1"
-                                else:
-                                        status, moreSoup = getSchemaDetails(Alias)
-                                        getResourceProperties(Alias, moreSoup, subProperty)
-                        for PropertyTag in child.find_all('property'):
-                        
-                                propName = PropertyTag['name']
-                                propType = PropertyTag['type']
-                                if '.' in propType:
-                                        complexTypeSchema = propType.split('.')[0]
-                                        if complexTypeSchema == aliasCheck:
-                                                complexTypeSchemaPropName = ""
-                                                complexTypeSchemaPropName = propType.split('.')[-1]
-                                                FindComplexType = None
-                                                #if complexTypeSchemaPropName == propName:
-                                                try:
-                                                        FindComplexType = soup.find('complextype', attrs={'name':complexTypeSchemaPropName})
-                                                except:
-                                                        FindComplexType = None
-
-                                                try:
-                                                        ComplexBaseType = FindComplexType['basetype']
-                                                except:
-                                                        ComplexBaseType = None
-
-                                                if ComplexBaseType:
-                                                        if '.' in ComplexBaseType:
-                                                                ComplexAlias = ComplexBaseType.split('.')[0]
-                                                                subComplexProperty = ComplexBaseType.split('.')[-1]
-                                                                if ComplexAlias == aliasCheck:
-                                                                        if debug:
-                                                                            print "Already covered Schema 2"
-                                                                        FindComplexInnerType = soup.find('complextype', attrs={'name':subComplexProperty})                                                      
-                                                                        if FindComplexInnerType:
-                                                                                for EachProperty in FindComplexInnerType.find_all('property'):
-                                                                                        eachChildAttribute = EachProperty['name']
-                                                                                        ComplexChildPropName = propName + "." + eachChildAttribute
-                                                                                        if ComplexChildPropName in PropertyList:
-                                                                                                continue
-                                                                                        else:
-                                                                                                PropertyList.append(ComplexChildPropName)
-                                                                                                
-                                                                elif ComplexAlias == "Resource":
-                                                                        status, moreSoup = getSchemaDetails(ComplexAlias)
-                                                                        try:
-                                                                                FindComplexTypeChild2 = moreSoup.find('complextype', attrs={'name':subComplexProperty})
-                                                                        except:
-                                                                                FindComplexTypeChild2 = None
-                                                                        
-                                                                        if FindComplexTypeChild2:
-                                                                                for eachChildProperty1 in FindComplexTypeChild2.find_all('property'):
-                                                                                        eachChildAttribute1 = eachChildProperty1['name']
-                                                                                        ComplexChildPropName1 =  'Resource:'+propName + "." + eachChildAttribute1
-                                                                                        if ComplexChildPropName1 in PropertyList:
-                                                                                                continue
-                                                                                        else:
-                                                                                                PropertyList.append(ComplexChildPropName1)
-                                                                        else:
-                                                                                PropLink = 'Resource:'+subComplexProperty
-                                                                                if PropLink in PropertyList:
-                                                                                        continue
-                                                                                else:
-                                                                                        PropertyList.append(PropLink)
-                                                                                        continue
-                                                
-                                                if FindComplexType:
-                                                        for EachProperty in FindComplexType.find_all('property'):
-                                                                eachAttribute = EachProperty['name']
-                                                                eachAttributeType = EachProperty['type']
-                                                                if '.' in eachAttributeType:
-                                                                        complexTypeSchemaChild = eachAttributeType.split('.')[0]
-                                                                        if complexTypeSchemaChild == 'Resource':
-                                                                                status, moreSoup = getSchemaDetails(complexTypeSchemaChild)
-                                                                                try:
-                                                                                        FindComplexTypeChild = moreSoup.find('complextype', attrs={'name':eachAttribute})
-                                                                                except:
-                                                                                        FindComplexTypeChild = None
-                                                                                
-                                                                                if FindComplexTypeChild:
-                                                                                        for eachChildProperty in FindComplexTypeChild.find_all('property'):
-                                                                                                eachChildAttribute = eachChildProperty['name']
-                                                                                                ComplexChildPropName = 'Resource:'+propName + "." + eachAttribute + "." + eachChildAttribute
-                                                                                                if ComplexChildPropName in PropertyList:
-                                                                                                        continue
-                                                                                                else:
-                                                                                                        PropertyList.append(ComplexChildPropName)
-                                                                                                        
-                                                                ComplexPropName = propName + "." + eachAttribute
-                                                                if ComplexPropName in PropertyList:
-                                                                        continue
-                                                                else:
-                                                                        PropertyList.append(ComplexPropName)
-                                                                        
-                                        if complexTypeSchema == 'Resource':
-                                                status, moreSoup = getSchemaDetails(complexTypeSchema)
-                                                try:
-                                                        FindComplexTypeChild1 = moreSoup.find('complextype', attrs={'name':propName})
-                                                except:
-                                                        FindComplexTypeChild1 = None
-                                                
-                                                if FindComplexTypeChild1:
-                                                        for eachChildProperty1 in FindComplexTypeChild1.find_all('property'):
-                                                                eachChildAttribute1 = eachChildProperty1['name']
-                                                                ComplexChildPropName1 =  'Resource:'+propName + "." + eachChildAttribute1
-                                                                if ComplexChildPropName1 in PropertyList:
-                                                                        continue
-                                                                else:
-                                                                        PropertyList.append(ComplexChildPropName1)
-                                                else:
-                                                        PropLink = 'Resource:'+propName
-                                                        if PropLink in PropertyList:
-                                                                continue
-                                                        else:
-                                                                PropertyList.append(PropLink)
-                                                                continue
-                                        
-                                if propName in PropertyList:
-                                        continue
-                                else:
-                                        PropertyList.append(propName)
-        
-        if debug:
-            print "PropertyList:::::::::::::::::::::::::::::::::::::::::::::::::::::::", PropertyList
-        return EntityName, PropertyList
-
-#Get the Mapped schema details for navigating to the resource schema    
-def getMappedSchema(ResourceName, soup):
-                containerlist = soup.find_all('complextype') + soup.find_all('entitytype')
-                for innerlist in containerlist:
-                        for child in innerlist.find_all('navigationproperty'):
-                                listName = child['name']
-                                listType = child['type']
-                                if listName == ResourceName:
-                                        return True, listType
-                return False, None
+        return PropertyList
 
 # Function to retrieve the detailed Property attributes and store in a dictionary format
 # The attributes for each property are referenced through various other methods for compliance check
 def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
         PropertyDictionary = dict() 
+        
+        for prop in PropertyList:
+            print prop
+
+        return PropertyDictionary
         def getResourcePropertyDetails(soup, PropertyName, SchemaName):
                 try:
                         try:
@@ -464,7 +281,6 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
 
         SchemaList = []
         for PropertyName in PropertyList:
-
                 if ':' in PropertyName:
                         Alias = PropertyName[:PropertyName.find(':')]
 #                       if not(Alias in SchemaList):
@@ -1385,10 +1201,6 @@ def validateURI (URI, uriName=''):
     
     counts['pass'] += 1
 
-    links = getAllLinks(jsonData)
-    
-    print links
-
     SchemaFullType = jsonData['@odata.type']
     SchemaType = getType(SchemaFullType)
     SchemaNamespace = getNamespace(SchemaFullType)
@@ -1404,22 +1216,23 @@ def validateURI (URI, uriName=''):
             counts['fail'] += 1
             return False, counts
     
-    name, properties = getEntityTypeDetails(SchemaSoup,SchemaFullType)
+    propertyList = getEntityTypeDetails(SchemaSoup,SchemaFullType)
     
-    for key in properties:
+    links = getAllLinks(jsonData)
+    
+    print links
+
+    
+    for key in propertyList:
         print key
 
-    print properties
-    
-    return True, counts
-
-    ComplexLinksFlag = False
-
-    PropertyDictionary = getPropertyDetails(SchemaSoup, properties, SchemaName)
+    propertyDict = getPropertyDetails(SchemaSoup, propertyList, SchemaFullType)
    
-    messages, checkCounts = checkPropertyCompliance(properties, PropertyDictionary, jsonData, SchemaSoup, SchemaName)
+    # messages, checkCounts = checkPropertyCompliance(properties, PropertyDictionary, jsonData, SchemaSoup, SchemaName)
     
+    # counts.update(checkCounts)
 
+    return True, counts
     
     for linkName in links:
         print uriName, '->', linkName
