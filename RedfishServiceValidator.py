@@ -139,11 +139,10 @@ def getEntityTypeDetails(soup, SchemaAlias):
             sns = SchemaNamespace
 
         print "Schema is", SchemaAlias, SchemaType
-        innersoup = soup.find_all('schema',attrs={'namespace':sns})
+        innersoup = soup.find('schema',attrs={'namespace':sns})
         
-        if len(innersoup) == 0:
+        if innersoup is None:
             return PropertyList
-        innersoup = innersoup[0]
         
         for element in innersoup.find_all('entitytype',attrs={'name': SchemaType}):
             print "___"
@@ -186,113 +185,60 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
         PropertyDictionary = dict() 
         
         for prop in PropertyList:
-            print prop
+            PropertyDictionary[prop] = dict()
+            SchemaNamespace = getNamespaceVersion(prop)
+            propSpec = prop.split('.')[2:]
+            if '_' not in SchemaNamespace:
+                SchemaNamespace = getNamespace(prop)
+                propSpec = prop.split('.')[1:]
+            print '___'
+            print SchemaNamespace, prop, propSpec
+            success, moreSoup = getSchemaDetails(SchemaNamespace)
+            if not success:
+                print "problem"
+                continue
+            propSchema = moreSoup.find('schema',attrs={'namespace':SchemaNamespace})
+            propEntity = propSchema.find('entitytype',attrs={'name':propSpec[0]})
+            propTag = propEntity.find('property',attrs={'name':propSpec[1]})
+            propAll = propTag.find_all()
 
-        return PropertyDictionary
-        def getResourcePropertyDetails(soup, PropertyName, SchemaName):
-                try:
-                        try:
+            PropertyDictionary[prop]['attrs'] = propTag.attrs
+            
+            for tag in propAll:
+                PropertyDictionary[prop][tag['term']] = tag.attrs
+            print PropertyDictionary[prop]
+            
+             
 
-                                if PropertyName.count(".") == 2:
-                                        PropertyDetails = soup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                elif PropertyName.count(".") == 1:
-                                        try:
-                                                complexDetails = ""
-                                                complexDetails = soup.find('complextype', attrs={'name':PropertyName.split(".")[0]})
-                                                if not (complexDetails == None):
-                                                        PropertyDetails = complexDetails.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                                        if (PropertyDetails == None):
-                                                                PropertyDetails = soup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                                else:
-                                                        PropertyDetails = soup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                                        
-                                                if PropertyDetails == None or PropertyDetails == "":
-                                                        status, moreSoup = getSchemaDetails("Resource")
-                                                        PropertyDetails = moreSoup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                        except Exception as e:
-                                             if debug > 1: print "Exception has occurred: ", e  
-                                else:
-                                        PropertyDetails = soup.find('property', attrs={'name':PropertyName})
-                        except Exception as e:
-                             if debug > 1: print "Exception has occurred: ", e  
-                        try:
-                                status, moreSoup = getSchemaDetails("Resource")
-                                key = "Resource." + PropertyName
-
-                                if not (PropertyDetails == None):
-                                        
-                                        if PropertyDetails.attrs['type'] == (key):
-                                                try:
-        
-                                                        FindAll = moreSoup.find('typedefinition', attrs={'name':PropertyDetails.attrs['type'].split(".")[-1]})
-                                                        try:
-                                                                FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                        except Exception as e:
-                                                             if debug > 1: print "Exception has occurred: ", e 
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
-                                                        for propertyTerm in FindAll.find_all('annotation'):
-                                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                        
-                                                except:
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = PropertyDetails.attrs
-                                                        for propertyTerm in PropertyDetails.find_all('annotation'):
-                                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs              
-                                        else:
-                                                
-                                                try:
-                                                        
-                                                        FindAll = soup.find('typedefinition', attrs={'name':PropertyDetails.attrs['type'].split(".")[-1]})
-                                                        try:
-                                                                FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                        except Exception as e:
-                                                                     if debug > 1: print "Exception has occurred: ", e  
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
-                                                        for propertyTerm in FindAll.find_all('annotation'):
-                                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                        
-                                                except:
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = PropertyDetails.attrs
-                                                        for propertyTerm in PropertyDetails.find_all('annotation'):
-                                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                
-                                else:
-                                        if debug:
-                                            print "No details present"
-                                        try:
-                                                
-                                                FindAll = soup.find('typedefinition', attrs={'name':PropertyName.split(".")[-1]})
-                                                try:
-                                                        FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                except Exception as e:
-                                                     if debug > 1: print "Exception has occurred: ", e  
-                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
-                                                for propertyTerm in FindAll.find_all('annotation'):
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                
-                                        except:
-                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = PropertyDetails.attrs
-                                                for propertyTerm in PropertyDetails.find_all('annotation'):
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                
-                        except Exception as e:
-                             if debug > 1: print "Exception has occurred: ", e  
-                except Exception as e:
-                     if debug > 1: print "Exception has occurred: ", e  
-
-        SchemaList = []
-        for PropertyName in PropertyList:
-                if ':' in PropertyName:
-                        Alias = PropertyName[:PropertyName.find(':')]
-#                       if not(Alias in SchemaList):
-#                               SchemaList.append(Alias)
-                        status, moreSoup = getSchemaDetails(Alias)
-                        SchemaName = SchemaAlias.split(".")[-1]
-                        getResourcePropertyDetails(moreSoup, PropertyName[PropertyName.find(':')+1:], SchemaName)
-                elif SchemaAlias != None:
-                        SchemaName = SchemaAlias.split(".")[-1]
-                        getResourcePropertyDetails(soup, PropertyName, SchemaName)
+            propType = propTag.get('type',None)
+            if propType is not None:
+                print "HASTYPE"
+                TypeNamespace = getNamespaceVersion(propType)
+                typeSpec = propType.split('.')[2:]
+                if '_' not in TypeNamespace:
+                    TypeNamespace = getNamespace(propType)
+                    typeSpec = propType.split('.')[1:]
+                print TypeNamespace, propType, typeSpec
+                success, typeSoup = getSchemaDetails(TypeNamespace)
+                if 'Edm' in propType:
+                    print "plan for this"
+                    continue
+                elif not success:
+                    print "problem"
+                    continue
+                typeSchema = typeSoup.find('schema',attrs={'namespace':TypeNamespace})
+                typeSimpleTag = typeSchema.find('typedefinition',attrs={'name':typeSpec[0]})
+                typeComplexTag = typeSchema.find('complextype',attrs={'name':typeSpec[0]})
+                 
+                if typeSimpleTag is not None:
+                    print "simple"
+                elif typeComplexTag is not None:
+                    print "complex"
                 else:
-                        getResourcePropertyDetails(soup, PropertyName)
+                    print "!!problem!!"
+                    continue
+                
+
         return PropertyDictionary
 
 # Function to retrieve all possible values for any particular Property
@@ -312,6 +258,7 @@ def getEnumTypeDetails(soup, enumName):
 def checkPropertyCompliance(PropertyList, PropertyDictionary, decoded, soup, SchemaName):
                 resultList = dict()
                 counters = Counter()
+                                
                 for PropertyName in PropertyList:
                                 print PropertyName
                                 if ':' in PropertyName:
@@ -325,7 +272,7 @@ def checkPropertyCompliance(PropertyList, PropertyDictionary, decoded, soup, Sch
                                         continue
 
                                 propMandatory = False
-
+                                
                                 try:
                                         if PropertyName.count(".") == 2:
                                                 MainAttribute = midAttribute = SubAttribute = propValue = ""
@@ -1221,10 +1168,6 @@ def validateURI (URI, uriName=''):
     links = getAllLinks(jsonData)
     
     print links
-
-    
-    for key in propertyList:
-        print key
 
     propertyDict = getPropertyDetails(SchemaSoup, propertyList, SchemaFullType)
    
