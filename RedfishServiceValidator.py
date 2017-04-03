@@ -24,7 +24,7 @@ Passwd = config.get('SystemInformation', 'Password')
 SchemaLocation = config.get('Options', 'MetadataFilePath')
 chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
 getOnly = config.getboolean('Options', 'GetOnlyMode')
-debug = 2
+debug = 0
 
 if debug:
     print "Config details:" + str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,getOnly))
@@ -79,12 +79,19 @@ def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None, mute = 
                    decoded = response.json()
                    return True, decoded
         except Exception as ex:
-                sys.stderr.write("Something went wrong: %s\n" % ex)
+                print "Something went wrong: ", ex
                 return False, None
-                        
+        return False, None
+
 # Function to parse individual Schema xml file and search for the Alias string
 # Returns the content of the xml file on successfully matching the Alias
 def getSchemaDetails(SchemaAlias):
+        """
+        Find Schema file for given Alias.
+        
+        param arg1: Schema Alias, such as ServiceRoot
+        return: a Soup object
+        """
         if '.' in SchemaAlias:
                 Alias = SchemaAlias[:SchemaAlias.find('.')]
         else:
@@ -100,21 +107,82 @@ def getSchemaDetails(SchemaAlias):
                         parentTag = soup.find_all('edmx:dataservices', limit=1)
                         for eachTag in parentTag:
                                 for child in eachTag.find_all('schema', limit=1):
-                                        
                                         SchemaNamespace = child['namespace']
-                                        SchemaAlias = SchemaNamespace.split(".")[0]
-                                        if SchemaAlias == Alias:
+                                        FoundAlias = SchemaNamespace.split(".")[0]
+                                        if FoundAlias == Alias:
                                                 return True, soup
-                except:
-                        return False, "ERROR: %s" % str(format_exc())
-        return False, "Schema File not found for " + Alias
+                except Exception as ex:
+                        print "Something went wrong: ", ex
+                        return False, None 
+        return False, None 
+
+
+def getNamespace(string):
+    return string.split('.')[0].replace('#','')
+def getNamespaceVersion(string):
+    spl = string.replace('#','').split('.')[:2]
+    return spl[0] + "." + spl[1]
+def getType(string):
+    return string.split('.')[-1].replace('#','')
 
 # Function to search for all Property attributes in any target schema
 # Schema XML may be the initial file for local properties or referenced schema for foreign properties
+baseTypeList = list()
 def getEntityTypeDetails(soup, SchemaAlias):
+        
 
-        PropertyList = []
+        
+        PropertyDict = dict()
         PropLink = ""
+        SchemaType = getType(SchemaAlias)
+        SchemaNamespace = getNamespace(SchemaAlias)
+            
+        sns = getNamespaceVersion(SchemaAlias)
+        if '_' not in getNamespaceVersion(SchemaAlias):
+            sns = SchemaNamespace
+
+        print "Schema is", SchemaAlias, SchemaType
+        innersoup = soup.find_all('schema',attrs={'namespace':sns})
+        
+        if len(innersoup) == 0:
+            return '' ,PropertyDict
+        innersoup = innersoup[0]
+        
+        for element in innersoup.find_all('entitytype',attrs={'name': SchemaType}):
+            print "___"
+            print element['name']
+            print element.attrs
+            print element.get('basetype',None)
+
+            usableProperties = element.find_all('property')
+            baseType = element.get('basetype',None)
+            
+            print "INNER"
+            if baseType is not None and baseType not in baseTypeList:
+                print "**GOING IN** ", baseType
+                baseTypeList.append(baseType)
+                if getNamespace(baseType) != SchemaNamespace:
+                    success, InnerSchemaSoup = getSchemaDetails(baseType)
+                    PropertyDict.update(getEntityTypeDetails(InnerSchemaSoup, baseType)[1])
+                    if not success:
+                        print 'problem'
+                        break
+                else: 
+                    PropertyDict.update(getEntityTypeDetails(soup, baseType)[1])
+
+            for innerelement in usableProperties:
+                print innerelement['name']
+                print innerelement['type']
+                print innerelement.attrs
+                newProp = innerelement['name']
+                if SchemaType:
+                    newProp = SchemaType + ':' + newProp
+                print "ADDING ::::", newProp 
+                if newProp not in PropertyDict: 
+                    PropertyDict[newProp] = innerelement
+
+        return '', PropertyDict
+
         def getResourceProperties(myAlias, soup, subProperty):
                 AllforeignEntityName = soup.find_all('entitytype', attrs={'name':subProperty})
                 for foreignEntityName in AllforeignEntityName:                  
@@ -298,12 +366,12 @@ def getMappedSchema(ResourceName, soup):
                                 listType = child['type']
                                 if listName == ResourceName:
                                         return True, listType
-                
-                return False, "Schema Alias not found for " + ResourceName
+                return False, None
 
 # Function to retrieve the detailed Property attributes and store in a dictionary format
 # The attributes for each property are referenced through various other methods for compliance check
 def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
+        PropertyDictionary = dict() 
         def getResourcePropertyDetails(soup, PropertyName, SchemaName):
                 try:
                         try:
@@ -409,7 +477,7 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                         getResourcePropertyDetails(soup, PropertyName, SchemaName)
                 else:
                         getResourcePropertyDetails(soup, PropertyName)
-
+        return PropertyDictionary
 
 # Function to retrieve all possible values for any particular Property
 # if Schema puts a restriction on the values that the property should have
@@ -425,10 +493,11 @@ def getEnumTypeDetails(soup, enumName):
                         return PropertyList1
 
 # Function to check compliance of individual Properties based on the attributes retrieved from the schema xml
-def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
+def checkPropertyCompliance(PropertyList, PropertyDictionary, decoded, soup, SchemaName):
                 resultList = dict()
                 counters = Counter()
                 for PropertyName in PropertyList:
+                                print PropertyName
                                 if ':' in PropertyName:
                                         PropertyName = PropertyName[PropertyName.find(':')+1:]
 
@@ -439,7 +508,6 @@ def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
                                         counters['skip'] += 1
                                         continue
 
-                                counters['total'] += 1
                                 propMandatory = False
 
                                 try:
@@ -462,6 +530,7 @@ def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
                                         propValue = None
 
                                 if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Redfish.Required') or PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.DMTF.Required'):
+                                        print PropertyDictionary[SchemaName + "-" + PropertyName+'.Redfish.Required'], SchemaName + "-" + PropertyName+'.Redfish.Required'
                                         propMandatory = True
                                         counters['mandatory'] += 1
                                 propAttr = PropertyDictionary.get(SchemaName + "-" + PropertyName+'.Attributes')
@@ -490,7 +559,7 @@ def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
                                             if propPermissions == 'OData.Permission/ReadWrite':
                                                     print 'Check Update Functionality for', PropertyName
                                     if propValue != None:
-                                        checkPropertyType(PropertyName, propValue, propType, optionalFlag, propMandatory, soup, SchemaName)
+                                            checkPropertyType(PropertyName, PropertyDictionary, propValue, propType, optionalFlag, propMandatory, soup, SchemaName)
                                     elif propValue == None:
                                             resultList[PropertyName] = (PropertyName, propType, propValue, propMandatory, None)
                                     else:
@@ -501,7 +570,7 @@ def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
                 return resultList, counters
 
 # Function to collect all links in current resource schema
-def     getAllLinks(jsonData):
+def     getAllLinks(jsonData, linkName=None):
         """
         Function that returns all links provided in a given JSON response.
         This result will include a link to itself.
@@ -509,20 +578,20 @@ def     getAllLinks(jsonData):
         :param jsonData: json dict
         :return: list of links, including itself
         """
-        linkList = list()
-        
-        if '@odata.id' in jsonData:
+        linkList = dict()
+        if '@odata.id' in jsonData and linkName is not None:
             if debug:                
-                print jsonData['@odata.id']
-            linkList.append( jsonData['@odata.id'] )
-
+                print "getLink:",jsonData['@odata.id']
+            linkList[linkName] = jsonData['@odata.id']
         for element in jsonData:
                 value = jsonData[element]
                 if type(value) is dict:
-                    linkList.extend( getAllLinks(value) )
+                    linkList.update( getAllLinks(value, element))
                 if type(value) is list:
+                    count = 0
                     for item in value:
-                        linkList.extend( getAllLinks(item) )
+                        if type(item) is dict:
+                            linkList.update( getAllLinks(item, str(element) + "#" + str(count)))
         return linkList 
 
 # # Function to handle sub-Links retrieved from parent URI's which are not directly accessible from ServiceRoot
@@ -531,7 +600,7 @@ def getChildLinks(PropertyList, decoded, soup):
         global ComplexLinksFlag
         global GlobalCount
         linkList = getAllLinks(jsonData= decoded)
-
+         
         for PropertyName, value in linkList.iteritems():
                 if debug: 
                     print "PropertyName::::::::::::::::::::::::::::::::::::::::::::::", PropertyName
@@ -952,10 +1021,7 @@ def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers,
         return resultList, counters
 
 #Check all the GET property comparison with Schema files                
-def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propMandatory, soup, SchemaName):
-        global countTotSchemaProp, countPassSchemaProp, countFailSchemaProp, countSkipSchemaProp, countWarnSchemaProp
-        global countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp, countWarnMandatoryProp
-        global countTotProp, countPassProp, countFailProp, countSkipProp, countWarnProp
+def checkPropertyType(PropertyName, PropertyDictionary, propValue, propType, optionalFlag, propMandatory, soup, SchemaName):
 
         if propType == 'Edm.Boolean':
                 if str(propValue).lower() == "true" or str(propValue).lower() == "false":
@@ -1076,8 +1142,26 @@ def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propManda
                                 else:
                                         generateLog(PropertyName, "Value Not Matched", propValue, propMandatory, logPass = False)
 
+gencount = Counter()
 # Common function to handle rerport generation in HTML/XML format
 def generateLog(logText, expValue, actValue, propMandatory = False, logPass = True, incrementCounter = True, header = False, spacer = False, summaryLog = False):
+        global gencount
+        if logPass:
+                if (actValue == None or actValue == ""):
+                        gencount['skip'] += 1
+                        incrementCounter = False
+                if incrementCounter:
+                        gencount['pass'] += 1
+                        countPassProp+=1
+                        if propMandatory:
+                                countPassMandatoryProp+=1
+        else:
+            if incrementCounter:
+                    gencount['fail'] += 1
+                    if propMandatory:
+                            countFailMandatoryProp+=1
+        print gencount
+        return
         global countTotSchemaProp, countPassSchemaProp, countFailSchemaProp, countSkipSchemaProp, countWarnSchemaProp
         global countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp, countWarnMandatoryProp
         global countTotProp, countPassProp, countFailProp, countSkipProp, countWarnProp
@@ -1124,8 +1208,8 @@ def generateLog(logText, expValue, actValue, propMandatory = False, logPass = Tr
                 if (actValue == None or actValue == ""):
                         propRow.td("No Value Returned")
                         propRow.td("SKIP", align = "center")
-                        countSkipProp+=1
-                        countTotProp-=1
+                        counters['skip'] += 1
+                        counters['total'] -= 1 
                         incrementCounter = False
                 else:
                         propRow.td(actValue)
@@ -1148,10 +1232,6 @@ def generateLog(logText, expValue, actValue, propMandatory = False, logPass = Tr
                 else:
                         propRow.td(actValue)
                 propRow.td("FAIL", align = "center")
-                if incrementCounter:
-                        countFailProp+=1
-                        if propMandatory:
-                                countFailMandatoryProp+=1
 
 # Common module to handle tabular reporting in HTML
 def insertResultTable():
@@ -1167,33 +1247,15 @@ def insertResultTable():
 
 # Function to traverse thorough all the pages of service
 def corelogic(ResourceName, SchemaURI):
-        global AllLinks
-        global SerialNumber
-        global countTotSchemaProp, countPassSchemaProp, countFailSchemaProp, countSkipSchemaProp, countWarnSchemaProp
-        global countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp, countWarnMandatoryProp
-        global countTotProp, countPassProp, countFailProp, countSkipProp, countWarnProp
-        
-        global ComplexTypeLinksDictionary
-        global ComplexLinksIndex
 
-#       if not (ResourceName == 'Manager'):
-#               return 0
-        status, SchemaAlias = getMappedSchema(ResourceName, rootSoup)
-        countTotSchemaProp = countTotProp
-        countPassSchemaProp = countPassProp
-        countFailSchemaProp = countFailProp
-        countSkipSchemaProp = countSkipProp
-        countWarnSchemaProp = countWarnProp
           
         counters = Counter()
-
+        status, SchemaAlias = getMappedSchema(ResourceName, rootSoup)
         ComplexLinksFlag = False
         linkvar = ""
         ResourceURIlink2 = "ServiceRoot -> " + ResourceName
         if status:
                 print SchemaAlias
-                generateLog(None, None, None, spacer = True)
-                generateLog(None, None, None, spacer = True)
 
                 status, schemaSoup = getSchemaDetails(SchemaAlias)              
                 if not(status):
@@ -1308,6 +1370,71 @@ def corelogic(ResourceName, SchemaURI):
                 print SchemaAlias
                 print 80*'*'
 
+allLinks = set()
+def validateURI (URI, uriName=''):
+    print "***", uriName, URI
+    counts = Counter()
+    print uriName, URI
+    
+    success, jsonData = callResourceURI(uriName, URI)
+    
+    if not success:
+        print "Get URI failed."
+        counts['fail'] += 1
+        return False, counts
+    
+    counts['pass'] += 1
+
+    links = getAllLinks(jsonData)
+    
+    print links
+
+    SchemaFullType = jsonData['@odata.type']
+    SchemaType = getType(SchemaFullType)
+    SchemaNamespace = getNamespace(SchemaFullType)
+
+    success, SchemaSoup = getSchemaDetails(SchemaType)
+    
+    if not success:
+        success, SchemaSoup = getSchemaDetails(SchemaNamespace)
+        if not success:
+            success, SchemaSoup = getSchemaDetails(uriName)
+        if not success: 
+            print "No schema for", SchemaFullType, uriName
+            counts['fail'] += 1
+            return False, counts
+    
+    name, properties = getEntityTypeDetails(SchemaSoup,SchemaFullType)
+    
+    for key in properties:
+        print key
+
+    print properties
+    
+    return True, counts
+
+    ComplexLinksFlag = False
+
+    PropertyDictionary = getPropertyDetails(SchemaSoup, properties, SchemaName)
+   
+    messages, checkCounts = checkPropertyCompliance(properties, PropertyDictionary, jsonData, SchemaSoup, SchemaName)
+    
+
+    
+    for linkName in links:
+        print uriName, '->', linkName
+        if links[linkName] in allLinks:
+            continue
+        allLinks.add(links[linkName])
+        success, mappedName = getMappedSchema(linkName,SchemaSoup)
+        if not success:
+            print "mappedSchema not found", linkName
+            pass
+        success, linkCounts = validateURI('_',links[linkName])
+        if success:
+            counts.update(linkCounts)
+
+    return True, counts
 
 ##########################################################################
 ######################          Script starts here              ######################
@@ -1316,20 +1443,14 @@ def corelogic(ResourceName, SchemaURI):
 if __name__ == '__main__':
     # Rewrite here
     status_code = 1
-    success, jsonData = getRootURI()
+    success, counts = validateURI ('/redfish/v1')
     
     if not success:
-        print "Get Root URI failed."
-        sys.exit(1)
-    
-    if debug:
-        print jsonData
-    
-    links = getAllLinks(jsonData)
-    
-    print links
-
-    sys.exit(status_code)
+        print "Validation has failed."
+        sys.exit(1)    
+   
+    print counts
+    sys.exit(0)
 
     # Initialize Log files for HTML report
     HTMLLogFile = strftime("ComplianceTestDetailedResult_%m_%d_%Y_%H%M%S.html")
@@ -1430,8 +1551,6 @@ if __name__ == '__main__':
                             else:
                                     pass
                             
-            generateLog("Total Properties checked: %s || Pass: %s || Fail: %s || Warn: %s || Skip: %s" %(countTotProp, countPassProp, countFailProp, countWarnProp, countSkipProp), None, None)
-            generateLog("Total Mandatory Properties checked: %s || Pass: %s || Fail: %s" %(countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp), None, None)
             
             generateLog(None, None, None, spacer = True, summaryLog = True)
             summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
