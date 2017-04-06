@@ -127,8 +127,7 @@ def getType(string):
 
 # Function to search for all Property attributes in any target schema
 # Schema XML may be the initial file for local properties or referenced schema for foreign properties
-baseTypeList = list()
-def getEntityTypeDetails(soup, SchemaAlias):
+def getTypeDetails(soup, SchemaAlias, tagType):
         PropertyList = list()
         PropLink = ""
         SchemaType = getType(SchemaAlias)
@@ -137,43 +136,43 @@ def getEntityTypeDetails(soup, SchemaAlias):
         sns = getNamespaceVersion(SchemaAlias)
         if '_' not in getNamespaceVersion(SchemaAlias):
             sns = SchemaNamespace
-
-        print "Schema is", SchemaAlias, SchemaType
+        if debug:
+            print "Schema is", SchemaAlias, SchemaType, sns
         innersoup = soup.find('schema',attrs={'namespace':sns})
-        
+          
         if innersoup is None:
             return PropertyList
         
-        for element in innersoup.find_all('entitytype',attrs={'name': SchemaType}):
-            print "___"
-            print element['name']
-            print element.attrs
-            print element.get('basetype',None)
+        for element in innersoup.find_all(tagType,attrs={'name': SchemaType}):
+            if debug:
+                print "___"
+                print element['name']
+                print element.attrs
+                print element.get('basetype',None)
 
             usableProperties = element.find_all('property')
             baseType = element.get('basetype',None)
             
-            print "INNER"
-            if baseType is not None and baseType not in baseTypeList:
-                print "**GOING IN** ", baseType
-                baseTypeList.append(baseType)
+            if baseType is not None:
                 if getNamespace(baseType) != SchemaNamespace:
                     success, InnerSchemaSoup = getSchemaDetails(baseType)
-                    PropertyList.extend(getEntityTypeDetails(InnerSchemaSoup, baseType))
+                    PropertyList.extend( getTypeDetails(InnerSchemaSoup, baseType, tagType ) )
                     if not success:
                         print 'problem'
                         break
                 else: 
-                    PropertyList.extend(getEntityTypeDetails(soup, baseType))
+                    PropertyList.extend( getTypeDetails(soup, baseType, tagType) )
 
             for innerelement in usableProperties:
-                print innerelement['name']
-                print innerelement['type']
-                print innerelement.attrs
+                if debug:
+                    print innerelement['name']
+                    print innerelement['type']
+                    print innerelement.attrs
                 newProp = innerelement['name']
                 if SchemaAlias:
                     newProp = SchemaAlias + '.' + newProp
-                print "ADDING ::::", newProp 
+                if debug:
+                    print "ADDING ::::", newProp 
                 if newProp not in PropertyList: 
                     PropertyList.append( newProp )
 
@@ -181,7 +180,7 @@ def getEntityTypeDetails(soup, SchemaAlias):
 
 # Function to retrieve the detailed Property attributes and store in a dictionary format
 # The attributes for each property are referenced through various other methods for compliance check
-def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
+def getPropertyDetails(soup, PropertyList, SchemaAlias = None, tagType = 'entitytype'):
         PropertyDictionary = dict() 
         
         for prop in PropertyList:
@@ -198,7 +197,7 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                 print "problem"
                 continue
             propSchema = moreSoup.find('schema',attrs={'namespace':SchemaNamespace})
-            propEntity = propSchema.find('entitytype',attrs={'name':propSpec[0]})
+            propEntity = propSchema.find(tagType,attrs={'name':propSpec[0]})
             propTag = propEntity.find('property',attrs={'name':propSpec[1]})
             propAll = propTag.find_all()
 
@@ -208,10 +207,8 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                 PropertyDictionary[prop][tag['term']] = tag.attrs
             print PropertyDictionary[prop]
             
-             
-
             propType = propTag.get('type',None)
-            if propType is not None:
+            while propType is not None:
                 print "HASTYPE"
                 TypeNamespace = getNamespaceVersion(propType)
                 typeSpec = propType.split('.')[2:]
@@ -222,18 +219,25 @@ def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
                 success, typeSoup = getSchemaDetails(TypeNamespace)
                 if 'Edm' in propType:
                     print "plan for this"
-                    continue
-                elif not success:
+                    break
+                if not success:
                     print "problem"
                     continue
+                
                 typeSchema = typeSoup.find('schema',attrs={'namespace':TypeNamespace})
                 typeSimpleTag = typeSchema.find('typedefinition',attrs={'name':typeSpec[0]})
-                typeComplexTag = typeSchema.find('complextype',attrs={'name':typeSpec[0]})
-                 
+                typeComplexTag = typeSchema.find('complextype',attrs={'name':typeSpec[0]}) 
+                
                 if typeSimpleTag is not None:
-                    print "simple"
+                    propType = typeSimpleTag.get('underlyingtype',None)
+                    break
                 elif typeComplexTag is not None:
-                    print "complex"
+                    print "go DEEP"
+                    propList = getTypeDetails(typeSoup, propType, tagType='complextype' ) 
+                    print propList
+                    propDict = getPropertyDetails(typeSoup, propList, tagType='complextype' ) 
+                    print propDict
+                    break
                 else:
                     print "!!problem!!"
                     continue
@@ -258,78 +262,43 @@ def getEnumTypeDetails(soup, enumName):
 def checkPropertyCompliance(PropertyList, PropertyDictionary, decoded, soup, SchemaName):
                 resultList = dict()
                 counters = Counter()
-                                
-                for PropertyName in PropertyList:
-                                print PropertyName
-                                if ':' in PropertyName:
-                                        PropertyName = PropertyName[PropertyName.find(':')+1:]
+                for key in PropertyDictionary:
+                    print key
+                    item = getType(key)
+                    if 'Oem' in key:
+                        print 'Oem is skipped'
+                        continue
+                    decodedItem = decoded.get(item, None)
+                    if 'Redfish.Required' in PropertyDictionary[key]:
+                        print "\tis Mandatory"
+                    else:
+                        print "\tis Optional"
+                    propAttr = PropertyDictionary[key]['attrs']
+                    propType = propAttr.get('type',None)
+                    print "\thas Type:", propType
+                    propNullable = propAttr.get('nullable',None)
+                    print "\tis Nullable:", propNullable
+                    if propNullable is not None:
+                        print "\tbreaks nullability?", propNullable, decodedItem
+                    propPermissions = propAttr.get('Odata.Permissions',None)
+                    if propPermissions is not None:
+                        propPermissionsValue = propPermissions['enummember']
+                        print "\tpermission", propPermissionsValue
+                    if propType is not None:  
+                        if propType == 'Edm.Boolean':
+                            pass
+                        elif propType == 'Edm.String':
+                            pass
+                        elif propType == 'Edm.DateTimeOffset':
+                            pass
+                        elif propType == 'Edm.Int16' or propType == 'Edm.Int32' or propType == 'Edm.Int64':
+                            pass
+                        elif propType == 'Edm.Guid':
+                            pass
+                        else:
+                            pass
 
-                                if 'Oem' in PropertyName:
-                                        resultList[PropertyName] = (PropertyName,"Skip","No Value","No Value", "Skip check for OEM", True)
-                                        print 'OEM Properties outside of Compliance Tool scope. Skipping check for the property.'
-                                        print 80*'*'
-                                        counters['skip'] += 1
-                                        continue
 
-                                propMandatory = False
-                                
-                                try:
-                                        if PropertyName.count(".") == 2:
-                                                MainAttribute = midAttribute = SubAttribute = propValue = ""
-
-                                                MainAttribute = PropertyName.split(".")[0]
-                                                midAttribute = PropertyName.split(".")[1]
-                                                SubAttribute = PropertyName.split(".")[-1]
-                                                propValue = decoded[MainAttribute][midAttribute][SubAttribute]
-                                                
-                                        elif PropertyName.count(".") == 1:
-                                                MainAttribute = PropertyName.split(".")[0]
-                                                SubAttribute = PropertyName.split(".")[1]
-                                                propValue = decoded[MainAttribute][SubAttribute]
-                                        else:
-                                                propValue = decoded[PropertyName]
-                                except:
-                                        print 'Value not found for property', PropertyName
-                                        propValue = None
-
-                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Redfish.Required') or PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.DMTF.Required'):
-                                        print PropertyDictionary[SchemaName + "-" + PropertyName+'.Redfish.Required'], SchemaName + "-" + PropertyName+'.Redfish.Required'
-                                        propMandatory = True
-                                        counters['mandatory'] += 1
-                                propAttr = PropertyDictionary.get(SchemaName + "-" + PropertyName+'.Attributes')
-                                if debug: 
-                                    print "propAttr:::::::::::::::::::::::::::", propAttr
-                                
-                                optionalFlag = True
-                                if propAttr:
-
-                                    if (propAttr.has_key('type')):
-                                            propType = propAttr['type']
-                                    if propAttr.has_key('nullable'):
-                                            optionalFlag = False
-                                            propNullable = propAttr['nullable']
-                                            if (propNullable == 'false' and propValue == ''):
-                                                    if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Redfish.RequiredOnCreate'):
-                                                            resultList[PropertyName] = (PropertyName, propType + ' (Not Nullable)', propValue, propMandatory, True)
-                                                    else:
-                                                            resultList[PropertyName] = (PropertyName, propType + ' (Not Nullable)', propValue, propMandatory, False)
-                                                    continue
-                                    if (propMandatory == True and (propValue == None or propValue == '')):
-                                            resultList[PropertyName] = (PropertyName, propType + ' (Not Nullable)', propValue, propMandatory, False)
-                                            continue
-                                    if propAttr.has_key(PropertyName+'.OData.Permissions'):
-                                            propPermissions = propAttr[PropertyName+'.OData.Permissions']['enummember']
-                                            if propPermissions == 'OData.Permission/ReadWrite':
-                                                    print 'Check Update Functionality for', PropertyName
-                                    if propValue != None:
-                                            checkPropertyType(PropertyName, PropertyDictionary, propValue, propType, optionalFlag, propMandatory, soup, SchemaName)
-                                    elif propValue == None:
-                                            resultList[PropertyName] = (PropertyName, propType, propValue, propMandatory, None)
-                                    else:
-                                            resultList[PropertyName] = (PropertyName, "No Value Specified", propValue, propMandatory, None)
-
-                print resultList
-                print counters
                 return resultList, counters
 
 # Function to collect all links in current resource schema
@@ -1023,7 +992,7 @@ def corelogic(ResourceName, SchemaURI):
                 status, schemaSoup = getSchemaDetails(SchemaAlias)              
                 if not(status):
                         return None     # Continue check of next schema         
-                EntityName, PropertyList = getEntityTypeDetails(schemaSoup, SchemaAlias)
+                EntityName, PropertyList = getTypeDetails(schemaSoup, SchemaAlias)
                 SerialNumber = SerialNumber + 1
                 linkvar = "Compliance Check for Schema: "+EntityName + "-" + str(SerialNumber)
                 generateLog(linkvar, None, None)
@@ -1087,7 +1056,7 @@ def corelogic(ResourceName, SchemaURI):
                                 if not(status):
                                         continue        # Continue check of next schema 
                         
-                                EntityName, PropertyList = getEntityTypeDetails(schemaSoup, SchemaAlias)
+                                EntityName, PropertyList = getTypeDetails(schemaSoup, SchemaAlias)
                                 
                                         
                                 SerialNumber = SerialNumber + 1
@@ -1163,7 +1132,7 @@ def validateURI (URI, uriName=''):
             counts['fail'] += 1
             return False, counts
     
-    propertyList = getEntityTypeDetails(SchemaSoup,SchemaFullType)
+    propertyList = getTypeDetails(SchemaSoup,SchemaFullType,'entitytype')
     
     links = getAllLinks(jsonData)
     
@@ -1171,7 +1140,7 @@ def validateURI (URI, uriName=''):
 
     propertyDict = getPropertyDetails(SchemaSoup, propertyList, SchemaFullType)
    
-    # messages, checkCounts = checkPropertyCompliance(properties, PropertyDictionary, jsonData, SchemaSoup, SchemaName)
+    messages, checkCounts = checkPropertyCompliance(propertyList, propertyDict, jsonData, SchemaSoup, SchemaFullType)
     
     # counts.update(checkCounts)
 
@@ -1254,7 +1223,7 @@ if __name__ == '__main__':
             # Check compliance for ServiceRoot
             status, schemaSoup = getSchemaDetails('ServiceRoot')
 
-            Name, PropertyList = getEntityTypeDetails(schemaSoup, 'ServiceRoot')
+            Name, PropertyList = getTypeDetails(schemaSoup, 'ServiceRoot')
             
             PropertyDictionary = {}
             ComplexLinksFlag = False
