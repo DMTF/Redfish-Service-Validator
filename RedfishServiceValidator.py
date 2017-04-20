@@ -9,7 +9,7 @@ import time, os, sys
 from datetime import datetime
 from collections import Counter,OrderedDict
 from functools import lru_cache
-import logging
+import logging, traceback
 
 # Logging config
 fmt = logging.Formatter('%(levelname)s - %(message)s')
@@ -35,44 +35,45 @@ User = config.get('SystemInformation', 'UserName')
 Passwd = config.get('SystemInformation', 'Password')
 SchemaLocation = config.get('Options', 'MetadataFilePath')
 chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
-getOnly = config.getboolean('Options', 'GetOnlyMode')
+localOnly = config.getboolean('Options', 'LocalOnlyMode')
 
-rsvLogger.debug("Config details: %s", str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,getOnly)))
+rsvLogger.debug("Config details: %s", str((useSSL,ConfigURI,User,Passwd,SchemaLocation,chkCert,localOnly)))
 
 # Function to GET/PATCH/POST resource URI
 # Certificate check is conditional based on input from config ini file
 # 
-def callResourceURI(URILink, Method = 'GET', payload = None ):
+@lru_cache(maxsize=64)
+def callResourceURI(URILink):
         """
-        Makes a call to a given URI
+        Makes a call to a given URI or URL
         
-        param arg1: path to URI "/example/1"
-        param Method: http message type, default 'GET'
-        param payload: data for PATCH
+        param arg1: path to URI "/example/1", or URL "http://example.com"
         return: (success boolean, data)
         """
-
-        URILink = URILink.replace("#", "%23")
         statusCode = ""
-
-        noauthchk = \
-                ('/redfish' in URILink and '/redfish/v1' not in URILink) or\
-                URILink in ['/redfish/v1','/redfish/v1/'] or\
-                '/redfish/v1/$metadata' in URILink
-        rsvLogger.debug('callingResourceURI: %s', URILink)
-        if noauthchk:
-            rsvLogger.debug('dont chkauth')
-            auth = None
+        
+        nonService = 'http' in URILink
+        
+        # redfish spec requires no auth for serviceroot calls
+        if not nonService:
+            noauthchk = \
+                    ('/redfish' in URILink and '/redfish/v1' not in URILink) or\
+                    URILink in ['/redfish/v1','/redfish/v1/'] or\
+                    '/redfish/v1/$metadata' in URILink
+            if noauthchk:
+                rsvLogger.debug('dont chkauth')
+                auth = None
+            else:
+                auth = (User, Passwd)
+        rsvLogger.debug('callingResourceURI: %s', URILink
+                )
         try:
                 expCode = []
-                if Method == 'GET' or Method == 'ReGET':
-                        response = requests.get(ConfigURI+URILink, auth = (User, Passwd), verify=chkCert)
-                        expCode = [200, 204]
-                elif Method == 'PATCH':
-                        response = requests.patch(ConfigURI+URILink, data = payload, auth = (User, Passwd),verify=chkCert)
-                        expCode = [200, 204, 400, 405]
+                response = requests.get(ConfigURI+URILink if not nonService else URILink,\
+                        auth = auth if not nonService else None, verify=chkCert)
+                expCode = [200, 204]
                 statusCode = response.status_code
-                rsvLogger.debug('%s, %s, %s, %s',  Method, statusCode, expCode, response.headers)
+                rsvLogger.debug('%s, %s, %s',statusCode, expCode, response.headers)
                 if statusCode in expCode:
                     if 'application/json' in response.headers['content-type']:
                         decoded = response.json(object_pairs_hook=OrderedDict)
@@ -81,38 +82,34 @@ def callResourceURI(URILink, Method = 'GET', payload = None ):
                     return True, decoded
         except Exception as ex:
                 rsvLogger.error("Something went wrong: %s", str(ex))
+                rsvLogger.error(traceback.format_exc())
         return False, None
 
 # note: Use some sort of re expression to parse SchemaAlias
 # ex: #Power.1.1.1.Power , #Power.v1_0_0.Power
 def getNamespace(string):
-    ret = string.rsplit('.',1)[0].replace('#','')
-    retTo = ret.split('.')
-    if len(retTo) <= 3:
-        return ret
-    return retTo[0] + '.' + 'v' + retTo[1] + '_' + retTo[2] + '_' + retTo[3]
+    ret = string.replace('#','').rsplit('.',1)[0]
+    return ret
 def getType(string):
-    return string.rsplit('.',1)[-1].replace('#','')
+    return string.replace('#','').rsplit('.',1)[-1]
 
 # Function to parse individual Schema xml file and search for the Alias string
 # Returns the content of the xml file on successfully matching the Alias
-@lru_cache(maxsize=64)
 def getSchemaDetails(SchemaAlias, SchemaURI=None):
         """
         Find Schema file for given Namespace.
         
         param arg1: Schema Namespace, such as ServiceRoot
-        param SchemaURI: uri to grab schema
+        param SchemaURI: uri to grab schema, given localOnly is False
         return: a Soup object
         """
         # Note: Add in calls to $metadata, references and URIs, instead of just locally
-        if SchemaURI is not None:
+        if SchemaURI is not None and not localOnly:
             success, data = callResourceURI(SchemaURI)
             if success:
                 soup = BeautifulSoup(data, "html.parser")
                 return True, soup
-            else:
-                return False, None
+            rsvLogger.debug("Fallback to local Schema")
 
         Alias = getNamespace(SchemaAlias).split('.')[0]
         try:
@@ -121,25 +118,47 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None):
                 filehandle.close()
                 soup = BeautifulSoup(filedata, "html.parser")
                 parentTag = soup.find('edmx:dataservices')
-                for child in parentTag.find_all('schema', limit=1):
-                        SchemaNamespace = child['namespace']
-                        FoundAlias = SchemaNamespace.split(".")[0]
-                        if FoundAlias == Alias:
-                                return True, soup
+                child = parentTag.find('schema')
+                SchemaNamespace = child['namespace']
+                FoundAlias = SchemaNamespace.split(".")[0]
+                if FoundAlias == Alias:
+                        return True, soup
         except Exception as ex:
                 rsvLogger.error("Something went wrong: %s", str(ex))
+                rsvLogger.error(traceback.format_exc())
         return False, None 
+
+def getReferenceDetails(soup):
+    """
+    Create a reference dictionary from a soup file
+
+    param arg1: soup
+    return: dictionary
+    """
+    refDict = {}
+    refs = soup.find_all('edmx:reference')
+    for ref in refs:
+        includes = ref.find_all('edmx:include')
+        for item in includes:
+            if item.get('alias', None) is not None:
+                refDict[item['alias']] = (item['namespace'], ref['uri'] )
+            else:
+                refDict[item['namespace']] = (item['namespace'], ref['uri'] )
+                refDict[item['namespace'].split('.')[0]] = (item['namespace'], ref['uri'] )
+    return refDict
+    
 
 # Function to search for all Property attributes in any target schema
 # Schema XML may be the initial file for local properties or referenced schema for foreign properties
-def getTypeDetails(soup, SchemaAlias, tagType):
+def getTypeDetails(soup, refs, SchemaAlias, tagType):
         """
         Gets list of surface level properties for a given SchemaAlias,
         including base type inheritance.
         
         param arg1: soup
-        param arg2: SchemaAlias string
-        param arg3: tag of Type, which can be EntityType or ComplexType...
+        param arg2: references
+        param arg3: SchemaAlias string
+        param arg4: tag of Type, which can be EntityType or ComplexType...
         return: list of properties as strings
         """
         PropertyList = list()
@@ -152,9 +171,15 @@ def getTypeDetails(soup, SchemaAlias, tagType):
         innerschema = soup.find('schema',attrs={'namespace':SchemaNamespace})
           
         if innerschema is None:
-            rsvLogger.error("innerSchema doesn't exist...? %s", SchemaNamespace)
-            raise Exception('getTypeDetails: no such soup for:' + SchemaNamespace)
-
+            Alias = SchemaAlias.split('.')[0]
+            rsvLogger.debug ( refs.get(Alias,None ))
+            success, soup = getSchemaDetails(*refs.get(getNamespace(Alias),(Alias,None)))
+            if not success:
+                rsvLogger.error("innerSchemaSoup doesn't exist...? %s, %s", getNamespace(SchemaAlias), Alias)
+                raise Exception('getTypeDetails: ' + SchemaNamespace + ' ' + SchemaAlias)
+            refs = getReferenceDetails(soup)
+            innerschema = soup.find('schema',attrs={'namespace':SchemaNamespace})
+            
         for element in innerschema.find_all(tagType,attrs={'name': SchemaType}):
             rsvLogger.debug("___")
             rsvLogger.debug(element['name'])
@@ -167,14 +192,7 @@ def getTypeDetails(soup, SchemaAlias, tagType):
             baseType = element.get('basetype',None)
             
             if baseType is not None:
-                if getNamespace(baseType) != SchemaNamespace.split('.')[0]:
-                    success, InnerSchemaSoup = getSchemaDetails(getNamespace(baseType))
-                    if not success:
-                        rsvLogger.error("innerSchemaSoup doesn't exist...?", SchemaNamespace)
-                        raise Exception('getTypeDetails: ' + SchemaNamespace + ' ' + baseType)
-                    PropertyList.extend( getTypeDetails(InnerSchemaSoup, baseType, tagType)  )
-                else: 
-                    PropertyList.extend( getTypeDetails(soup, baseType, tagType ) )
+                PropertyList.extend( getTypeDetails(soup, refs, baseType, tagType) )
 
             for innerelement in usableProperties + usableNavProperties:
                 rsvLogger.debug(innerelement['name'])
@@ -191,7 +209,7 @@ def getTypeDetails(soup, SchemaAlias, tagType):
 
 # Function to retrieve the detailed Property attributes and store in a dictionary format
 # The attributes for each property are referenced through various other methods for compliance check
-def getPropertyDetails(soup, PropertyList, tagType = 'entitytype'):
+def getPropertyDetails(soup, refs, PropertyList, tagType = 'entitytype'):
         """
         Get dictionary of tag attributes for properties given, including basetypes.
 
@@ -215,12 +233,15 @@ def getPropertyDetails(soup, PropertyList, tagType = 'entitytype'):
             propSchema = soup.find('schema',attrs={'namespace':SchemaNamespace})
 
             if propSchema is None:
-                refs=soup.find_all('edmx:reference')
-                success, innerSoup = getSchemaDetails(SchemaNamespace) 
+                success, innerSoup = getSchemaDetails(*refs[SchemaNamespace.split('.')[0]]) 
                 if not success:
                     rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
                     raise Exception('getPropertyDetails')
+                innerRefs = getReferenceDetails(innerSoup)
                 propSchema = innerSoup.find('schema',attrs={'namespace':SchemaNamespace})
+            else:
+                innerSoup = soup
+                innerRefs = refs
 
             propEntity = propSchema.find(tagType,attrs={'name':SchemaType})
             propTag = propEntity.find('property',attrs={'name':propChild})
@@ -257,13 +278,17 @@ def getPropertyDetails(soup, PropertyList, tagType = 'entitytype'):
                     PropertyDictionary[prop]['realtype'] = propType
                     break
                 
-                success, typeSoup = getSchemaDetails(TypeNamespace)
+                if TypeNamespace.split('.')[0] != SchemaNamespace.split('.')[0]:
+                    success, typeSoup = getSchemaDetails(*refs[TypeNamespace])
+                else:
+                    success, typeSoup = True, innerSoup
                 
                 if not success:
                     rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
                     raise Exception("getPropertyDetails: no such soup for" + SchemaNamespace + TypeNamespace)
                     continue
-                
+
+                typeRefs = getReferenceDetails(typeSoup) 
                 typeSchema = typeSoup.find('schema',attrs={'namespace':TypeNamespace})
                 typeSimpleTag = typeSchema.find('typedefinition',attrs={'name':typeSpec})
                 typeComplexTag = typeSchema.find('complextype',attrs={'name':typeSpec}) 
@@ -275,9 +300,9 @@ def getPropertyDetails(soup, PropertyList, tagType = 'entitytype'):
                     continue
                 elif typeComplexTag is not None:
                     rsvLogger.debug("go DEEP")
-                    propList = getTypeDetails(typeSoup, propType, tagType='complextype') 
+                    propList = getTypeDetails(typeSoup, typeRefs, propType, tagType='complextype') 
                     rsvLogger.debug(propList)
-                    propDict = getPropertyDetails(typeSoup, propList, tagType='complextype' ) 
+                    propDict = getPropertyDetails(typeSoup, typeRefs, propList, tagType='complextype' ) 
                     rsvLogger.debug(propDict)
                     PropertyDictionary[prop]['realtype'] = 'complex'
                     PropertyDictionary[prop]['typeprops'] = propDict
@@ -301,6 +326,7 @@ def getPropertyDetails(soup, PropertyList, tagType = 'entitytype'):
                 
         return PropertyDictionary
 
+
 # Function to check compliance of individual Properties based on the attributes retrieved from the schema xml
 def checkPropertyCompliance(PropertyDictionary, decoded):
                 """
@@ -312,6 +338,8 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                 """
                 def getTypeInheritance(SchemaAlias,tagType='entitytype'):
                     success, sch = getSchemaDetails(SchemaAlias)
+                    if not success:
+                        return []
                     currentType = SchemaAlias.replace('#','')
                     allTypes = list()
                     while currentType not in allTypes and currentType is not None:
@@ -334,12 +362,6 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                     rsvLogger.info(key)
                     item = key.split(':')[-1]
                     
-                    if 'Oem' in key:
-                        rsvLogger.info('\tOem is skipped')
-                        counts['skipOem'] += 1
-                        resultList[item] = (key, '-', '-', '-','-','SkipOEM')
-                        continue
-                    
                     propValue = decoded.get(item, 'xxDoesNotExist') 
 
                     rsvLogger.info("\tvalue: %s", propValue)
@@ -353,6 +375,13 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                     
                     propExists = not (propValue == 'xxDoesNotExist')
                     propNotNull = propExists and (propValue is not '' or propValue is not None)
+                    
+                    if 'Oem' in key:
+                        rsvLogger.info('\tOem is skipped')
+                        counts['skipOem'] += 1
+                        resultList[item] = ('-', '-',\
+                                'Exists' if propExists else 'DNE', 'SkipOEM')
+                        continue
                 
                     propMandatory = False                    
                     propMandatoryPass = True
@@ -365,8 +394,8 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                         if not propExists:
                             rsvLogger.info("\tprop Does not exist, skip...")
                             counts['skipOptional'] += 1
-                            resultList[item] = (key, propValue, propType, propRealType,\
-                                    'Exists' if propExists else 'Missing',\
+                            resultList[item] = (propValue, (propType, propRealType),\
+                                    'Exists' if propExists else 'DNE',\
                                     'SkipOptional')
                             continue
 
@@ -394,11 +423,13 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                     # Note: make sure it checks each one
                     propCollectionType = PropertyDictionary[key].get('isCollection',None)  
                     if propCollectionType is not None:
+                        # note: handle collections correctly
                         rsvLogger.info("\tis Collection")
                         propValueList = propValue
                     else:
                         propValueList = [propValue]
                     if propRealType is not None and propExists:
+                        cnt = 0
                         for val in propValueList: 
                             paramPass = False
                             if propRealType == 'Edm.Boolean':
@@ -436,17 +467,17 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
 
                             else:
                                 if propRealType == 'complex':                           
-                                    rsvLogger.info('going into Complex')
+                                    rsvLogger.info('\t***going into Complex %s', PropertyDictionary[key]['typeprops'])
                                     complexResultList, complexCounts = checkPropertyCompliance( PropertyDictionary[key]['typeprops'], val)
-                                    rsvLogger.info('out of Complex')
+                                    rsvLogger.info('\t***out of Complex')
                                     rsvLogger.info('complex %s',complexCounts)
                                     counts.update(complexCounts)
                                     counts['complex'] += 1
-                                    resultList[item] = (key, val, propType, propRealType,\
-                                            'Exists' if propExists else 'Missing',\
+                                    resultList[item] = ('ComplexDictionary' + (('#'+str(cnt)) if len(propValueList) > 1 else ''), (propType, propRealType),\
+                                            'Exists' if propExists else 'DNE',\
                                             'complex')
                                     for complexKey in complexResultList:
-                                        resultList[item + '.'  + complexKey] = complexResultList[complexKey]
+                                        resultList[item + '.'  + complexKey + (('#'+str(cnt)) if len(propValueList) > 1 else '')]  = complexResultList[complexKey]
                                     continue
 
                                 elif propRealType == 'enum':
@@ -458,16 +489,18 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                                     success, data = callResourceURI(val['@odata.id'])
                                     rsvLogger.debug('%s, %s, %s', success, propType, data)
                                     if success:
-                                        listType = getTypeInheritance(data.get('@odata.type',None))
-                                        paramPass = propType in listType or propCollectionType in listType
+                                        paramPass = success
+
+                                        #listType = getTypeInheritance(data.get('@odata.type',None))
+                                        #paramPass = propType in listType or propCollectionType in listType
                                     else:
                                         paramPass = '#' in val['@odata.id']
                                 # Note: Actually check if this is correct
 
-                            resultList[item] = (key, val, propType, propRealType,\
-                                    'Exists' if propExists else 'Missing',\
-                                    paramPass and propMandatoryPass and propNullablePass)
-
+                            resultList[item + (('#'+str(cnt)) if len(propValueList) > 1 else '')] = (val, (propType, propRealType),\
+                                    'Exists' if propExists else 'DNE',\
+                                    'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
+                            cnt += 1
                             if paramPass and propNullablePass and propMandatoryPass:
                                 counts['pass'] += 1
                                 rsvLogger.info ("\tSuccess")
@@ -487,15 +520,23 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                 return resultList, counts
 
 # Function to collect all links in current resource schema
-def     getAllLinks(jsonData, propDict, linkName=''):
+def     getAllLinks(jsonData, propDict):
         """
         Function that returns all links provided in a given JSON response.
         This result will include a link to itself.
 
-        :param jsonData: json dict
-        :return: list of links, including itself
+        :param arg1: json dict
+        :param arg2: property dict
+        :param linkName: json dict
+        :return: list of links
         """
         linkList = OrderedDict()
+        # check keys in propertyDictionary
+        # if it is a Nav property, check that it exists
+        #   if it is not a Nav Collection, add it to list
+        #   otherwise, add everything IN Nav collection
+        # if it is a Complex property, check that it exists
+        #   if it is, recurse on collection or individual item
         for key in propDict:
             item = getType(key).split(':')[-1]
             if propDict[key]['isNav']:
@@ -504,11 +545,13 @@ def     getAllLinks(jsonData, propDict, linkName=''):
                     if propDict[key].get('isCollection',None) is not None:
                         cnt = 0
                         for listItem in insideItem:
-                            linkList[getType(key)+'#'+str(cnt)] = listItem.get('@odata.id', None)
+                            linkList[getType(propDict[key]['isCollection'])+'#'+str(cnt)] = listItem.get('@odata.id', None)
                             cnt += 1
                     else:
-                        linkList[getType(key)] = insideItem.get('@odata.id', None)
-            elif propDict[key]['realtype'] == 'complex':
+                        linkList[getType(propDict[key]['attrs']['name'])] = insideItem.get('@odata.id', None)
+        for key in propDict:
+            item = getType(key).split(':')[-1]
+            if propDict[key]['realtype'] == 'complex':
                 if jsonData.get(item,None) is not None:
                     if propDict[key].get('isCollection',None) is not None:
                         for listItem in jsonData[item]:
@@ -517,124 +560,133 @@ def     getAllLinks(jsonData, propDict, linkName=''):
                         linkList.update( getAllLinks(jsonData[item], propDict[key]['typeprops']))
         return linkList
 
+def checkAnnotationCompliance(decoded):
+    for key in [k for k in decoded if '@' in k]:
+        rsvLogger.info(key)
+
+# get rid of AllLinks
 allLinks = set()
 def validateURI (URI, uriName=''):
-    # note: consider, write questions about these
-    """
-    <Annotation Term="OData.AutoExpand"/>
-    <Annotation Term="OData.AutoExpandReferences"/>
-    <NavigationProperty Name="Power" Type="Power.Power" ContainsTarget="true">
-    <Annotation Term="Redfish.Required"/>
-    <Annotation Term="Redfish.RequiredOnCreate"/>
-    <Annotation Term="OData.AdditionalProperties"/>
-    <Annotation Term="Measures.Unit" String="MiBy"/>
-
-    • Modified schema may constrain a read/write property to be read only.
-    • Modified schema may remove properties.
-    • Modified schema may change any "Reference Uri" to point to Schema that adheres to the
-    modification rules.
-    • Other modifications to the Schema shall not be allowed.
-
-    <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/RedfishExtensions_v1.xml">
-    <edmx:Include Namespace="RedfishExtensions.v1_0_0" Alias="Redfish"/>
-    </edmx:Reference>
-    """
+    
+    # Initial startup here
     rsvLogger.info("\n*** %s, %s", uriName, URI)
     counts = Counter()
     results = OrderedDict()
-
-    success, jsonData = callResourceURI(URI)
+    additionalProps = list()
     
+    results[uriName] = (URI, False, counts, None, additionalProps)
 
-    if not success:
+    # Get from service by URI, ex: "/redfish/v1"
+    success, jsonData = callResourceURI(URI)
+
+    if not success or '#' in URI:
         rsvLogger.error("validateURI: Get URI failed.")
         counts['failGet'] += 1
-        counts[URI] += 1
-        results[uriName] = (URI, success, counts, None)
         return False, counts, results
     
     counts['passGet'] += 1
-   
+
+    checkAnnotationCompliance(jsonData) 
     # check for @odata mandatory stuff
+    # check for version numbering problems
     # check id if its the same as URI
     # check @odata.context instead of local 
+
     SchemaFullType = jsonData.get('@odata.type',None)
     if SchemaFullType is None:
         rsvLogger.error("validateURI: Json does not contain type, is error?")
         counts['failJsonError'] += 1
-        counts[URI] += 1
-        return False, counts
+        return False, counts, results
 
-    rsvLogger.info(SchemaFullType)
+    rsvLogger.info(SchemaFullType) 
+
+    # Parse @odata.type, get schema XML and its references from its namespace
 
     SchemaType = getType(SchemaFullType)
     SchemaNamespace = getNamespace(SchemaFullType)
-
-    success, SchemaSoup = getSchemaDetails(SchemaNamespace)
-   
-    if not success:
-        success, SchemaSoup = getSchemaDetails(SchemaType)
-        if not success:
-            success, SchemaSoup = getSchemaDetails(SchemaFullType)
-        if not success: 
-            rsvLogger.error("validateURI: No schema for %s %s", SchemaFullType, SchemaType)
-            counts['failSchema'] += 1
-            results[uriName] = (URI, success, counts, None)
-            return False, counts, results
+    SchemaURI = jsonData.get('@odata.context', None)
     
+    SchemaURI = SchemaURI.split('#')[0]
+
+    rsvLogger.debug("%s %s", SchemaType, SchemaURI)
+    
+    success, SchemaSoup = getSchemaDetails(SchemaNamespace, SchemaURI=SchemaURI)
+        
+    if success:
+        refDict = getReferenceDetails(SchemaSoup)
+        if SchemaType in refDict:
+            success, SchemaSoup = getSchemaDetails(SchemaNamespace, SchemaURI=refDict[getNamespace(SchemaType)][1])
+    else:
+        success, SchemaSoup = getSchemaDetails(SchemaNamespace) 
+        if not success:
+            success, SchemaSoup = getSchemaDetails(SchemaType)
+        if success:
+            refDict = getReferenceDetails(SchemaSoup)
+    
+    if not success: 
+        rsvLogger.error("validateURI: No schema XML for %s %s", SchemaFullType, SchemaType)
+        counts['failSchema'] += 1
+        return False, counts, results
+    
+    refDict = getReferenceDetails(SchemaSoup)
+        
     rsvLogger.debug(jsonData)
     rsvLogger.debug(SchemaSoup)
-    
+   
+    # Attempt to get a list of properties
     try:
-        propertyList = getTypeDetails(SchemaSoup,SchemaFullType,'entitytype')
+        propertyList = getTypeDetails(SchemaSoup, refDict, SchemaFullType, 'entitytype')
     except Exception as ex:
-        rsvLogger.error(ex)
+        rsvLogger.error(traceback.format_exc())
         counts['exceptionGetType'] += 1
-        counts[URI] += 1
-        results[uriName] = (URI, success, counts, None)
         return False, counts, results
     
     rsvLogger.debug(propertyList)
 
+    # Generate dictionary of property info
     try:
-        propertyDict = getPropertyDetails(SchemaSoup, propertyList)
+        propertyDict = getPropertyDetails(SchemaSoup, refDict, propertyList)
     except Exception as ex:
-        rsvLogger.error(ex)
+        rsvLogger.error(traceback.format_exc())
         counts['exceptionGetDict'] += 1
-        counts[URI] += 1
-        results[uriName] = (URI, success, counts, None)
         return False, counts, results
     
     rsvLogger.debug(propertyDict)
    
+    # With dictionary of property details, check json against those details
     try:
         messages, checkCounts = checkPropertyCompliance(propertyDict, jsonData)
     except Exception as ex:
-        rsvLogger.info(ex)
+        rsvLogger.error(traceback.format_exc())
         counts['exceptionPropCompliance'] += 1
-        counts[URI] += 1
-        results[uriName] = (URI, success, counts, None)
         return False, counts, results
    
+    # List all items checked and uncheckedi
+    # current logic does not check inside complex types
     fmt = '%-20s%20s'
     rsvLogger.info('%s, %s', uriName, SchemaType)
 
     for key in jsonData:
-        rsvLogger.info(fmt % (key, key in messages))
+        item = jsonData[key]
+        rsvLogger.info(fmt % (key, 'Exists And Checks' if key in messages else 'Exists, no schema check'))
+        if key not in messages:
+            additionalProps.append(key)
     for key in messages:
-        if key not in jsonData :
-            rsvLogger.info( "missing: %s, %s", key, messages[key][5] )
+        if key not in jsonData and '.' not in key:
+            rsvLogger.info("Checking: %s %s", key, messages[key][3])
 
+    # Update counts, then commit results
     counts.update(checkCounts)
 
     rsvLogger.info('%s, %s, %s', SchemaFullType, counts, len(propertyList))
-    
-    results[uriName] = (URI, success, counts, messages)
-    
+
+    results[uriName] = (URI, success, counts, messages, additionalProps)
+
+    # Get all links available
     links = getAllLinks(jsonData, propertyDict)
     
     rsvLogger.debug(links)
-
+    
     for linkName in links:
         if links[linkName] in allLinks:
             counts['repeat'] += 1
@@ -642,11 +694,10 @@ def validateURI (URI, uriName=''):
         
         allLinks.add(links[linkName])
         
-        success, linkCounts, linkResults = validateURI(links[linkName], uriName + '->' + linkName)
+        success, linkCounts, linkResults = validateURI(links[linkName], uriName + ' -> ' + linkName)
         if not success:
             counts['unvalidated'] += 1
         rsvLogger.info('%s, %s', linkName, linkCounts)
-        counts.update(linkCounts)
         results.update(linkResults)
 
     return True, counts, results
@@ -659,19 +710,26 @@ if __name__ == '__main__':
     # Rewrite here
     startTick = datetime.now()
     status_code = 1
-    success, finalCounts, results = validateURI ('/redfish/v1','ServiceRoot')
+    success, counts, results = validateURI ('/redfish/v1','ServiceRoot')
    
-    
+    finalCounts = Counter()
+
     nowTick = datetime.now()
 
     if not success:
         rsvLogger.info("Validation has failed.")
         sys.exit(1)    
+
     htmlStr = '<html><head><title>Compliance Test Summary</title>\
             <style>\
+            .pass {background-color:#99EE99}\
+            .fail {background-color:#EE9999}\
+            .title {background-color:#DDDDDD; border: 1pt solid}\
+            .titlerow {border: 2pt dotted}\
             body {background-color:lightgrey}\
             th {text-align:center; background-color:beige}\
             td {text-align:left; background-color:white}\
+            table {width:100%;}\
             </style>\
             </head><body>'
     htmlStr += '<table>\
@@ -681,30 +739,47 @@ if __name__ == '__main__':
                 <tr><th>Start time: ' + str(startTick) + '</th></tr>\
                 <tr><th>Run time: ' + str(nowTick - startTick) +'</th></tr>\
                 <tr><th></th></tr>'
+
+    htmlStr2 = '' + htmlStr
+
     cnt = 1
+    rsvLogger.info (len(results))
     for item in results:
-        rsvLogger.info (cnt)
-        cnt += 1
-        htmlStr += '<tr><td><table><tr>'
-        htmlStr += '<td>' + item + '</td>'
-        htmlStr += '<td>' + str(results[item][0]) + '</td>'
-        htmlStr += '<td>' + str(results[item][1]) + '</td>'
+        cnt += 1    
+        htmlStr += '<tr><td class="titlerow"><table><tr>'
+        htmlStr += '<td class="title" style="width:40%">' + item + '</td>'
+        htmlStr += '<td style="width:20%">' + str(results[item][0]) + '</td>'
+        htmlStr += '<td style="width:10%"' + ('class="pass"> Exists' if results[item][1] else 'class="fail"> Not Found') + '</td>'
+        htmlStr += '<td>'
         innerCounts = results[item][2]
-        for countType in ['pass','fail','skip']:
+        finalCounts.update(innerCounts)
+        for countType in innerCounts:
             innerCounts[countType] += 0 
-            htmlStr += '<td>{p}</td>'.format(p=innerCounts.get(countType,0))
-        htmlStr += '</tr>'
+            htmlStr += '{p}: {q},   '.format(p=countType,q=innerCounts.get(countType,0))
+        htmlStr += '</td></tr>'
+        htmlStr += '</table></td></tr>'
+        htmlStr += '<tr><td><table><tr><th> Name</th> <th> Value</th> <th>Type</th> <th>Exists?</th> <th>Success</th> <tr>'
         if results[item][3] is not None:
             for i in results[item][3]:
                 htmlStr += '<tr>'
                 htmlStr += '<td>' + str(i) + '</td>'
                 for j in results[item][3][i]:
-                    htmlStr += '<td>' + str(j) + '</td>'
+                    if 'PASS' in str(j):
+                        htmlStr += '<td class="pass">' + str(j) + '</td>'
+                    elif 'FAIL' in str(j):
+                        htmlStr += '<td class="fail">' + str(j) + '</td>'
+                    else:
+                        htmlStr += '<td >' + str(j) + '</td>'
                 htmlStr += '</tr>'
         htmlStr += '</table></td></tr>'
-    htmlStr += '</body></html>'
-    with open('log.html','w') as f:
+        htmlStr += '<tr><td>Additional Properties:' + str(results[item][4]) + '</td></tr><tr><td>---</td></tr>'
+    htmlStr += '</table></body></html>'
+    htmlStr += '</table></body></html>'
+
+    with open('log_summary.html','w') as f:
         f.write(htmlStr)
+    with open('log_details.html','w') as f:
+        f.write(htmlStr2)
     
     rsvLogger.info(finalCounts)
     sys.exit(0)
