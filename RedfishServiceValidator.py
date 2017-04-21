@@ -65,12 +65,13 @@ def callResourceURI(URILink):
                 auth = None
             else:
                 auth = (User, Passwd)
-        rsvLogger.debug('callingResourceURI: %s', URILink
-                )
+        rsvLogger.debug('callingResourceURI: %s', URILink)
         try:
+                rsvLogger.propagate = False
                 expCode = []
                 response = requests.get(ConfigURI+URILink if not nonService else URILink,\
                         auth = auth if not nonService else None, verify=chkCert)
+                rsvLogger.propagate = True
                 expCode = [200, 204]
                 statusCode = response.status_code
                 rsvLogger.debug('%s, %s, %s',statusCode, expCode, response.headers)
@@ -81,6 +82,7 @@ def callResourceURI(URILink):
                         decoded = response.text
                     return True, decoded
         except Exception as ex:
+                rsvLogger.propagate = True
                 rsvLogger.error("Something went wrong: %s", str(ex))
                 rsvLogger.error(traceback.format_exc())
         return False, None
@@ -209,7 +211,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
 
 # Function to retrieve the detailed Property attributes and store in a dictionary format
 # The attributes for each property are referenced through various other methods for compliance check
-def getPropertyDetails(soup, refs, PropertyList, tagType = 'entitytype'):
+def getPropertyDetails(soup, refs, PropertyItem, tagType = 'entitytype'):
         """
         Get dictionary of tag attributes for properties given, including basetypes.
 
@@ -217,114 +219,111 @@ def getPropertyDetails(soup, refs, PropertyList, tagType = 'entitytype'):
         param arg2: list of properties as strings
         param tagtype: type of Tag, such as EntityType or ComplexType
         """
-        PropertyDictionary = OrderedDict() 
+        propEntry = dict()
+
+        propOwner, propChild = PropertyItem.split(':')[0], PropertyItem.split(':')[-1]
+
+        SchemaNamespace = getNamespace(propOwner)
+        SchemaType = getType(propOwner)
          
-        for prop in PropertyList:
-            PropertyDictionary[prop] = dict()
-            
-            propOwner, propChild = prop.split(':')[0], prop.split(':')[-1]
+        rsvLogger.debug('___')
+        rsvLogger.debug('%s, %s', SchemaNamespace, PropertyItem)
+        
+        propSchema = soup.find('schema',attrs={'namespace':SchemaNamespace})
 
-            SchemaNamespace = getNamespace(propOwner)
-            SchemaType = getType(propOwner)
-             
-            rsvLogger.debug('___')
-            rsvLogger.debug('%s, %s', SchemaNamespace, prop)
-            
-            propSchema = soup.find('schema',attrs={'namespace':SchemaNamespace})
+        if propSchema is None:
+            success, innerSoup = getSchemaDetails(*refs[SchemaNamespace.split('.')[0]]) 
+            if not success:
+                rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+                raise Exception('getPropertyDetails')
+            innerRefs = getReferenceDetails(innerSoup)
+            propSchema = innerSoup.find('schema',attrs={'namespace':SchemaNamespace})
+        else:
+            innerSoup = soup
+            innerRefs = refs
 
-            if propSchema is None:
-                success, innerSoup = getSchemaDetails(*refs[SchemaNamespace.split('.')[0]]) 
-                if not success:
-                    rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
-                    raise Exception('getPropertyDetails')
-                innerRefs = getReferenceDetails(innerSoup)
-                propSchema = innerSoup.find('schema',attrs={'namespace':SchemaNamespace})
+        propEntity = propSchema.find(tagType,attrs={'name':SchemaType})
+        propTag = propEntity.find('property',attrs={'name':propChild})
+        
+        propEntry['isNav'] = False
+        
+        if propTag is None:
+            propTag = propEntity.find('navigationproperty',attrs={'name':propChild})
+            propEntry['isNav'] = True
+        propAll = propTag.find_all()
+
+        propEntry['attrs'] = propTag.attrs
+        
+        for tag in propAll:
+            propEntry[tag['term']] = tag.attrs
+        rsvLogger.debug(propEntry)
+        
+        propType = propTag.get('type',None)
+
+        while propType is not None:
+            rsvLogger.debug("HASTYPE")
+            TypeNamespace = getNamespace(propType)
+            typeSpec = getType(propType)
+
+            rsvLogger.debug('%s, %s', TypeNamespace, propType)
+            # Type='Collection(Edm.String)'
+            if re.match('Collection(.*)',propType) is not None:
+                propType = propType.replace('Collection(', "")
+                propType = propType.replace(')', "")
+                propEntry['isCollection'] = propType
+                # Note : this needs work
+                continue
+            if 'Edm' in propType:
+                propEntry['realtype'] = propType
+                break
+            
+            if TypeNamespace.split('.')[0] != SchemaNamespace.split('.')[0]:
+                success, typeSoup = getSchemaDetails(*refs[TypeNamespace])
             else:
-                innerSoup = soup
-                innerRefs = refs
-
-            propEntity = propSchema.find(tagType,attrs={'name':SchemaType})
-            propTag = propEntity.find('property',attrs={'name':propChild})
+                success, typeSoup = True, innerSoup
             
-            PropertyDictionary[prop]['isNav'] = False
+            if not success:
+                rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+                raise Exception("getPropertyDetails: no such soup for" + SchemaNamespace + TypeNamespace)
+                continue
+
+            typeRefs = getReferenceDetails(typeSoup) 
+            typeSchema = typeSoup.find('schema',attrs={'namespace':TypeNamespace})
+            typeSimpleTag = typeSchema.find('typedefinition',attrs={'name':typeSpec})
+            typeComplexTag = typeSchema.find('complextype',attrs={'name':typeSpec}) 
+            typeEnumTag = typeSchema.find('enumtype',attrs={'name':typeSpec}) 
+            typeEntityTag = typeSchema.find('entitytype',attrs={'name':typeSpec})
             
-            if propTag is None:
-                propTag = propEntity.find('navigationproperty',attrs={'name':propChild})
-                PropertyDictionary[prop]['isNav'] = True
-            propAll = propTag.find_all()
-
-            PropertyDictionary[prop]['attrs'] = propTag.attrs
-            
-            for tag in propAll:
-                PropertyDictionary[prop][tag['term']] = tag.attrs
-            rsvLogger.debug(PropertyDictionary[prop])
-            
-            propType = propTag.get('type',None)
-
-            while propType is not None:
-                rsvLogger.debug("HASTYPE")
-                TypeNamespace = getNamespace(propType)
-                typeSpec = getType(propType)
-
-                rsvLogger.debug('%s, %s', TypeNamespace, propType)
-                # Type='Collection(Edm.String)'
-                if re.match('Collection(.*)',propType) is not None:
-                    propType = propType.replace('Collection(', "")
-                    propType = propType.replace(')', "")
-                    PropertyDictionary[prop]['isCollection'] = propType
-                    # Note : this needs work
-                    continue
-                if 'Edm' in propType:
-                    PropertyDictionary[prop]['realtype'] = propType
-                    break
+            if typeSimpleTag is not None:
+                propType = typeSimpleTag.get('underlyingtype',None)
+                continue
+            elif typeComplexTag is not None:
+                rsvLogger.debug("go DEEP")
+                propList = getTypeDetails(typeSoup, typeRefs, propType, tagType='complextype') 
+                rsvLogger.debug(propList)
+                propDict = { item: getPropertyDetails(typeSoup, typeRefs, item, tagType='complextype' ) for item in propList }
+                rsvLogger.debug(propDict)
+                propEntry['realtype'] = 'complex'
+                propEntry['typeprops'] = propDict
+                break
+            elif typeEnumTag is not None:
+                propEntry['realtype'] = 'enum'
+                propEntry['typeprops'] = list() 
+                for MemberName in typeEnumTag.find_all('member'):
+                    propEntry['typeprops'].append(MemberName['name'].lower())
+                break
+            elif typeEntityTag is not None:
+                # consider this, is this only for navigation checking?
+                propEntry['realtype'] = 'entity'
+                propEntry['typeprops'] = dict()
+                rsvLogger.debug ("typeEntityTag found %s",propTag['name'])
+                break
+            else:
+                rsvLogger.error("type doesn't exist? %s", propType)
+                raise Exception("problem")
+                break 
                 
-                if TypeNamespace.split('.')[0] != SchemaNamespace.split('.')[0]:
-                    success, typeSoup = getSchemaDetails(*refs[TypeNamespace])
-                else:
-                    success, typeSoup = True, innerSoup
-                
-                if not success:
-                    rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
-                    raise Exception("getPropertyDetails: no such soup for" + SchemaNamespace + TypeNamespace)
-                    continue
-
-                typeRefs = getReferenceDetails(typeSoup) 
-                typeSchema = typeSoup.find('schema',attrs={'namespace':TypeNamespace})
-                typeSimpleTag = typeSchema.find('typedefinition',attrs={'name':typeSpec})
-                typeComplexTag = typeSchema.find('complextype',attrs={'name':typeSpec}) 
-                typeEnumTag = typeSchema.find('enumtype',attrs={'name':typeSpec}) 
-                typeEntityTag = typeSchema.find('entitytype',attrs={'name':typeSpec})
-                
-                if typeSimpleTag is not None:
-                    propType = typeSimpleTag.get('underlyingtype',None)
-                    continue
-                elif typeComplexTag is not None:
-                    rsvLogger.debug("go DEEP")
-                    propList = getTypeDetails(typeSoup, typeRefs, propType, tagType='complextype') 
-                    rsvLogger.debug(propList)
-                    propDict = getPropertyDetails(typeSoup, typeRefs, propList, tagType='complextype' ) 
-                    rsvLogger.debug(propDict)
-                    PropertyDictionary[prop]['realtype'] = 'complex'
-                    PropertyDictionary[prop]['typeprops'] = propDict
-                    break
-                elif typeEnumTag is not None:
-                    PropertyDictionary[prop]['realtype'] = 'enum'
-                    PropertyDictionary[prop]['typeprops'] = list() 
-                    for MemberName in typeEnumTag.find_all('member'):
-                        PropertyDictionary[prop]['typeprops'].append(MemberName['name'].lower())
-                    break
-                elif typeEntityTag is not None:
-                    # consider this, is this only for navigation checking?
-                    PropertyDictionary[prop]['realtype'] = 'entity'
-                    PropertyDictionary[prop]['typeprops'] = dict()
-                    rsvLogger.debug ("typeEntityTag found %s",propTag['name'])
-                    break
-                else:
-                    rsvLogger.error("type doesn't exist? %s", propType)
-                    raise Exception("problem")
-                    break 
-                
-        return PropertyDictionary
+        return propEntry
 
 
 # Function to check compliance of individual Properties based on the attributes retrieved from the schema xml
@@ -428,6 +427,7 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                         propValueList = propValue
                     else:
                         propValueList = [propValue]
+                    # note: make sure we don't enter this on null values, some of which are OK!
                     if propRealType is not None and propExists:
                         cnt = 0
                         for val in propValueList: 
@@ -437,6 +437,7 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                                      paramPass = True       
 
                             elif propRealType == 'Edm.DateTimeOffset':
+                                # note: find out why this might be wrong
                                 match = re.match('.*(Z|(\+|-)[0-9][0-9]:[0-9][0-9])',str(val))
                                 if match:
                                     paramPass = True
@@ -645,7 +646,7 @@ def validateURI (URI, uriName=''):
 
     # Generate dictionary of property info
     try:
-        propertyDict = getPropertyDetails(SchemaSoup, refDict, propertyList)
+        propertyDict = OrderedDict(( item, getPropertyDetails(SchemaSoup, refDict, item)) for item in propertyList )
     except Exception as ex:
         rsvLogger.error(traceback.format_exc())
         counts['exceptionGetDict'] += 1
@@ -672,14 +673,14 @@ def validateURI (URI, uriName=''):
         if key not in messages:
             additionalProps.append(key)
     for key in messages:
-        if key not in jsonData and '.' not in key:
+        if key not in jsonData:
             rsvLogger.info("Checking: %s %s", key, messages[key][3])
 
     # Update counts, then commit results
     counts.update(checkCounts)
 
     rsvLogger.info('%s, %s, %s', SchemaFullType, counts, len(propertyList))
-
+    
     results[uriName] = (URI, success, counts, messages, additionalProps)
 
     # Get all links available
@@ -722,14 +723,15 @@ if __name__ == '__main__':
 
     htmlStr = '<html><head><title>Compliance Test Summary</title>\
             <style>\
-            .pass {background-color:#99EE99}\
-            .fail {background-color:#EE9999}\
-            .title {background-color:#DDDDDD; border: 1pt solid}\
-            .titlerow {border: 2pt dotted}\
-            body {background-color:lightgrey}\
-            th {text-align:center; background-color:beige}\
-            td {text-align:left; background-color:white}\
-            table {width:100%;}\
+            .pass {background-color:#99EE99; text-align:center}\
+            .fail {background-color:#EE9999; text-align:center}\
+            .title {background-color:#DDDDDD; border: 1pt solid; padding: 8px}\
+            .titlerow {border: 2pt solid}\
+            body {background-color:lightgrey; border: 1pt solid; text-align:center; margin-left:auto; margin-right:auto}\
+            th {text-align:center; background-color:beige; border: 1pt solid}\
+            td {text-align:left; background-color:white; border: 1pt solid}\
+            table {width:90%; margin: 0px auto;}\
+            .titletable {width:100%}\
             </style>\
             </head><body>'
     htmlStr += '<table>\
@@ -746,10 +748,10 @@ if __name__ == '__main__':
     rsvLogger.info (len(results))
     for item in results:
         cnt += 1    
-        htmlStr += '<tr><td class="titlerow"><table><tr>'
+        htmlStr += '<tr><td class="titlerow"><table class="titletable"><tr>'
         htmlStr += '<td class="title" style="width:40%">' + item + '</td>'
         htmlStr += '<td style="width:20%">' + str(results[item][0]) + '</td>'
-        htmlStr += '<td style="width:10%"' + ('class="pass"> Exists' if results[item][1] else 'class="fail"> Not Found') + '</td>'
+        htmlStr += '<td style="width:10%"' + ('class="pass"> PASS' if results[item][1] else 'class="fail"> FAIL') + '</td>'
         htmlStr += '<td>'
         innerCounts = results[item][2]
         finalCounts.update(innerCounts)
