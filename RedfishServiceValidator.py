@@ -12,12 +12,13 @@ from functools import lru_cache
 import logging, traceback
 
 # Logging config
+startTick = datetime.now()
 fmt = logging.Formatter('%(levelname)s - %(message)s')
 
 rsvLogger = logging.getLogger()
 rsvLogger.setLevel(logging.DEBUG)
 
-fh = logging.FileHandler('log_validator.txt')
+fh = logging.FileHandler(datetime.strftime(startTick,"logs/ComplianceLog_%m_%d_%Y_%H%M%S.txt"))
 fh.setLevel(logging.DEBUG)
 fh.setFormatter(fmt)
 rsvLogger.addHandler(fh)
@@ -51,9 +52,10 @@ def callResourceURI(URILink):
         return: (success boolean, data)
         """
         statusCode = ""
-        
         nonService = 'http' in URILink
         
+        URILink = URILink.replace("#", "%23")
+
         # redfish spec requires no auth for serviceroot calls
         if not nonService:
             noauthchk = \
@@ -335,21 +337,24 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                 param arg1: property dictionary
                 param arg2: json payload
                 """
-                def getTypeInheritance(SchemaAlias,tagType='entitytype'):
-                    success, sch = getSchemaDetails(SchemaAlias)
+                def getTypeInheritance(decoded,tagType='entitytype'):
+                    schType = decoded.get('@odata.type', None)
+                    schContext = decoded.get('@odata.context', None)
+                    success, sch = getSchemaDetails( schType, schContext )
                     if not success:
                         return []
-                    currentType = SchemaAlias.replace('#','')
+                    schRefs = getReferenceDetails(sch)
+                    currentType = schType.replace('#','')
                     allTypes = list()
                     while currentType not in allTypes and currentType is not None:
-                        sNameSpace = getNamespace(currentType)
-                        sType = getType(currentType)
                         propSchema = sch.find('schema',attrs={'namespace':getNamespace(currentType)})
                         if propSchema is None:
-                            success, sch = getSchemaDetails(currentType)
+                            success, sch = getSchemaDetails(*schRefs[getNamespace(currentType)])
                             continue
                         propEntity = propSchema.find(tagType,attrs={'name':getType(currentType)})
                         allTypes.append(currentType)
+                        if propEntity is None:
+                            break
                         currentType = propEntity.get('basetype',None) 
                     return allTypes
                 
@@ -373,7 +378,7 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                     rsvLogger.info("\thas Type: %s %s", propType, propRealType)
                     
                     propExists = not (propValue == 'xxDoesNotExist')
-                    propNotNull = propExists and (propValue is not '' or propValue is not None)
+                    propNotNull = propExists and propValue is not '' and propValue is not None and propValue is not 'None'
                     
                     if 'Oem' in key:
                         rsvLogger.info('\tOem is skipped')
@@ -422,13 +427,16 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                     # Note: make sure it checks each one
                     propCollectionType = PropertyDictionary[key].get('isCollection',None)  
                     if propCollectionType is not None:
-                        # note: handle collections correctly
+                        # note: handle collections correctly, this needs a nicer printout
                         rsvLogger.info("\tis Collection")
+                        resultList[item] = ('Collection, size: ' + str(len(propValue)), (propType, propRealType),\
+                                'Exists' if propExists else 'DNE',\
+                                '...')
                         propValueList = propValue
                     else:
                         propValueList = [propValue]
                     # note: make sure we don't enter this on null values, some of which are OK!
-                    if propRealType is not None and propExists:
+                    if propRealType is not None and propExists and propNotNull:
                         cnt = 0
                         for val in propValueList: 
                             paramPass = False
@@ -446,6 +454,7 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                                     propRealType == 'Edm.Int64' or propRealType == 'Edm.Int' or\
                                     propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
                                 paramPass = str(val).isnumeric()
+                                # note: check if val can be string, if it can't this might have trouble
                                 if 'Int' in propRealType:
                                     paramPass = paramPass and '.' not in str(val)
                                 if validMinAttr is not None:
@@ -492,7 +501,7 @@ def checkPropertyCompliance(PropertyDictionary, decoded):
                                     if success:
                                         paramPass = success
 
-                                        #listType = getTypeInheritance(data.get('@odata.type',None))
+                                        listType = getTypeInheritance(data)
                                         #paramPass = propType in listType or propCollectionType in listType
                                     else:
                                         paramPass = '#' in val['@odata.id']
@@ -573,14 +582,13 @@ def validateURI (URI, uriName=''):
     rsvLogger.info("\n*** %s, %s", uriName, URI)
     counts = Counter()
     results = OrderedDict()
-    additionalProps = list()
     
-    results[uriName] = (URI, False, counts, None, additionalProps)
+    results[uriName] = (URI, False, counts, None)
 
     # Get from service by URI, ex: "/redfish/v1"
     success, jsonData = callResourceURI(URI)
 
-    if not success or '#' in URI:
+    if not success:
         rsvLogger.error("validateURI: Get URI failed.")
         counts['failGet'] += 1
         return False, counts, results
@@ -671,7 +679,10 @@ def validateURI (URI, uriName=''):
         item = jsonData[key]
         rsvLogger.info(fmt % (key, 'Exists And Checks' if key in messages else 'Exists, no schema check'))
         if key not in messages:
-            additionalProps.append(key)
+            # note: extra messages for "unchecked" properties
+            messages[key] = (item, '-',\
+                    'Exists',\
+                    '-')
     for key in messages:
         if key not in jsonData:
             rsvLogger.info("Checking: %s %s", key, messages[key][3])
@@ -681,7 +692,7 @@ def validateURI (URI, uriName=''):
 
     rsvLogger.info('%s, %s, %s', SchemaFullType, counts, len(propertyList))
     
-    results[uriName] = (URI, success, counts, messages, additionalProps)
+    results[uriName] = (URI, success, counts, messages)
 
     # Get all links available
     links = getAllLinks(jsonData, propertyDict)
@@ -709,7 +720,6 @@ def validateURI (URI, uriName=''):
 
 if __name__ == '__main__':
     # Rewrite here
-    startTick = datetime.now()
     status_code = 1
     success, counts, results = validateURI ('/redfish/v1','ServiceRoot')
    
@@ -774,14 +784,12 @@ if __name__ == '__main__':
                         htmlStr += '<td >' + str(j) + '</td>'
                 htmlStr += '</tr>'
         htmlStr += '</table></td></tr>'
-        htmlStr += '<tr><td>Additional Properties:' + str(results[item][4]) + '</td></tr><tr><td>---</td></tr>'
+        htmlStr += '<tr><td>---</td></tr>'
     htmlStr += '</table></body></html>'
     htmlStr += '</table></body></html>'
 
-    with open('log_summary.html','w') as f:
+    with open(datetime.strftime(startTick,"logs/ComplianceHtmlLog_%m_%d_%Y_%H%M%S.html"),'w') as f:
         f.write(htmlStr)
-    with open('log_details.html','w') as f:
-        f.write(htmlStr2)
     
     rsvLogger.info(finalCounts)
     sys.exit(0)
