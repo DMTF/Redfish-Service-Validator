@@ -19,18 +19,24 @@ import traceback
 startTick = datetime.now()
 fmt = logging.Formatter('%(levelname)s - %(message)s')
 
+if not os.path.isdir('logs'):
+       os.makedirs('logs')
+
 rsvLogger = logging.getLogger()
 rsvLogger.setLevel(logging.DEBUG)
 
-fh = logging.FileHandler(datetime.strftime(
-    startTick, "logs/ComplianceLog_%m_%d_%Y_%H%M%S.txt"))
+fh = logging.FileHandler(datetime.strftime(startTick, "logs/ComplianceLog_%m_%d_%Y_%H%M%S.txt"))
 fh.setLevel(logging.DEBUG)
 fh.setFormatter(fmt)
 rsvLogger.addHandler(fh)
 
-ch = logging.StreamHandler()
+ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 rsvLogger.addHandler(ch)
+
+errh = logging.StreamHandler(sys.stderr)
+errh.setLevel(logging.ERROR)
+rsvLogger.addHandler(errh)
 
 # Read config info from ini file placed in config folder of tool
 config = configparser.ConfigParser()
@@ -44,8 +50,8 @@ SchemaLocation = config.get('Options', 'MetadataFilePath')
 chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
 localOnly = config.getboolean('Options', 'LocalOnlyMode')
 
-rsvLogger.debug("Config details: %s", str(
-    (useSSL, ConfigURI, User, Passwd, SchemaLocation, chkCert, localOnly)))
+rsvLogger.info("RedfishServiceValidator Config details: %s", str(
+    (useSSL, ConfigURI, User, SchemaLocation, chkCert, localOnly)))
 
 # Function to GET/PATCH/POST resource URI
 # Certificate check is conditional based on input from config ini file
@@ -87,7 +93,8 @@ def callResourceURI(URILink):
         statusCode = response.status_code
         rsvLogger.debug('%s, %s, %s', statusCode, expCode, response.headers)
         if statusCode in expCode:
-            if 'application/json' in response.headers['content-type']:
+            contenttype = response.headers.get('content-type')
+            if contenttype is not None and 'json' in contenttype:
                 decoded = response.json(object_pairs_hook=OrderedDict)
             else:
                 decoded = response.text
@@ -804,11 +811,7 @@ if __name__ == '__main__':
     finalCounts = Counter()
 
     nowTick = datetime.now()
-
-    if not success:
-        rsvLogger.info("Validation has failed.")
-        sys.exit(1)
-    
+ 
     # Render html
     htmlStr = '<html><head><title>Compliance Test Summary</title>\
             <style>\
@@ -872,6 +875,18 @@ if __name__ == '__main__':
 
     with open(datetime.strftime(startTick, "logs/ComplianceHtmlLog_%m_%d_%Y_%H%M%S.html"), 'w') as f:
         f.write(htmlStr)
+    
+    fails = 0
+    for key in finalCounts:
+        if 'fail' in key or 'exception' in key:
+            fails += finalCounts[key]
 
+    success = success and not (fails > 0)
     rsvLogger.info(finalCounts)
+
+    if not success:
+        rsvLogger.info("Validation has failed: %d problems found", fails)
+        sys.exit(1)
+    
+    rsvLogger.info("Validation has succeeded.")
     sys.exit(0)
