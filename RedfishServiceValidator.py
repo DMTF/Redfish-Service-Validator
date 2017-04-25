@@ -46,6 +46,7 @@ SchemaLocation = config.get('Options', 'MetadataFilePath')
 chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
 localOnly = config.getboolean('Options', 'LocalOnlyMode')
 
+@lru_cache(maxsize=64)
 def callResourceURI(URILink):
     """
     Makes a call to a given URI or URL
@@ -120,6 +121,9 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None):
     param SchemaURI: uri to grab schema, given localOnly is False
     return: (success boolean, a Soup object)
     """
+    if SchemaAlias is None:
+        return False, None
+    
     rsvLogger = logging.getLogger("rsv")
     if SchemaURI is not None and not localOnly:
         success, data, status = callResourceURI(SchemaURI)
@@ -127,8 +131,12 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None):
             soup = BeautifulSoup(data, "html.parser")
             return True, soup
         rsvLogger.debug("Fallback to local Schema")
-
+    
     Alias = getNamespace(SchemaAlias).split('.')[0]
+    if SchemaURI is not None:
+        Filename = Alias + SchemaURI.split(Alias)[-1] 
+    else:
+        Filename = Alias + '_v1.xml'
     try:
         filehandle = open(SchemaLocation + '/' + Alias + '_v1.xml', "r")
         filedata = filehandle.read()
@@ -166,10 +174,42 @@ def getReferenceDetails(soup):
                 refDict[item['alias']] = (item['namespace'], ref['uri'])
             else:
                 refDict[item['namespace']] = (item['namespace'], ref['uri'])
-                refDict[item['namespace'].split('.')[0]] = (
-                    item['namespace'], ref['uri'])
+                refDict[item['namespace'].split('.')[0]] = (item['namespace'], ref['uri'])
     return refDict
 
+def getParentType(soup, refs, currentType, tagType='entitytype'):
+    propSchema = soup.find( 'schema', attrs={'namespace': getNamespace(currentType)})
+    
+    if propSchema is None:
+        return False, None, None, None
+    propEntity = propSchema.find( tagType, attrs={'name': getType(currentType)})
+
+    if propEntity is None:
+        return False, None, None, None
+
+    currentType = propEntity.get('basetype')
+    if currentType is None:
+        return False, None, None, None
+    
+    currentType = currentType.replace('#','')
+    SchemaNamespace, SchemaType = getNamespace(currentType), getType(currentType)
+    propSchema = soup.find( 'schema', attrs={'namespace': SchemaNamespace})
+
+    if propSchema is None:
+        success, innerSoup = getSchemaDetails(
+            *refs.get(SchemaNamespace, (None,None)))
+        if not success:
+            return False, None, None, None
+        innerRefs = getReferenceDetails(innerSoup)
+        propSchema = innerSoup.find(
+            'schema', attrs={'namespace': SchemaNamespace})
+        if propSchema is None:
+            return False, None, None, None
+    else:
+        innerSoup = soup
+        innerRefs = refs
+
+    return True, innerSoup, innerRefs, currentType 
 
 # Function to search for all Property attributes in any target schema
 # Schema XML may be the initial file for local properties or referenced
@@ -177,13 +217,13 @@ def getReferenceDetails(soup):
 def getTypeDetails(soup, refs, SchemaAlias, tagType):
     """
     Gets list of surface level properties for a given SchemaAlias,
-    including base type inheritance.
-
+    thru base types included. 
+    
     param arg1: soup
     param arg2: references
     param arg3: SchemaAlias string
     param arg4: tag of Type, which can be EntityType or ComplexType...
-    return: list of properties as strings
+    return: list of (soup, ref, string PropertyName)
     """
     rsvLogger = logging.getLogger("rsv")
     PropertyList = list()
@@ -222,7 +262,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
                 newProp = SchemaAlias + ':' + newProp
             rsvLogger.debug("ADDING :::: %s", newProp)
             if newProp not in PropertyList:
-                PropertyList.append(newProp)
+                PropertyList.append((soup,refs,newProp))
 
     return PropertyList
 
@@ -241,10 +281,9 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
     rsvLogger = logging.getLogger("rsv")
     propEntry = dict()
 
-    propOwner, propChild = PropertyItem.split( ':')[0], PropertyItem.split(':')[-1]
+    propOwner, propChild = PropertyItem.split(':')[0].replace('#',''), PropertyItem.split(':')[-1]
 
-    SchemaNamespace = getNamespace(propOwner)
-    SchemaType = getType(propOwner)
+    SchemaNamespace, SchemaType = getNamespace(propOwner), getType(propOwner)
 
     rsvLogger.debug('___')
     rsvLogger.debug('%s, %s', SchemaNamespace, PropertyItem)
@@ -253,17 +292,8 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
     
     # get another csdl xml if the given namespace does not exist
     if propSchema is None:
-        success, innerSoup = getSchemaDetails(
-            *refs[SchemaNamespace.split('.')[0]])
-        if not success:
-            rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
-            raise Exception('getPropertyDetails: no such xml at ' + refs[SchemaNamespace.split('.')[0]])
-        innerRefs = getReferenceDetails(innerSoup)
-        propSchema = innerSoup.find(
-            'schema', attrs={'namespace': SchemaNamespace})
-        if propSchema is None:
-            rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
-            raise Exception('getPropertyDetails: no such schema at ' + refs[SchemaNamespace.split('.')[0]])
+        rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+        raise Exception('getPropertyDetails: no such xml at ' + SchemaNamespace)
     else:
         innerSoup = soup
         innerRefs = refs
@@ -310,7 +340,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
         
         # get proper soup
         if TypeNamespace.split('.')[0] != SchemaNamespace.split('.')[0]:
-            success, typeSoup = getSchemaDetails(*refs[TypeNamespace])
+            success, typeSoup = getSchemaDetails(*refs.get(TypeNamespace,(None,None)))
         else:
             success, typeSoup = True, innerSoup
 
@@ -336,7 +366,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             rsvLogger.debug("go DEEP")
             propList = getTypeDetails( typeSoup, typeRefs, propType, tagType='complextype')
             rsvLogger.debug(propList)
-            propDict = {item: getPropertyDetails( typeSoup, typeRefs, item, tagType='complextype') for item in propList}
+            propDict = {item[2]: getPropertyDetails( *item, tagType='complextype') for item in propList}
             rsvLogger.debug(propDict)
             propEntry['realtype'] = 'complex'
             propEntry['typeprops'] = propDict
@@ -358,38 +388,6 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             break
 
     return propEntry
-
-
-def getParentType(soup, refs, currentType, tagType='entitytype'):
-    propSchema = soup.find( 'schema', attrs={'namespace': getNamespace(currentType)})
-    
-    if propSchema is None:
-        return False, None, None, None
-    propEntity = propSchema.find( tagType, attrs={'name': getType(currentType)})
-    
-    currentType = propEntity.get('basetype')
-    if currentType is None:
-        return False, None, None, None
-    
-    currentType = currentType.replace('#','')
-    SchemaNamespace, SchemaType = getNamespace(currentType), getType(currentType)
-    propSchema = soup.find( 'schema', attrs={'namespace': SchemaNamespace})
-
-    if propSchema is None:
-        success, innerSoup = getSchemaDetails(
-            *refs[SchemaNamespace.split('.')[0]])
-        if not success:
-            return False, None, None, None
-        innerRefs = getReferenceDetails(innerSoup)
-        propSchema = innerSoup.find(
-            'schema', attrs={'namespace': SchemaNamespace})
-        if propSchema is None:
-            return False, None, None, None
-    else:
-        innerSoup = soup
-        innerRefs = refs
-
-    return True, innerSoup, innerRefs, currentType 
 
 
 # Function to check compliance of individual Properties based on the
@@ -456,6 +454,9 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
         rsvLogger.info("\tNullability test: %s",
                        'OK' if propNullablePass else 'FAIL')
 
+    propNullable = propAttr.get('nullable')
+    propNullablePass = True
+
     # rs-assertion: Check for permission change
     propPermissions = propAttr.get('Odata.Permissions')
     if propPermissions is not None:
@@ -474,7 +475,7 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
     # Note: make sure it checks each one
     propCollectionType = PropertyItem.get('isCollection')
     isCollection = propCollectionType is not None
-    if propCollectionType is not None:
+    if propCollectionType is not None and propNotNull:
         # note: handle collections correctly, this needs a nicer printout
         # rs-assumption: do not assume URIs for collections
         # rs-assumption: check @odata.count property
@@ -488,10 +489,10 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
         propValueList = [propValue]
     # note: make sure we don't enter this on null values, some of which are
     # OK!
-    if propRealType is not None and propExists and propNotNull:
-        cnt = 0
-        for val in propValueList:
-            appendStr = (('#' + str(cnt)) if isCollection else '')
+    cnt = 0
+    for val in propValueList:
+        appendStr = (('#' + str(cnt)) if isCollection else '')
+        if propRealType is not None and propExists and propNotNull:
             paramPass = False
             if propRealType == 'Edm.Boolean':
                 if str(val).lower() == "true" or str(val).lower() == "false":
@@ -562,21 +563,23 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
                         paramPass = True
 
                 elif propRealType == 'entity':
+                    # check if the entity is truly what it's supposed to be
+                    # services with incorrect types will fail here
                     autoExpand = PropertyItem.get('OData.AutoExpand',None) is not None or\
                     PropertyItem.get('OData.AutoExpand'.lower(),None) is not None
                     if not autoExpand:
                         success, data, status = callResourceURI(val['@odata.id'])
                     else:
                         success, data, status = True, val, 200
+
                     rsvLogger.debug('%s, %s, %s', success, propType, data)
                     if success:
                         currentType = data.get('@odata.type', propCollectionType)
                         if currentType is None:
                             currentType = propType
-                        if autoExpand:
-                            success, baseSoup = True, refs.get(getNamespace(currentType),(None,None))[1]
-                        context = data.get('@odata.context')
-                        success, baseSoup = getSchemaDetails(currentType, context)
+                        baseLink = refs.get(getNamespace(currentType),(getNamespace(currentType),data.get('@odata.context')))
+                        success, baseSoup = getSchemaDetails(*baseLink)
+                        rsvLogger.debug('success: %s %s',success, currentType)
                         if currentType is not None and success:
                             currentType = currentType.replace('#','')
                             baseRefs = getReferenceDetails(baseSoup)
@@ -584,30 +587,31 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
                             while currentType not in allTypes and success: 
                                 allTypes.append(currentType)
                                 success, baseSoup, baseRefs, currentType = getParentType(baseSoup, baseRefs, currentType, 'entitytype')
+                                rsvLogger.debug('success: %s %s',success, currentType)
 
                             rsvLogger.debug('%s, %s, %s', propType, propCollectionType, allTypes)
                             paramPass = propType in allTypes or propCollectionType in allTypes
                 # Note: Actually check if this is correct
 
-            resultList[item + appendStr] = (val, (propType, propRealType),
-                                             'Exists' if propExists else 'DNE',
-                                             'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
-            cnt += 1
-            if paramPass and propNullablePass and propMandatoryPass:
-                counts['pass'] += 1
-                rsvLogger.info("\tSuccess")
-            else:
-                counts[propType] += 1
-                if not paramPass:
-                    if propMandatory:
-                        counts['failMandatoryProp'] += 1
-                    else:
-                        counts['failProp'] += 1
-                elif not propMandatoryPass:
-                    counts['failMandatoryExist'] += 1
-                elif not propNullablePass:
-                    counts['failNull'] += 1
-                rsvLogger.info("\tFAIL")
+        resultList[item + appendStr] = (val, (propType, propRealType),
+                                         'Exists' if propExists else 'DNE',
+                                         'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
+        cnt += 1
+        if paramPass and propNullablePass and propMandatoryPass:
+            counts['pass'] += 1
+            rsvLogger.info("\tSuccess")
+        else:
+            counts[propType] += 1
+            if not paramPass:
+                if propMandatory:
+                    counts['failMandatoryProp'] += 1
+                else:
+                    counts['failProp'] += 1
+            elif not propMandatoryPass:
+                counts['failMandatoryExist'] += 1
+            elif not propNullablePass:
+                counts['failNull'] += 1
+            rsvLogger.info("\tFAIL")
 
     return resultList, counts
 
@@ -768,12 +772,12 @@ def validateURI(URI, uriName='', expectedType=None, expectedSchema=None, expecte
         errorMessages += (URI + ':  Getting type failed for ' + SchemaFullType,)
         rsvLogger.error(errorMessages)
         return False, counts, results
-    rsvLogger.debug(propertyList)
+    rsvLogger.debug(item for item in propertyList)
 
     # Generate dictionary of property info
     for prop in propertyList:
         try:
-            propertyDict[prop] = getPropertyDetails(SchemaSoup, refDict, prop)
+            propertyDict[prop[2]] = getPropertyDetails(*prop)
         except Exception as ex:
             rsvLogger.error(traceback.format_exc())
             errorMessages += ('%s:  Could not get details on this property: %s, %s' % (prop, str(type(ex).__name__), str(ex)),)
