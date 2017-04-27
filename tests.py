@@ -28,7 +28,7 @@ class TestDMTF(unittest.TestCase):
               </edmx:DataServices>\
             </edmx:Edmx>'
         soup = BeautifulSoup(xml, "html.parser")
-        listType = rsv.getTypeDetails(soup, '#Example.v1_0_0.Example','entitytype')
+        listType = rsv.getTypeDetails(soup, {'Resource': ('Resource','http://redfish.dmtf.org/schemas/v1/Resource_v1.xml')}, '#Example.v1_0_0.Example','entitytype')
         self.assertEqual(listType, ['Resource.Item:Oem', 'Resource.v1_0_0.Resource:Id', 'Resource.v1_0_0.Resource:Description', 'Resource.v1_0_0.Resource:Name'])
         
 
