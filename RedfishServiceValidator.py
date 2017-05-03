@@ -13,25 +13,16 @@ from functools import lru_cache
 import logging
 import traceback
 
-# logging
-startTick = datetime.now()
-if not os.path.isdir('logs'):
-       os.makedirs('logs')
 
 # Make logging blocks for each SingleURI Validate
 rsvLogger = logging.getLogger("rsv")
 rsvLogger.setLevel(logging.DEBUG)
-fmt = logging.Formatter('%(levelname)s - %(message)s')
-fh = logging.FileHandler(datetime.strftime(startTick, "logs/ComplianceLog_%m_%d_%Y_%H%M%S.txt"))
-fh.setLevel(logging.DEBUG)
-fh.setFormatter(fmt)
-rsvLogger.addHandler(fh)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 rsvLogger.addHandler(ch)
-errh = logging.StreamHandler(sys.stderr)
-errh.setLevel(logging.ERROR)
-rsvLogger.addHandler(errh)
+eh = logging.StreamHandler(sys.stderr)
+eh.setLevel(logging.ERROR)
+rsvLogger.addHandler(eh)
 
 # Read config info from ini file placed in config folder of tool
 config = configparser.ConfigParser()
@@ -101,7 +92,6 @@ def callResourceURI(URILink):
             return True, decoded, statusCode
     except Exception as ex:
         rsvLogger.error("Something went wrong: %s", str(ex))
-        rsvLogger.error(traceback.format_exc())
     return False, None, statusCode
 
 # note: Use some sort of re expression to parse SchemaAlias
@@ -149,7 +139,6 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None):
             return True, soup
     except Exception as ex:
         rsvLogger.error("Something went wrong: %s", str(ex))
-        rsvLogger.error(traceback.format_exc())
     return False, None
 
 
@@ -360,7 +349,18 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
         # perform more logic for each type
         if typeSimpleTag is not None:
             propType = typeSimpleTag.get('underlyingtype')
-            continue
+            isEnum = typeSimpleTag.find('annotation', attrs={'term':'Redfish.Enumeration'})
+            if propType == 'Edm.String' and isEnum is not None:
+                propEntry['realtype'] = 'deprecatedEnum'
+                propEntry['typeprops'] = list()
+                memberList = isEnum.find('collection').find_all('propertyvalue')
+
+                for member in memberList:
+                    propEntry['typeprops'].append( member.get('string'))
+                rsvLogger.debug("%s", str(propEntry['typeprops']))
+                break
+            else:
+                continue
         elif typeComplexTag is not None:
             rsvLogger.debug("go DEEP")
             propList = getTypeDetails( typeSoup, typeRefs, propType, tagType='complextype')
@@ -374,7 +374,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             propEntry['realtype'] = 'enum'
             propEntry['typeprops'] = list()
             for MemberName in typeEnumTag.find_all('member'):
-                propEntry['typeprops'].append(MemberName['name'].lower())
+                propEntry['typeprops'].append(MemberName['name'])
             break
         elif typeEntityTag is not None:
             propEntry['realtype'] = 'entity'
@@ -408,7 +408,7 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
     rsvLogger.info(PropertyName)
     item = PropertyName.split(':')[-1]
 
-    propValue = decoded.get(item, '<n/a>')
+    propValue = decoded.get(item, 'n/a')
     rsvLogger.info("\tvalue: %s %s", propValue, type(propValue))
 
     propAttr = PropertyItem['attrs']
@@ -417,8 +417,8 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
     propRealType = PropertyItem.get('realtype')
     rsvLogger.info("\thas Type: %s %s", propType, propRealType)
 
-    propExists = not (propValue == '<n/a>')
-    propNotNull = propExists and propValue is not '' and propValue is not None and propValue is not 'None'
+    propExists = not (propValue == 'n/a')
+    propNotNull = propExists and propValue is not None and propValue is not 'None'
 
     # why not actually check oem
     # rs-assertion: 7.4.7.2
@@ -440,7 +440,7 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
         if not propExists:
             rsvLogger.info("\tprop Does not exist, skip...")
             counts['skipOptional'] += 1
-            return  {item: (propValue, (propType, propRealType),
+            return  {item: ('-', (propType, propRealType),
                                 'Exists' if propExists else 'DNE',
                                 'SkipOptional')}, counts
 
@@ -452,9 +452,6 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
         rsvLogger.info("\tis Nullable: %s %s", propNullable, propNotNull)
         rsvLogger.info("\tNullability test: %s",
                        'OK' if propNullablePass else 'FAIL')
-
-    propNullable = propAttr.get('nullable')
-    propNullablePass = True
 
     # rs-assertion: Check for permission change
     propPermissions = propAttr.get('Odata.Permissions')
@@ -468,7 +465,6 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
     validMaxAttr = PropertyItem.get('Validation.Maximum')
 
     paramPass = True
-    propValue = None if propValue == '<n/a>' else propValue
 
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
@@ -494,44 +490,68 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
         if propRealType is not None and propExists and propNotNull:
             paramPass = False
             if propRealType == 'Edm.Boolean':
-                if str(val).lower() == "true" or str(val).lower() == "false":
-                    paramPass = True
+                paramPass = isinstance( val, bool )
+                if not paramPass:
+                    rsvLogger.error("%s: Not a boolean" % PropertyName)
 
             elif propRealType == 'Edm.DateTimeOffset':
-                # note: find out why this might be wrong
-                match = re.match(
-                    '.*(Z|(\+|-)[0-9][0-9]:[0-9][0-9])', str(val))
-                paramPass = match is not None
+                # note: find out why this might be wrong 
+                if isinstance(val, str):
+                    match = re.match(
+                        '.*(Z|(\+|-)[0-9][0-9]:[0-9][0-9])', str(val))
+                    paramPass = match is not None
+                    if not paramPass:
+                        rsvLogger.error("%s: Malformed DateTimeOffset" % PropertyName)
+                else:
+                    rsvLogger.error("%s: Expected string value for DateTimeOffset" % PropertyName)
+
 
             elif propRealType == 'Edm.Int16' or propRealType == 'Edm.Int32' or\
                     propRealType == 'Edm.Int64' or propRealType == 'Edm.Int' or\
                     propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
                 rsvLogger.debug("intcheck: %s %s %s", propRealType, val, (validMinAttr, validMaxAttr))
-                paramPass = isinstance( val, (int, float) )
-                # note: check if val can be string, if it can't this might
-                # have trouble
-                if 'Int' in propRealType:
-                    paramPass = paramPass and isinstance( val, int )
-                if validMinAttr is not None:
-                    paramPass = paramPass and int(
-                        validMinAttr['int']) <= val
-                if validMaxAttr is not None:
-                    paramPass = paramPass and int(
-                        validMaxAttr['int']) >= val
+                paramPass = isinstance( val, (int, float) ) 
+                if paramPass:
+                    if 'Int' in propRealType:
+                        paramPass = isinstance( val, int )
+                        if not paramPass:
+                            rsvLogger.error("%s: Expected int" % PropertyName)
+                    if validMinAttr is not None:
+                        paramPass = paramPass and int(
+                            validMinAttr['int']) <= val
+                        if not paramPass:
+                            rsvLogger.error("%s: Value out of assigned min range" % PropertyName)
+                    if validMaxAttr is not None:
+                        paramPass = paramPass and int(
+                            validMaxAttr['int']) >= val
+                        if not paramPass:
+                            rsvLogger.error("%s: Value out of assigned max range" % PropertyName)
+                else:
+                    rsvLogger.error("%s: Expected numeric type" % PropertyName)
+
 
             elif propRealType == 'Edm.Guid':
-                match = re.match(
-                    "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", str(val))
-                if match:
-                    paramPass = True
-
-            elif propRealType == 'Edm.String':
-                if validPatternAttr is not None:
-                    pattern = validPatternAttr.get('string', '')
-                    match = re.fullmatch(pattern, val)
+                if isinstance(val, str):
+                    match = re.match(
+                        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", str(val))
                     paramPass = match is not None
+                    if not paramPass:
+                        rsvLogger.error("%s: Malformed Guid" % PropertyName)
                 else:
-                    paramPass = True
+                    rsvLogger.error("%s: Expected string value for Guid" % PropertyName)
+                    
+            elif propRealType == 'Edm.String':
+                if isinstance(val, str):
+                    if validPatternAttr is not None:
+                        pattern = validPatternAttr.get('string', '')
+                        match = re.fullmatch(pattern, val)
+                        paramPass = match is not None
+                        if not paramPass:
+                            rsvLogger.error("%s: Malformed String" % PropertyName)
+                    else:
+                        paramPass = True
+                else:
+                    rsvLogger.error("%s: Expected string value" % PropertyName)
 
             else:
                 if propRealType == 'complex':
@@ -557,9 +577,24 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
                     continue
 
                 elif propRealType == 'enum':
-                    # note: Make sure to check lowercase
-                    if val.lower() in PropertyItem['typeprops']:
+                    if isinstance(val, str):
+                        paramPass = val in PropertyItem['typeprops']
+                        if not paramPass:
+                            rsvLogger.error("%s: Invalid enum found (check casing?)" % PropertyName)
+                    else:
+                        rsvLogger.error("%s: Expected string value for Enum" % PropertyName)
+                    
+                elif propRealType == 'deprecatedEnum':
+                    if isinstance(val, list):
                         paramPass = True
+                        for enumItem in val:
+                            for k,v in enumItem.items():
+                                rsvLogger.debug('%s, %s' % (k,v))
+                                paramPass = paramPass and str(v) in PropertyItem['typeprops']
+                        if not paramPass:
+                            rsvLogger.error("%s: Invalid DeprecatedEnum found (check casing?)" % PropertyName)
+                    else:
+                        rsvLogger.error("%s: Expected string value for DeprecatedEnum" % PropertyName) 
 
                 elif propRealType == 'entity':
                     # check if the entity is truly what it's supposed to be
@@ -590,7 +625,13 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
 
                             rsvLogger.debug('%s, %s, %s', propType, propCollectionType, allTypes)
                             paramPass = propType in allTypes or propCollectionType in allTypes
-                # Note: Actually check if this is correct
+                            if not paramPass:
+                                rsvLogger.error("%s: Expected Entity type %s, but not found in type inhertiance %s" % (PropertyName, (propType, propCollectionType), allTypes))
+                        else:
+                            rsvLogger.error("%s: Could not get schema file for Entity check" % PropertyName)
+                    else:
+                        rsvLogger.error("%s: Could not get resource for Entity check" % PropertyName)
+
 
         resultList[item + appendStr] = (val, (propType, propRealType),
                                          'Exists' if propExists else 'DNE',
@@ -603,12 +644,15 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
             counts[propType] += 1
             if not paramPass:
                 if propMandatory:
+                    rsvLogger.error("%s: Mandatory prop has failed to check" % PropertyName)
                     counts['failMandatoryProp'] += 1
                 else:
                     counts['failProp'] += 1
             elif not propMandatoryPass:
+                rsvLogger.error("%s: Mandatory prop does not exist" % PropertyName)
                 counts['failMandatoryExist'] += 1
             elif not propNullablePass:
+                rsvLogger.error("%s: This property is not nullable" % PropertyName)
                 counts['failNull'] += 1
             rsvLogger.info("\tFAIL")
 
@@ -713,12 +757,16 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # rs-assertion: 9.4.1
     # Initial startup here
     rsvLogger = logging.getLogger("rsv")
+    errorMessages = io.StringIO()
+    errh = logging.StreamHandler(errorMessages)
+    errh.setLevel(logging.ERROR)
+    rsvLogger.addHandler(errh)
+
     rsvLogger.info("\n*** %s, %s", uriName, URI)
     counts = Counter()
     propertyDict = OrderedDict()
     results = OrderedDict()
     messages = OrderedDict()
-    errorMessages = list()
 
     results[uriName] = (URI, False, counts, messages, errorMessages)
 
@@ -727,9 +775,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         success, jsonData, status = callResourceURI(URI)
         rsvLogger.debug('%s, %s, %s', success, jsonData, status)
         if not success:
-            rsvLogger.error("validateURI: Get URI failed.")
+            rsvLogger.error('%s:  URI could not be acquired: %s' % (URI, status))
             counts['failGet'] += 1
-            errorMessages += ('%s:  URI could not be acquired: %s' % (URI, status),)
+            rsvLogger.removeHandler(errh) 
             return False, counts, results, None
         counts['passGet'] += 1
     else:
@@ -743,9 +791,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if expectedType is None:
         SchemaFullType = jsonData.get('@odata.type')
         if SchemaFullType is None:
-            rsvLogger.error("validateURI: Json does not contain type, is error?")
             counts['failJsonError'] += 1
-            errorMessages += (URI + ':  Json does not contain @odata.type',)
+            rsvLogger.error(str(URI) + ':  Json does not contain @odata.type',)
+            rsvLogger.removeHandler(errh) 
             return False, counts, results, None
     else:
         SchemaFullType = expectedType
@@ -780,7 +828,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         rsvLogger.error("validateURI: No schema XML for %s %s",
                         SchemaFullType, SchemaType)
         counts['failSchema'] += 1
-        errorMessages += (URI + ':  No such XML for ' + SchemaFullType,)
+        rsvLogger.removeHandler(errh) 
         return False, counts, results, None
 
     refDict = getReferenceDetails(SchemaSoup)
@@ -796,8 +844,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     except Exception as ex:
         rsvLogger.error(traceback.format_exc())
         counts['exceptionGetType'] += 1
-        errorMessages += (URI + ':  Getting type failed for ' + SchemaFullType,)
+        rsvLogger.error(URI + ':  Getting type failed for ' + SchemaFullType,)
         rsvLogger.error(errorMessages)
+        rsvLogger.removeHandler(errh) 
         return False, counts, results, links
     rsvLogger.debug(item for item in propertyList)
 
@@ -806,8 +855,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         try:
             propertyDict[prop[2]] = getPropertyDetails(*prop)
         except Exception as ex:
-            rsvLogger.error(traceback.format_exc())
-            errorMessages += ('%s:  Could not get details on this property: %s, %s' % (prop, str(type(ex).__name__), str(ex)),)
+            rsvLogger.debug(traceback.format_exc())
+            rsvLogger.error('%s:  Could not get details on this property: %s, %s' % (prop, str(type(ex).__name__), str(ex)),)
             counts['exceptionGetDict'] += 1
     rsvLogger.debug(propertyDict)
 
@@ -819,8 +868,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             messages.update(propMessages)
             counts.update(propCounts)
         except Exception as ex:
-            rsvLogger.error(traceback.format_exc())
-            errorMessages += ('%s:  Could not finish compliance check on this property: %s, %s' % (prop, str(type(ex).__name__), str(ex)),)
+            rsvLogger.debug(traceback.format_exc())
+            rsvLogger.error('%s:  Could not finish compliance check on this property: %s, %s' % (prop, str(type(ex).__name__), str(ex)),)
             counts['exceptionPropCompliance'] += 1
 
     # List all items checked and unchecked
@@ -834,6 +883,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             key, 'Exists And Checks' if key in messages else 'Exists, no schema check'))
         if key not in messages:
             # note: extra messages for "unchecked" properties
+            if '@' not in key:
+                rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)
             messages[key] = (item, '-',
                              'Exists',
                              '-')
@@ -849,7 +900,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     links = getAllLinks(jsonData, propertyDict, refDict)
 
     rsvLogger.debug(links)
-    
+    rsvLogger.removeHandler(errh) 
     return True, counts, results, links
 
 ##########################################################################
@@ -859,10 +910,19 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
 if __name__ == '__main__':
     # Logging config
+    # logging
+    startTick = datetime.now()
+    if not os.path.isdir('logs'):
+           os.makedirs('logs')
     rsvLogger = logging.getLogger("rsv")
+    fmt = logging.Formatter('%(levelname)s - %(message)s')
+    fh = logging.FileHandler(datetime.strftime(startTick, "logs/ComplianceLog_%m_%d_%Y_%H%M%S.txt"))
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(fmt)
+    rsvLogger.addHandler(fh)
     
     rsvLogger.info("RedfishServiceValidator Config details: %s", str(
-        (useSSL, ConfigURI, User, SchemaLocation, chkCert, localOnly)))
+        (ConfigURI, 'user:' + str(User), SchemaLocation, 'chkCert' if chkCert else '', 'localOnly' if localOnly else '')))
     
     # Start main
     status_code = 1
@@ -870,10 +930,11 @@ if __name__ == '__main__':
     finalCounts = Counter()
     nowTick = datetime.now()
     # Render html
-    htmlStr = '<html><head><title>Compliance Test Summary</title>\
+    htmlStrTop = '<html><head><title>Compliance Test Summary</title>\
             <style>\
             .pass {background-color:#99EE99; text-align:center}\
             .fail {background-color:#EE9999; text-align:center}\
+            .failLog {background-color:#EE9999; text-align:left; white-space:pre}\
             .title {background-color:#DDDDDD; border: 1pt solid; padding: 8px}\
             .titlerow {border: 2pt solid}\
             body {background-color:lightgrey; border: 1pt solid; text-align:center; margin-left:auto; margin-right:auto}\
@@ -882,8 +943,8 @@ if __name__ == '__main__':
             table {width:90%; margin: 0px auto;}\
             .titletable {width:100%}\
             </style>\
-            </head><body>'
-    htmlStr += '<table>\
+            </head>'
+    htmlStrBodyHeader = '<body><table>\
                 <tr><th>##### Redfish Compliance Test Report #####</th></tr>\
                 <tr><th>System: ' + ConfigURI + '</th></tr>\
                 <tr><th>User: ' + User + '</th></tr>\
@@ -891,7 +952,7 @@ if __name__ == '__main__':
                 <tr><th>Run time: ' + str(nowTick - startTick) + '</th></tr>\
                 <tr><th></th></tr>'
 
-    htmlStr2 = '' + htmlStr
+    htmlStr = '' 
 
     cnt = 1
     rsvLogger.info(len(results))
@@ -927,14 +988,22 @@ if __name__ == '__main__':
                 htmlStr += '</tr>'
         htmlStr += '</table></td></tr>'
         if results[item][4] is not None:
-            for i in results[item][4]:
-                htmlStr += '<tr><td class="fail">' + str(i) + '</td></tr>'
+            htmlStr += '<tr><td class="failLog">' + str(results[item][4].getvalue()).replace('\n','<br />') + '</td></tr>'
+            results[item][4].close()
         htmlStr += '<tr><td>---</td></tr>'
     htmlStr += '</table></body></html>'
     htmlStr += '</table></body></html>'
 
+    htmlStrTotal = '<tr><td>Final counts: '
+    for countType in finalCounts:
+        htmlStrTotal += '{p}: {q},   '.format(p=countType,
+                                         q=finalCounts.get(countType, 0))
+    htmlStrTotal += '</td></tr>'
+
+    htmlPage = htmlStrTop + htmlStrBodyHeader + htmlStrTotal + htmlStr
+
     with open(datetime.strftime(startTick, "logs/ComplianceHtmlLog_%m_%d_%Y_%H%M%S.html"), 'w') as f:
-        f.write(htmlStr)
+        f.write(htmlPage)
     
     fails = 0
     for key in finalCounts:
