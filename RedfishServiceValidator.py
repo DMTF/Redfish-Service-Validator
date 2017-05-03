@@ -6,9 +6,7 @@
 from bs4 import BeautifulSoup
 import configparser
 import requests
-import re
-import os
-import sys
+import io, os, sys, re
 from datetime import datetime
 from collections import Counter, OrderedDict
 from functools import lru_cache
@@ -20,6 +18,7 @@ startTick = datetime.now()
 if not os.path.isdir('logs'):
        os.makedirs('logs')
 
+# Make logging blocks for each SingleURI Validate
 rsvLogger = logging.getLogger("rsv")
 rsvLogger.setLevel(logging.DEBUG)
 fmt = logging.Formatter('%(levelname)s - %(message)s')
@@ -618,7 +617,7 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
 # Function to collect all links in current resource schema
 
 
-def getAllLinks(jsonData, propDict):
+def getAllLinks(jsonData, propDict, refDict):
     """
     Function that returns all links provided in a given JSON response.
     This result will include a link to itself.
@@ -638,6 +637,7 @@ def getAllLinks(jsonData, propDict):
     #   if it is, recurse on collection or individual item
     for key in propDict:
         item = getType(key).split(':')[-1]
+        cSchema = refDict.get(getNamespace(key),(getNamespace(key),None))[1]
         if propDict[key]['isNav']:
             insideItem = jsonData.get(item)
             if insideItem is not None:
@@ -648,11 +648,11 @@ def getAllLinks(jsonData, propDict):
                     cnt = 0
                     for listItem in insideItem:
                         linkList[getType(propDict[key]['isCollection']) +
-                                 '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, listItem)
+                                 '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
                         cnt += 1
                 else:
                     linkList[getType(propDict[key]['attrs']['name'])] = (\
-                            insideItem.get('@odata.id'), autoExpand, cType, insideItem)
+                            insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
     for key in propDict:
         item = getType(key).split(':')[-1]
         if propDict[key]['realtype'] == 'complex':
@@ -660,10 +660,10 @@ def getAllLinks(jsonData, propDict):
                 if propDict[key].get('isCollection') is not None:
                     for listItem in jsonData[item]:
                         linkList.update(getAllLinks(
-                            listItem, propDict[key]['typeprops']))
+                            listItem, propDict[key]['typeprops'],refDict))
                 else:
                     linkList.update(getAllLinks(
-                        jsonData[item], propDict[key]['typeprops']))
+                        jsonData[item], propDict[key]['typeprops'],refDict))
     return linkList
 
 
@@ -680,9 +680,36 @@ def checkAnnotationCompliance(soup, refs, decoded):
             
 
 # Consider removing this as a global
-allLinks = set()
+def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=set()):
+    allLinks.add(URI)
+    
+    validateSuccess, counts, results, links = \
+            validateSingleURI(URI, uriName, expectedType, expectedSchema, expectedJson)
+    if validateSuccess:
+        for linkName in links:
+            if links[linkName][0] in allLinks:
+                counts['repeat'] += 1
+                continue
 
-def validateURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None):
+            allLinks.add(links[linkName][0])
+            linkURI, autoExpand, linkType, linkSchema, innerJson = links[linkName]
+            rsvLogger.debug('%s', links[linkName])
+
+            if linkType is not None and autoExpand:
+                success, linkCounts, linkResults = validateURITree(
+                        linkURI, uriName + ' -> ' + linkName, linkType, linkSchema, innerJson, allLinks)
+            else:
+                success, linkCounts, linkResults = validateURITree(
+                    linkURI, uriName + ' -> ' + linkName, allLinks=allLinks)
+            if not success:
+                counts['unvalidated'] += 1
+            rsvLogger.info('%s, %s', linkName, linkCounts)
+            results.update(linkResults)
+    
+    return validateSuccess, counts, results
+
+
+def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None):
     # rs-assertion: 9.4.1
     # Initial startup here
     rsvLogger = logging.getLogger("rsv")
@@ -703,7 +730,7 @@ def validateURI(URI, uriName='', expectedType=None, expectedSchema=None, expecte
             rsvLogger.error("validateURI: Get URI failed.")
             counts['failGet'] += 1
             errorMessages += ('%s:  URI could not be acquired: %s' % (URI, status),)
-            return False, counts, results
+            return False, counts, results, None
         counts['passGet'] += 1
     else:
         jsonData = expectedJson
@@ -719,7 +746,7 @@ def validateURI(URI, uriName='', expectedType=None, expectedSchema=None, expecte
             rsvLogger.error("validateURI: Json does not contain type, is error?")
             counts['failJsonError'] += 1
             errorMessages += (URI + ':  Json does not contain @odata.type',)
-            return False, counts, results
+            return False, counts, results, None
     else:
         SchemaFullType = expectedType
     rsvLogger.info(SchemaFullType)
@@ -754,7 +781,7 @@ def validateURI(URI, uriName='', expectedType=None, expectedSchema=None, expecte
                         SchemaFullType, SchemaType)
         counts['failSchema'] += 1
         errorMessages += (URI + ':  No such XML for ' + SchemaFullType,)
-        return False, counts, results
+        return False, counts, results, None
 
     refDict = getReferenceDetails(SchemaSoup)
 
@@ -771,7 +798,7 @@ def validateURI(URI, uriName='', expectedType=None, expectedSchema=None, expecte
         counts['exceptionGetType'] += 1
         errorMessages += (URI + ':  Getting type failed for ' + SchemaFullType,)
         rsvLogger.error(errorMessages)
-        return False, counts, results
+        return False, counts, results, links
     rsvLogger.debug(item for item in propertyList)
 
     # Generate dictionary of property info
@@ -819,34 +846,11 @@ def validateURI(URI, uriName='', expectedType=None, expectedSchema=None, expecte
     results[uriName] = (URI, success, counts, messages, errorMessages)
 
     # Get all links available
-    links = getAllLinks(jsonData, propertyDict)
+    links = getAllLinks(jsonData, propertyDict, refDict)
 
     rsvLogger.debug(links)
     
-    for linkName in links:
-        if links[linkName][0] in allLinks:
-            counts['repeat'] += 1
-            continue
-
-        allLinks.add(links[linkName][0])
-        
-        linkURI, autoExpand, linkType, innerJson = links[linkName]
-        
-        rsvLogger.debug('%s', links[linkName])
-
-        if linkType is not None and autoExpand:
-            linkSchema = refDict.get(getNamespace(linkType),(None,None))[1]
-            success, linkCounts, linkResults = validateURI(
-                linkURI, uriName + ' -> ' + linkName, linkType, linkSchema, innerJson)
-        else:
-            success, linkCounts, linkResults = validateURI(
-                linkURI, uriName + ' -> ' + linkName)
-        if not success:
-            counts['unvalidated'] += 1
-        rsvLogger.info('%s, %s', linkName, linkCounts)
-        results.update(linkResults)
-
-    return True, counts, results
+    return True, counts, results, links
 
 ##########################################################################
 ######################          Script starts here              ##########
@@ -862,7 +866,7 @@ if __name__ == '__main__':
     
     # Start main
     status_code = 1
-    success, counts, results = validateURI('/redfish/v1', 'ServiceRoot')
+    success, counts, results = validateURITree('/redfish/v1', 'ServiceRoot')
     finalCounts = Counter()
     nowTick = datetime.now()
     # Render html
