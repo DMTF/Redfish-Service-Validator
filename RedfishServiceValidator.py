@@ -15,14 +15,14 @@ import traceback
 
 
 # Make logging blocks for each SingleURI Validate
-rsvLogger = logging.getLogger("rsv")
-rsvLogger.setLevel(logging.DEBUG)
+rsvLogr = logging.getLogger("rsv")
+rsvLogr.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
-rsvLogger.addHandler(ch)
+rsvLogr.addHandler(ch)
 eh = logging.StreamHandler(sys.stderr)
 eh.setLevel(logging.ERROR)
-rsvLogger.addHandler(eh)
+rsvLogr.addHandler(eh)
 
 # Read config info from ini file placed in config folder of tool
 config = configparser.ConfigParser()
@@ -224,9 +224,9 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
     innerschema = soup.find('schema', attrs={'namespace': SchemaNamespace})
 
     if innerschema is None:
-        rsvLogger.error("Got XML, but schema still doesn't exist...? %s, %s",
-                        getNamespace(SchemaAlias), SchemaAlias)
-        raise Exception('exceptionType: Was not able to get type, is Schema in XML? '  + refs.get(getNamespace(SchemaAlias), (getNamespace(SchemaAlias), None)))
+        rsvLogger.error("Got XML, but schema still doesn't exist...? %s, %s" %
+                            (getNamespace(SchemaAlias), SchemaAlias))
+        raise Exception('exceptionType: Was not able to get type, is Schema in XML? '  + str(refs.get(getNamespace(SchemaAlias), (getNamespace(SchemaAlias), None))))
 
     for element in innerschema.find_all(tagType, attrs={'name': SchemaType}):
         rsvLogger.debug("___")
@@ -661,7 +661,7 @@ def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
 # Function to collect all links in current resource schema
 
 
-def getAllLinks(jsonData, propDict, refDict):
+def getAllLinks(jsonData, propDict, refDict, prefix=''):
     """
     Function that returns all links provided in a given JSON response.
     This result will include a link to itself.
@@ -681,7 +681,6 @@ def getAllLinks(jsonData, propDict, refDict):
     #   if it is, recurse on collection or individual item
     for key in propDict:
         item = getType(key).split(':')[-1]
-        cSchema = refDict.get(getNamespace(key),(getNamespace(key),None))[1]
         if propDict[key]['isNav']:
             insideItem = jsonData.get(item)
             if insideItem is not None:
@@ -690,12 +689,15 @@ def getAllLinks(jsonData, propDict, refDict):
                     propDict[key].get('OData.AutoExpand'.lower(),None) is not None
                 if cType is not None:
                     cnt = 0
+                    cSchema = refDict.get(getNamespace(cType),(getNamespace(cType),None))[1]
                     for listItem in insideItem:
-                        linkList[getType(propDict[key]['isCollection']) +
+                        linkList[prefix+getType(propDict[key]['isCollection']) +
                                  '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
                         cnt += 1
                 else:
-                    linkList[getType(propDict[key]['attrs']['name'])] = (\
+                    cType = propDict[key]['attrs'].get('type')
+                    cSchema = refDict.get(getNamespace(cType),(getNamespace(cType),None))[1]
+                    linkList[prefix+getType(propDict[key]['attrs']['name'])] = (\
                             insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
     for key in propDict:
         item = getType(key).split(':')[-1]
@@ -704,10 +706,11 @@ def getAllLinks(jsonData, propDict, refDict):
                 if propDict[key].get('isCollection') is not None:
                     for listItem in jsonData[item]:
                         linkList.update(getAllLinks(
-                            listItem, propDict[key]['typeprops'],refDict))
+                            listItem, propDict[key]['typeprops'],refDict,prefix+item+'.'))
                 else:
                     linkList.update(getAllLinks(
-                        jsonData[item], propDict[key]['typeprops'],refDict))
+                        jsonData[item], propDict[key]['typeprops'],refDict,prefix+item+'.'))
+    rsvLogger.debug(str(linkList))
     return linkList
 
 
@@ -744,7 +747,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
                         linkURI, uriName + ' -> ' + linkName, linkType, linkSchema, innerJson, allLinks)
             else:
                 success, linkCounts, linkResults = validateURITree(
-                    linkURI, uriName + ' -> ' + linkName, allLinks=allLinks)
+                        linkURI, uriName + ' -> ' + linkName, allLinks=allLinks)
             if not success:
                 counts['unvalidated'] += 1
             rsvLogger.info('%s, %s', linkName, linkCounts)
@@ -763,6 +766,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     rsvLogger.addHandler(errh)
 
     rsvLogger.info("\n*** %s, %s", uriName, URI)
+    rsvLogger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)
     counts = Counter()
     propertyDict = OrderedDict()
     results = OrderedDict()
@@ -814,15 +818,13 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     if success:
         refDict = getReferenceDetails(SchemaSoup)
-        if SchemaType in refDict:
+        if SchemaNamespace in refDict:
             success, SchemaSoup = getSchemaDetails(
-                SchemaNamespace, SchemaURI=refDict[getNamespace(SchemaType)][1])
+                SchemaNamespace, SchemaURI=refDict[getNamespace(SchemaFullType)][1])
     else:
         success, SchemaSoup = getSchemaDetails(SchemaNamespace)
         if not success:
             success, SchemaSoup = getSchemaDetails(SchemaType)
-        if success:
-            refDict = getReferenceDetails(SchemaSoup)
 
     if not success:
         rsvLogger.error("validateURI: No schema XML for %s %s",
@@ -845,9 +847,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         rsvLogger.error(traceback.format_exc())
         counts['exceptionGetType'] += 1
         rsvLogger.error(URI + ':  Getting type failed for ' + SchemaFullType,)
-        rsvLogger.error(errorMessages)
         rsvLogger.removeHandler(errh) 
-        return False, counts, results, links
+        return False, counts, results, None
     rsvLogger.debug(item for item in propertyList)
 
     # Generate dictionary of property info
