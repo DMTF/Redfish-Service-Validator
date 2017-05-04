@@ -1,1658 +1,1015 @@
 # Copyright Notice:
 # Copyright 2016 Distributed Management Task Force, Inc. All rights reserved.
-# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/LICENSE.md
+# License: BSD 3-Clause License. For full text see link:
+# https://github.com/DMTF/Redfish-Service-Validator/LICENSE.md
 
-from traceback import format_exc
 from bs4 import BeautifulSoup
-from time import strftime, strptime
-from datetime import datetime as DT
-import ConfigParser, glob, requests
-import random, string, re
-from html import HTML
-import time
-import os
+import configparser
+import requests
+import io, os, sys, re
+from datetime import datetime
+from collections import Counter, OrderedDict
+from functools import lru_cache
+import logging
+import traceback
+
+
+# Make logging blocks for each SingleURI Validate
+rsvLogger = logging.getLogger("rsv")
+rsvLogger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.INFO)
+rsvLogger.addHandler(ch)
+eh = logging.StreamHandler(sys.stderr)
+eh.setLevel(logging.ERROR)
+rsvLogger.addHandler(eh)
 
 # Read config info from ini file placed in config folder of tool
-config = ConfigParser.ConfigParser()
+config = configparser.ConfigParser()
 config.read(os.path.join('.', 'config', 'config.ini'))
-ConfigURI = 'https://'+config.get('SystemInformation', 'TargetIP')
+useSSL = config.getboolean('Options', 'UseSSL')
+ConfigURI = ('https' if useSSL else 'http') + '://' + \
+    config.get('SystemInformation', 'TargetIP')
 User = config.get('SystemInformation', 'UserName')
 Passwd = config.get('SystemInformation', 'Password')
 SchemaLocation = config.get('Options', 'MetadataFilePath')
-chkCert = config.get('Options', 'CertificateCheck')
+chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
+localOnly = config.getboolean('Options', 'LocalOnlyMode')
 
-ComplexTypeLinksDictionary = {'SubLinks':[]}
-ComplexLinksIndex = 0
-GlobalCount = 1
-AllLinks = []
-global SerialNumber
-SerialNumber = 1
-# Initiate counters for Pass/Fail report at Schema level and overall compliance level
-countTotProp = countPassProp = countFailProp = countSkipProp = countWarnProp = 0
-countTotSchemaProp = countPassSchemaProp = countFailSchemaProp = countSkipSchemaProp = countWarnSchemaProp = 0
-countTotMandatoryProp = countPassMandatoryProp = countFailMandatoryProp = countWarnMandatoryProp = 0
+@lru_cache(maxsize=64)
+def callResourceURI(URILink):
+    """
+    Makes a call to a given URI or URL
 
-# Function to GET ServiceRoot response from test system
-# This call should not require authentication
-def getRootURI():
-        global countTotProp
-        countTotProp+=1
-        try:
-                if chkCert == 'On':
-                        geturl = requests.get(ConfigURI+'/redfish/v1')
-                else:
-                        geturl = requests.get(ConfigURI+'/redfish/v1', verify=False)
-                statusCode = geturl.status_code
-                decoded = geturl.json()
-                if statusCode == 200:
-                        generateLog("Retrieving Resource ServiceRoot ("+ConfigURI+"/redfish/v1)", '200', str(statusCode))
-                        return True, decoded
-                else:
-                        generateLog("Retrieving Resource ServiceRoot ("+ConfigURI+"/redfish/v1)", '200', str(statusCode), logPass = False)
-                        return False, statusCode
-        except Exception:
-                return False, "ERROR: %s" % str(format_exc())
+    param arg1: path to URI "/example/1", or URL "http://example.com"
+    return: (success boolean, data)
+    """ 
+    # rs-assertions: 6.4.1, including accept, content-type and odata-versions
+    # rs-assertion: clients cannot make assumptions about URIs
+    # rs-assertion: handle redirects?  and target permissions
+    
+    nonService = 'http' in URILink[:8]
 
-# Function to GET/PATCH/POST resource URI
-# Certificate check is conditional based on input from config ini file
-def callResourceURI(SchemaName, URILink, Method = 'GET', payload = None):
-        URILink = URILink.replace("#", "%23")
-        statusCode = ""
-        global countTotProp
-        if Method == 'GET':
-                countTotProp+=1
-        try:
-                if chkCert == 'On':
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, auth = (User, Passwd))
-                else:
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, verify=False, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, verify=False, auth = (User, Passwd))
-                statusCode = response.status_code
-                if Method == 'GET' or Method == 'ReGET':
-                        expCode = [200, 204]
-                elif Method == 'PATCH':
-                        expCode = [200, 204, 400, 405]
-                print Method, statusCode, expCode
-                if ((Method == 'GET' or Method == 'ReGET') and statusCode in expCode):
-                        if Method == 'GET':
-                                generateLog("Retrieving Resource "+SchemaName+" ("+ConfigURI+URILink+")", str(expCode), str(statusCode))
-                        decoded = response.json()
-                        return statusCode, True, decoded, response.headers
-                elif (Method == 'PATCH' and statusCode in expCode):
-                        return statusCode, True, '', response.headers
-                else:
-                        if Method == 'GET':
-                                generateLog(SchemaName+" Resource ("+ConfigURI+URILink+")", str(expCode), str(statusCode), logPass = False)
-                        return statusCode, False, statusCode, ''
-        except Exception:
-                return statusCode, False, "ERROR: %s" % str(format_exc()), ''
+    # rs-assertion: uris may contain '?' queries and '#' frags
+    # what about $metadata?  frags are for clients...
+    URILink = URILink.replace("#", "%23")
+    statusCode = ''
 
-# Function to GET/PATCH/POST resource URI
-# Certificate check is conditional based on input from config ini file
-def ResetPatchedAttribute(SchemaName, URILink, Method = 'GET', payload = None):
-        URILink = URILink.replace("#", "%23")
-        global countTotProp
-        if Method == 'GET':
-                countTotProp+=1
-        try:
-                if chkCert == 'On':
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, auth = (User, Passwd))
-                else:
-                        if Method == 'GET' or Method == 'ReGET':
-                                response = requests.get(ConfigURI+URILink, verify=False, auth = (User, Passwd))
-                        elif Method == 'PATCH':
-                                response = requests.patch(ConfigURI+URILink, data = payload, verify=False, auth = (User, Passwd))
-                statusCode = response.status_code
-                decoded = response.json()
-                return statusCode, True, decoded, response.headers
-        except Exception:
-                return statusCode, False, "ERROR: %s" % str(format_exc()), ''
-                        
-# Function to parse individual Schema xml file and search for the Alias string
-# Returns the content of the xml file on successfully matching the Alias
-def getSchemaDetails(SchemaAlias):
-        if '.' in SchemaAlias:
-                Alias = SchemaAlias[:SchemaAlias.find('.')]
+    # rs-assertion: require no auth for serviceroot calls
+    if not nonService:
+        # feel free to make this into a regex
+        noauthchk = \
+            ('/redfish' in URILink and '/redfish/v1' not in URILink) or\
+            URILink in ['/redfish/v1', '/redfish/v1/', '/redfish/v1/odata', 'redfish/v1/odata/'] or\
+            '/redfish/v1/$metadata' in URILink
+        if noauthchk:
+            rsvLogger.debug('dont chkauth')
+            auth = None
         else:
-                Alias = SchemaAlias
-        for filename in glob.glob(SchemaLocation):
-                try:
-                        filehandle = open(filename, "r")
-                        filedata = filehandle.read()
-                        filehandle.close()
-                        soup = BeautifulSoup(filedata)
-                        parentTag = soup.find_all('edmx:dataservices', limit=1)
-                        for eachTag in parentTag:
-                                for child in eachTag.find_all('schema', limit=1):
-                                        
-                                        SchemaNamespace = child['namespace']
-                                        SchemaAlias = SchemaNamespace.split(".")[0]
-                                        if SchemaAlias == Alias:
-                                                return True, soup
-                except:
-                        return False, "ERROR: %s" % str(format_exc())
-        return False, "Schema File not found for " + Alias
+            auth = (User, Passwd)
+
+    # rs-assertion: do not send auth over http
+    if not useSSL or nonService:
+        auth = None
+    
+    # rs-assertion: must have application/json or application/xml
+    rsvLogger.debug('callingResourceURI: %s', URILink)
+    try:
+        response = requests.get(ConfigURI + URILink if not nonService else URILink,
+                                auth=auth, verify=chkCert)
+        expCode = [200]
+        statusCode = response.status_code
+        rsvLogger.debug('%s, %s, %s', statusCode, expCode, response.headers)
+        if statusCode in expCode:
+            contenttype = response.headers.get('content-type')
+            if contenttype is not None and 'application/json' in contenttype:
+                decoded = response.json(object_pairs_hook=OrderedDict)
+            else:
+                decoded = response.text
+            return True, decoded, statusCode
+    except Exception as ex:
+        rsvLogger.error("Something went wrong: %s", str(ex))
+    return False, None, statusCode
 
 
-# Function to search for all Property attributes in any target schema
-# Schema XML may be the initial file for local properties or referenced schema for foreign properties
-def getEntityTypeDetails(soup, SchemaAlias):
+# note: Use some sort of re expression to parse SchemaAlias
+# ex: #Power.1.1.1.Power , #Power.v1_0_0.Power
+def getNamespace(string):
+    return string.replace('#', '').rsplit('.', 1)[0]
+def getType(string):
+    return string.replace('#', '').rsplit('.', 1)[-1]
 
-        PropertyList = []
-        PropLink = ""
-        def getResourceProperties(myAlias, soup, subProperty):
-                AllforeignEntityName = soup.find_all('entitytype', attrs={'name':subProperty})
-                for foreignEntityName in AllforeignEntityName:                  
-                        EntityBaseType = ""
-                        try:
-                                EntityBaseType = foreignEntityName['basetype']                          
-                        except:
-                                EntityBaseType = ''
 
-                        if '.' in EntityBaseType:
-                                Alias = EntityBaseType.split('.')[0]
-                                subProperty1 = EntityBaseType.split('.')[-1]
-                                if Alias == myAlias and Alias == subProperty1:
-                                        pass
-                                elif (Alias == myAlias) and (Alias != subProperty1):
-                                        if (subProperty1 == subProperty):
-                                                pass
-                                        else:
-                                                getResourceProperties(Alias, soup, subProperty1)
-                                else:   
-                                        status, moreSoup = getSchemaDetails(Alias)
-                                        getResourceProperties(Alias, moreSoup, subProperty1)
-                        try:
-                                for PropertyName in foreignEntityName.find_all('property'):
-                                        PropLink = myAlias+':'+PropertyName['name']
-                                        if PropLink in PropertyList:
-                                                continue
-                                        else:
-                                                PropertyList.append(PropLink)
-                        except:
-                                print 'No properties defined for ', foreignEntityName
+@lru_cache(maxsize=64)
+def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
+    """
+    Find Schema file for given Namespace.
 
-        searchEntity = SchemaAlias.split('.')[-1]
-        aliasCheck = SchemaAlias.split('.')[0]
+    param arg1: Schema Namespace, such as ServiceRoot
+    param SchemaURI: uri to grab schema, given localOnly is False
+    return: (success boolean, a Soup object)
+    """
+    if SchemaAlias is None:
+        return False, None
+    
+    if SchemaURI is not None and not localOnly:
+        success, data, status = callResourceURI(SchemaURI)
+        if success:
+            soup = BeautifulSoup(data, "html.parser")
+            return True, soup
+        rsvLogger.debug("Fallback to local Schema")
+    
+    Alias = getNamespace(SchemaAlias).split('.')[0]
+    try:
+        filehandle = open(SchemaLocation + '/' + Alias + suffix, "r")
+        filedata = filehandle.read()
+        filehandle.close()
+        soup = BeautifulSoup(filedata, "html.parser")
+        parentTag = soup.find('edmx:dataservices')
+        child = parentTag.find('schema')
+        SchemaNamespace = child['namespace']
+        FoundAlias = SchemaNamespace.split(".")[0]
+        if FoundAlias == Alias:
+            return True, soup
+    except Exception as ex:
+        rsvLogger.error("Something went wrong: %s", str(ex))
+    return False, None
+
+
+def getReferenceDetails(soup):
+    """
+    Create a reference dictionary from a soup file
+
+    param arg1: soup
+    return: dictionary
+    """
+    refDict = {}
+    refs = soup.find_all('edmx:reference')
+    for ref in refs:
+        includes = ref.find_all('edmx:include')
+        for item in includes:
+            if item.get('namespace') is None or ref.get('uri') is None:
+                rsvLogger.error("Reference incorrect for: ", item)
+                continue
+            if item.get('alias') is not None:
+                refDict[item['alias']] = (item['namespace'], ref['uri'])
+            else:
+                refDict[item['namespace']] = (item['namespace'], ref['uri'])
+                refDict[item['namespace'].split('.')[0]] = (item['namespace'], ref['uri'])
+    return refDict
+
+def getParentType(soup, refs, currentType, tagType='entitytype'):
+    propSchema = soup.find( 'schema', attrs={'namespace': getNamespace(currentType)})
+    
+    if propSchema is None:
+        return False, None, None, None
+    propEntity = propSchema.find( tagType, attrs={'name': getType(currentType)})
+
+    if propEntity is None:
+        return False, None, None, None
+
+    currentType = propEntity.get('basetype')
+    if currentType is None:
+        return False, None, None, None
+    
+    currentType = currentType.replace('#','')
+    SchemaNamespace, SchemaType = getNamespace(currentType), getType(currentType)
+    propSchema = soup.find( 'schema', attrs={'namespace': SchemaNamespace})
+
+    if propSchema is None:
+        success, innerSoup = getSchemaDetails(
+            *refs.get(SchemaNamespace, (None,None)))
+        if not success:
+            return False, None, None, None
+        innerRefs = getReferenceDetails(innerSoup)
+        propSchema = innerSoup.find(
+            'schema', attrs={'namespace': SchemaNamespace})
+        if propSchema is None:
+            return False, None, None, None
+    else:
+        innerSoup = soup
+        innerRefs = refs
+
+    return True, innerSoup, innerRefs, currentType 
+
+
+def getTypeDetails(soup, refs, SchemaAlias, tagType):
+    """
+    Gets list of surface level properties for a given SchemaAlias,
+    thru base types included. 
+    
+    param arg1: soup
+    param arg2: references
+    param arg3: SchemaAlias string
+    param arg4: tag of Type, which can be EntityType or ComplexType...
+    return: list of (soup, ref, string PropertyName)
+    """
+    PropertyList = list()
+
+    SchemaNamespace, SchemaType = getNamespace(SchemaAlias), getType(SchemaAlias)
+
+    rsvLogger.debug("Schema is %s, %s, %s", SchemaAlias,
+                    SchemaType, SchemaNamespace)
+
+    innerschema = soup.find('schema', attrs={'namespace': SchemaNamespace})
+
+    if innerschema is None:
+        rsvLogger.error("Got XML, but schema still doesn't exist...? %s, %s" %
+                            (getNamespace(SchemaAlias), SchemaAlias))
+        raise Exception('exceptionType: Was not able to get type, is Schema in XML? '  + str(refs.get(getNamespace(SchemaAlias), (getNamespace(SchemaAlias), None))))
+
+    for element in innerschema.find_all(tagType, attrs={'name': SchemaType}):
+        rsvLogger.debug("___")
+        rsvLogger.debug(element['name'])
+        rsvLogger.debug(element.attrs)
+        rsvLogger.debug(element.get('basetype'))
         
-        for child in soup.find_all('entitytype'):
-                EntityName = child['name']
-
-                if EntityName == searchEntity:
-                        try:
-                                EntityBaseType = child['basetype']
-                        except:
-                                EntityBaseType = ''
-                        if '.' in EntityBaseType:
-
-                                Alias = EntityBaseType.split('.')[0]
-                                subProperty = EntityBaseType.split('.')[-1]
-                                if Alias == aliasCheck:
-                                        print "Already covered Schema 1"
-                                else:
-                                        status, moreSoup = getSchemaDetails(Alias)
-                                        getResourceProperties(Alias, moreSoup, subProperty)
-                        for PropertyTag in child.find_all('property'):
-                        
-                                propName = PropertyTag['name']
-                                propType = PropertyTag['type']
-                                if '.' in propType:
-                                        complexTypeSchema = propType.split('.')[0]
-                                        if complexTypeSchema == aliasCheck:
-                                                complexTypeSchemaPropName = ""
-                                                complexTypeSchemaPropName = propType.split('.')[-1]
-                                                FindComplexType = None
-                                                #if complexTypeSchemaPropName == propName:
-                                                try:
-                                                        FindComplexType = soup.find('complextype', attrs={'name':complexTypeSchemaPropName})
-                                                except:
-                                                        FindComplexType = None
-
-                                                try:
-                                                        ComplexBaseType = FindComplexType['basetype']
-                                                except:
-                                                        ComplexBaseType = None
-
-                                                if ComplexBaseType:
-                                                        if '.' in ComplexBaseType:
-                                                                ComplexAlias = ComplexBaseType.split('.')[0]
-                                                                subComplexProperty = ComplexBaseType.split('.')[-1]
-                                                                if ComplexAlias == aliasCheck:
-                                                                        print "Already covered Schema 2"
-                                                                        FindComplexInnerType = soup.find('complextype', attrs={'name':subComplexProperty})                                                      
-                                                                        if FindComplexInnerType:
-                                                                                for EachProperty in FindComplexInnerType.find_all('property'):
-                                                                                        eachChildAttribute = EachProperty['name']
-                                                                                        ComplexChildPropName = propName + "." + eachChildAttribute
-                                                                                        if ComplexChildPropName in PropertyList:
-                                                                                                continue
-                                                                                        else:
-                                                                                                PropertyList.append(ComplexChildPropName)
-                                                                                                
-                                                                elif ComplexAlias == "Resource":
-                                                                        status, moreSoup = getSchemaDetails(ComplexAlias)
-                                                                        try:
-                                                                                FindComplexTypeChild2 = moreSoup.find('complextype', attrs={'name':subComplexProperty})
-                                                                        except:
-                                                                                FindComplexTypeChild2 = None
-                                                                        
-                                                                        if FindComplexTypeChild2:
-                                                                                for eachChildProperty1 in FindComplexTypeChild2.find_all('property'):
-                                                                                        eachChildAttribute1 = eachChildProperty1['name']
-                                                                                        ComplexChildPropName1 =  'Resource:'+propName + "." + eachChildAttribute1
-                                                                                        if ComplexChildPropName1 in PropertyList:
-                                                                                                continue
-                                                                                        else:
-                                                                                                PropertyList.append(ComplexChildPropName1)
-                                                                        else:
-                                                                                PropLink = 'Resource:'+subComplexProperty
-                                                                                if PropLink in PropertyList:
-                                                                                        continue
-                                                                                else:
-                                                                                        PropertyList.append(PropLink)
-                                                                                        continue
-                                                
-                                                if FindComplexType:
-                                                        for EachProperty in FindComplexType.find_all('property'):
-                                                                eachAttribute = EachProperty['name']
-                                                                eachAttributeType = EachProperty['type']
-                                                                if '.' in eachAttributeType:
-                                                                        complexTypeSchemaChild = eachAttributeType.split('.')[0]
-                                                                        if complexTypeSchemaChild == 'Resource':
-                                                                                status, moreSoup = getSchemaDetails(complexTypeSchemaChild)
-                                                                                try:
-                                                                                        FindComplexTypeChild = moreSoup.find('complextype', attrs={'name':eachAttribute})
-                                                                                except:
-                                                                                        FindComplexTypeChild = None
-                                                                                
-                                                                                if FindComplexTypeChild:
-                                                                                        for eachChildProperty in FindComplexTypeChild.find_all('property'):
-                                                                                                eachChildAttribute = eachChildProperty['name']
-                                                                                                ComplexChildPropName = 'Resource:'+propName + "." + eachAttribute + "." + eachChildAttribute
-                                                                                                if ComplexChildPropName in PropertyList:
-                                                                                                        continue
-                                                                                                else:
-                                                                                                        PropertyList.append(ComplexChildPropName)
-                                                                                                        
-                                                                ComplexPropName = propName + "." + eachAttribute
-                                                                if ComplexPropName in PropertyList:
-                                                                        continue
-                                                                else:
-                                                                        PropertyList.append(ComplexPropName)
-                                                                        
-                                        if complexTypeSchema == 'Resource':
-                                                status, moreSoup = getSchemaDetails(complexTypeSchema)
-                                                try:
-                                                        FindComplexTypeChild1 = moreSoup.find('complextype', attrs={'name':propName})
-                                                except:
-                                                        FindComplexTypeChild1 = None
-                                                
-                                                if FindComplexTypeChild1:
-                                                        for eachChildProperty1 in FindComplexTypeChild1.find_all('property'):
-                                                                eachChildAttribute1 = eachChildProperty1['name']
-                                                                ComplexChildPropName1 =  'Resource:'+propName + "." + eachChildAttribute1
-                                                                if ComplexChildPropName1 in PropertyList:
-                                                                        continue
-                                                                else:
-                                                                        PropertyList.append(ComplexChildPropName1)
-                                                else:
-                                                        PropLink = 'Resource:'+propName
-                                                        if PropLink in PropertyList:
-                                                                continue
-                                                        else:
-                                                                PropertyList.append(PropLink)
-                                                                continue
-                                        
-                                if propName in PropertyList:
-                                        continue
-                                else:
-                                        PropertyList.append(propName)
+        usableProperties = element.find_all('property')
+        usableNavProperties = element.find_all('navigationproperty')
+       
+        success, baseSoup, baseRefs, baseType = getParentType(soup, refs, SchemaAlias, tagType)
+        if success:
+            PropertyList.extend( getTypeDetails(baseSoup, baseRefs, baseType, tagType) )
         
-        print "PropertyList:::::::::::::::::::::::::::::::::::::::::::::::::::::::", PropertyList
-        return EntityName, PropertyList
+        for innerelement in usableProperties + usableNavProperties:
+            rsvLogger.debug(innerelement['name'])
+            rsvLogger.debug(innerelement['type'])
+            rsvLogger.debug(innerelement.attrs)
+            newProp = innerelement['name']
+            if SchemaAlias:
+                newProp = SchemaAlias + ':' + newProp
+            rsvLogger.debug("ADDING :::: %s", newProp)
+            if newProp not in PropertyList:
+                PropertyList.append((soup,refs,newProp))
 
-#Get the Mapped schema details for navigating to the resource schema    
-def getMappedSchema(ResourceName, soup):
-        try:
-                containerlist = soup.find_all('complextype')
-                for containerlist1 in containerlist:
-                        for child in containerlist1.find_all('navigationproperty'):
-                                listName = child['name']
-                                listType = child['type']
-                                if listName == ResourceName:
-                                        return True, listType
-        except:
-                pass
-                
-        try:
-                containerlist = soup.find_all('entitytype')
-                for containerlist2 in containerlist:
-                        for child in containerlist2.find_all('navigationproperty'):
-                                listName = child['name']
-                                listType = child['type']
-                                if listName == ResourceName:
-                                        return True, listType
-        except:
-                pass
-        return False, "Schema Alias not found for " + ResourceName
+    return PropertyList
 
-# Function to retrieve the detailed Property attributes and store in a dictionary format
-# The attributes for each property are referenced through various other methods for compliance check
-def getPropertyDetails(soup, PropertyList, SchemaAlias = None):
-        def getResourcePropertyDetails(soup, PropertyName, SchemaName):
-                try:
-                        try:
 
-                                if PropertyName.count(".") == 2:
-                                        PropertyDetails = soup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                elif PropertyName.count(".") == 1:
-                                        try:
-                                                complexDetails = ""
-                                                complexDetails = soup.find('complextype', attrs={'name':PropertyName.split(".")[0]})
-                                                if not (complexDetails == None):
-                                                        PropertyDetails = complexDetails.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                                        if (PropertyDetails == None):
-                                                                PropertyDetails = soup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                                else:
-                                                        PropertyDetails = soup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                                        
-                                                if PropertyDetails == None or PropertyDetails == "":
-                                                        status, moreSoup = getSchemaDetails("Resource")
-                                                        PropertyDetails = moreSoup.find('property', attrs={'name':PropertyName.split(".")[-1]})
-                                        except:
-                                                pass
-                                else:
-                                        PropertyDetails = soup.find('property', attrs={'name':PropertyName})
-                        except:
-                                pass
-                        try:
-                                status, moreSoup = getSchemaDetails("Resource")
-                                key = "Resource." + PropertyName
+def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
+    """
+    Get dictionary of tag attributes for properties given, including basetypes.
 
-                                if not (PropertyDetails == None):
-                                        
-                                        if PropertyDetails.attrs['type'] == (key):
-                                                try:
+    param arg1: soup data
+    param arg2: references
+    param arg3: a property string
+    """
+    propEntry = dict()
+
+    propOwner, propChild = PropertyItem.split(':')[0].replace('#',''), PropertyItem.split(':')[-1]
+
+    SchemaNamespace, SchemaType = getNamespace(propOwner), getType(propOwner)
+
+    rsvLogger.debug('___')
+    rsvLogger.debug('%s, %s', SchemaNamespace, PropertyItem)
+
+    propSchema = soup.find('schema', attrs={'namespace': SchemaNamespace})
+    
+    # get another csdl xml if the given namespace does not exist
+    if propSchema is None:
+        rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+        raise Exception('getPropertyDetails: no such xml at ' + SchemaNamespace)
+    else:
+        innerSoup = soup
+        innerRefs = refs
+
+    # get type tag and tag of property in type
+    propEntity = propSchema.find(tagType, attrs={'name': SchemaType})
+    propTag = propEntity.find('property', attrs={'name': propChild})
+
+    # check if this property is a nav property
+    propEntry['isNav'] = False
+
+    if propTag is None:
+        propTag = propEntity.find(
+            'navigationproperty', attrs={'name': propChild})
+        propEntry['isNav'] = True
+
+    # start adding attrs and props together
+    propAll = propTag.find_all()
+    propEntry['attrs'] = propTag.attrs
+
+    for tag in propAll:
+        propEntry[tag['term']] = tag.attrs
+    rsvLogger.debug(propEntry)
+
+    success, typeSoup, typeRefs, propType = getParentType(innerSoup, innerRefs, SchemaType, tagType)
+   
+    propType = propTag.get('type')
+    
+    # find the real type of this, by inheritance
+    while propType is not None:
+        rsvLogger.debug("HASTYPE")
+        TypeNamespace, TypeSpec = getNamespace(propType), getType(propType)
+
+        rsvLogger.debug('%s, %s', TypeNamespace, propType)
+        # Type='Collection(Edm.String)'
+        # If collection, check its inside type
+        if re.match('Collection(.*)', propType) is not None:
+            propType = propType.replace('Collection(', "").replace(')', "")
+            propEntry['isCollection'] = propType
+            continue
+        if 'Edm' in propType:
+            propEntry['realtype'] = propType
+            break
         
-                                                        FindAll = moreSoup.find('typedefinition', attrs={'name':PropertyDetails.attrs['type'].split(".")[-1]})
-                                                        try:
-                                                                FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                        except:
-                                                                pass
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
-                                                        for propertyTerm in FindAll.find_all('annotation'):
-                                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                        
-                                                except:
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = PropertyDetails.attrs
-                                                        for propertyTerm in PropertyDetails.find_all('annotation'):
-                                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs              
-                                        else:
-                                                
-                                                try:
-                                                        
-                                                        FindAll = soup.find('typedefinition', attrs={'name':PropertyDetails.attrs['type'].split(".")[-1]})
-                                                        try:
-                                                                FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                        except:
-                                                                pass
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
-                                                        for propertyTerm in FindAll.find_all('annotation'):
-                                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                        
-                                                except:
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = PropertyDetails.attrs
-                                                        for propertyTerm in PropertyDetails.find_all('annotation'):
-                                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                
-                                else:
-                                        print "No details present"
-                                        try:
-                                                
-                                                FindAll = soup.find('typedefinition', attrs={'name':PropertyName.split(".")[-1]})
-                                                try:
-                                                        FindAll.attrs['type'] = FindAll.attrs['underlyingtype']
-                                                except:
-                                                        pass
-                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = FindAll.attrs
-                                                for propertyTerm in FindAll.find_all('annotation'):
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                
-                                        except:
-                                                PropertyDictionary [SchemaName + "-" + PropertyName+'.Attributes'] = PropertyDetails.attrs
-                                                for propertyTerm in PropertyDetails.find_all('annotation'):
-                                                        PropertyDictionary [SchemaName + "-" + PropertyName+'.'+propertyTerm['term']] = propertyTerm.attrs
-                                
-                        except:
-                                pass
-                except:
-                        pass
+        # get proper soup
+        if TypeNamespace.split('.')[0] != SchemaNamespace.split('.')[0]:
+            success, typeSoup = getSchemaDetails(*refs.get(TypeNamespace,(None,None)))
+        else:
+            success, typeSoup = True, innerSoup
 
-        SchemaList = []
-        for PropertyName in PropertyList:
+        if not success:
+            rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+            raise Exception("getPropertyDetails: no such soup for" +
+                            SchemaNamespace + TypeNamespace)
 
-                if ':' in PropertyName:
-                        Alias = PropertyName[:PropertyName.find(':')]
-#                       if not(Alias in SchemaList):
-#                               SchemaList.append(Alias)
-                        status, moreSoup = getSchemaDetails(Alias)
-                        SchemaName = SchemaAlias.split(".")[-1]
-                        getResourcePropertyDetails(moreSoup, PropertyName[PropertyName.find(':')+1:], SchemaName)
-                elif SchemaAlias != None:
-                        SchemaName = SchemaAlias.split(".")[-1]
-                        getResourcePropertyDetails(soup, PropertyName, SchemaName)
+        # traverse tags to find the type
+        typeRefs = getReferenceDetails(typeSoup)
+        # traverse tags to find the type
+        typeSchema = typeSoup.find( 'schema', attrs={'namespace': TypeNamespace})
+        typeSimpleTag = typeSchema.find( 'typedefinition', attrs={'name': TypeSpec})
+        typeComplexTag = typeSchema.find( 'complextype', attrs={'name': TypeSpec})
+        typeEnumTag = typeSchema.find('enumtype', attrs={'name': TypeSpec})
+        typeEntityTag = typeSchema.find('entitytype', attrs={'name': TypeSpec})
+
+        # perform more logic for each type
+        if typeSimpleTag is not None:
+            propType = typeSimpleTag.get('underlyingtype')
+            isEnum = typeSimpleTag.find('annotation', attrs={'term':'Redfish.Enumeration'})
+            if propType == 'Edm.String' and isEnum is not None:
+                propEntry['realtype'] = 'deprecatedEnum'
+                propEntry['typeprops'] = list()
+                memberList = isEnum.find('collection').find_all('propertyvalue')
+
+                for member in memberList:
+                    propEntry['typeprops'].append( member.get('string'))
+                rsvLogger.debug("%s", str(propEntry['typeprops']))
+                break
+            else:
+                continue
+        elif typeComplexTag is not None:
+            rsvLogger.debug("go deeper in type")
+            propList = getTypeDetails( typeSoup, typeRefs, propType, tagType='complextype')
+            rsvLogger.debug(propList)
+            propDict = {item[2]: getPropertyDetails( *item, tagType='complextype') for item in propList}
+            rsvLogger.debug(propDict)
+            propEntry['realtype'] = 'complex'
+            propEntry['typeprops'] = propDict
+            break
+        elif typeEnumTag is not None:
+            propEntry['realtype'] = 'enum'
+            propEntry['typeprops'] = list()
+            for MemberName in typeEnumTag.find_all('member'):
+                propEntry['typeprops'].append(MemberName['name'])
+            break
+        elif typeEntityTag is not None:
+            propEntry['realtype'] = 'entity'
+            propEntry['typeprops'] = dict()
+            rsvLogger.debug("typeEntityTag found %s", propTag['name'])
+            break
+        else:
+            rsvLogger.error("type doesn't exist? %s", propType)
+            raise Exception("getPropertyDetails: problem grabbing type: " + propType)
+            break
+
+    return propEntry
+
+
+def checkPropertyCompliance(PropertyName, PropertyItem, decoded, refs):
+    """
+    Given a dictionary of properties, check the validitiy of each item, and return a
+    list of counted properties
+
+    param arg1: property name
+    param arg2: property item dictionary
+    param arg3: json payload
+    param arg4: refs
+    """
+    resultList = OrderedDict()
+    counts = Counter()
+
+    rsvLogger.info(PropertyName)
+    item = PropertyName.split(':')[-1]
+
+    propValue = decoded.get(item, 'n/a')
+    rsvLogger.info("\tvalue: %s %s", propValue, type(propValue))
+
+    propAttr = PropertyItem['attrs']
+
+    propType = propAttr.get('type')
+    propRealType = PropertyItem.get('realtype')
+    rsvLogger.info("\thas Type: %s %s", propType, propRealType)
+
+    propExists = not (propValue == 'n/a')
+    propNotNull = propExists and propValue is not None and propValue is not 'None'
+
+    # why not actually check oem
+    # rs-assertion: 7.4.7.2
+    if 'Oem' in PropertyName:
+        rsvLogger.info('\tOem is skipped')
+        counts['skipOem'] += 1
+        return {item: ('-', '-',
+                            'Exists' if propExists else 'DNE', 'SkipOEM')}, counts
+
+    propMandatory = False
+    propMandatoryPass = True
+    if 'Redfish.Required' in PropertyItem:
+        propMandatory = True
+        propMandatoryPass = True if propExists else False
+        rsvLogger.info("\tMandatory Test: %s",
+                       'OK' if propMandatoryPass else 'FAIL')
+    else:
+        rsvLogger.info("\tis Optional")
+        if not propExists:
+            rsvLogger.info("\tprop Does not exist, skip...")
+            counts['skipOptional'] += 1
+            return  {item: ('-', (propType, propRealType),
+                                'Exists' if propExists else 'DNE',
+                                'SkipOptional')}, counts
+
+    propNullable = propAttr.get('nullable')
+    propNullablePass = True
+    if propNullable is not None:
+        propNullablePass = (
+            propNullable == 'true') or not propExists or propNotNull
+        rsvLogger.info("\tis Nullable: %s %s", propNullable, propNotNull)
+        rsvLogger.info("\tNullability test: %s",
+                       'OK' if propNullablePass else 'FAIL')
+
+    # rs-assertion: Check for permission change
+    propPermissions = propAttr.get('Odata.Permissions')
+    if propPermissions is not None:
+        propPermissionsValue = propPermissions['enummember']
+        rsvLogger.info("\tpermission %s", propPermissionsValue)
+
+    validPatternAttr = PropertyItem.get(
+        'Validation.Pattern')
+    validMinAttr = PropertyItem.get('Validation.Minimum')
+    validMaxAttr = PropertyItem.get('Validation.Maximum')
+
+    paramPass = True
+
+    # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
+    # Note: make sure it checks each one
+    propCollectionType = PropertyItem.get('isCollection')
+    isCollection = propCollectionType is not None
+    if propCollectionType is not None and propNotNull:
+        # note: handle collections correctly, this needs a nicer printout
+        # rs-assumption: do not assume URIs for collections
+        # rs-assumption: check @odata.count property
+        # rs-assumption: check @odata.link property
+        rsvLogger.info("\tis Collection")
+        resultList[item] = ('Collection, size: ' + str(len(propValue)), (propType, propRealType),
+                            'Exists' if propExists else 'DNE',
+                            '...')
+        propValueList = propValue
+    else:
+        propValueList = [propValue]
+    # note: make sure we don't enter this on null values, some of which are
+    # OK!
+    cnt = 0
+    for val in propValueList:
+        appendStr = (('#' + str(cnt)) if isCollection else '')
+        if propRealType is not None and propExists and propNotNull:
+            paramPass = False
+            if propRealType == 'Edm.Boolean':
+                paramPass = isinstance( val, bool )
+                if not paramPass:
+                    rsvLogger.error("%s: Not a boolean" % PropertyName)
+
+            elif propRealType == 'Edm.DateTimeOffset':
+                # note: find out why this might be wrong 
+                if isinstance(val, str):
+                    match = re.match(
+                        '.*(Z|(\+|-)[0-9][0-9]:[0-9][0-9])', str(val))
+                    paramPass = match is not None
+                    if not paramPass:
+                        rsvLogger.error("%s: Malformed DateTimeOffset" % PropertyName)
                 else:
-                        getResourcePropertyDetails(soup, PropertyName)
+                    rsvLogger.error("%s: Expected string value for DateTimeOffset" % PropertyName)
 
 
-# Function to retrieve all possible values for any particular Property
-# if Schema puts a restriction on the values that the property should have
-def getEnumTypeDetails(soup, enumName):
+            elif propRealType == 'Edm.Int16' or propRealType == 'Edm.Int32' or\
+                    propRealType == 'Edm.Int64' or propRealType == 'Edm.Int' or\
+                    propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
+                rsvLogger.debug("intcheck: %s %s %s", propRealType, val, (validMinAttr, validMaxAttr))
+                paramPass = isinstance( val, (int, float) ) 
+                if paramPass:
+                    if 'Int' in propRealType:
+                        paramPass = isinstance( val, int )
+                        if not paramPass:
+                            rsvLogger.error("%s: Expected int" % PropertyName)
+                    if validMinAttr is not None:
+                        paramPass = paramPass and int(
+                            validMinAttr['int']) <= val
+                        if not paramPass:
+                            rsvLogger.error("%s: Value out of assigned min range" % PropertyName)
+                    if validMaxAttr is not None:
+                        paramPass = paramPass and int(
+                            validMaxAttr['int']) >= val
+                        if not paramPass:
+                            rsvLogger.error("%s: Value out of assigned max range" % PropertyName)
+                else:
+                    rsvLogger.error("%s: Expected numeric type" % PropertyName)
 
-        for child in soup.find_all('enumtype'):
-                if child['name'] == enumName:
-                        PropertyList1 = []
-                        for MemberName in child.find_all('member'):
-                                if MemberName['name'] in PropertyList1:
-                                        continue
-                                PropertyList1.append(MemberName['name'])
-                        return PropertyList1
 
-# Function to check compliance of individual Properties based on the attributes retrieved from the schema xml
-def checkPropertyCompliance(PropertyList, decoded, soup, SchemaName):
+            elif propRealType == 'Edm.Guid':
+                if isinstance(val, str):
+                    match = re.match(
+                        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", str(val))
+                    paramPass = match is not None
+                    if not paramPass:
+                        rsvLogger.error("%s: Malformed Guid" % PropertyName)
+                else:
+                    rsvLogger.error("%s: Expected string value for Guid" % PropertyName)
+                    
+            elif propRealType == 'Edm.String':
+                if isinstance(val, str):
+                    if validPatternAttr is not None:
+                        pattern = validPatternAttr.get('string', '')
+                        match = re.fullmatch(pattern, val)
+                        paramPass = match is not None
+                        if not paramPass:
+                            rsvLogger.error("%s: Malformed String" % PropertyName)
+                    else:
+                        paramPass = True
+                else:
+                    rsvLogger.error("%s: Expected string value" % PropertyName)
 
-        global countTotSchemaProp, countPassSchemaProp, countFailSchemaProp, countSkipSchemaProp, countWarnSchemaProp
-        global countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp, countWarnMandatoryProp
-        global countTotProp, countPassProp, countFailProp, countSkipProp, countWarnProp
-        global propTable
-        try:
-                for PropertyName in PropertyList:
+            else:
+                if propRealType == 'complex':
+                    rsvLogger.info('\t***going into Complex')
+                    complexMessages = OrderedDict()
+                    complexCounts = Counter()
+                    innerPropDict = PropertyItem['typeprops']
+                    for prop in innerPropDict:
+                        propMessages, propCounts = checkPropertyCompliance(prop, innerPropDict[prop], val, refs)
+                        complexMessages.update(propMessages)
+                        complexCounts.update(propCounts)
+                    rsvLogger.info('\t***out of Complex')
+                    rsvLogger.info('complex %s', complexCounts)
+                    counts.update(complexCounts)
+                    counts['complex'] += 1
+                    resultList[item + appendStr]\
+                            = ('ComplexDictionary' + appendStr, (propType, propRealType),\
+                                        'Exists' if propExists else 'DNE',\
+                                        'complex')
+                    for complexKey in complexMessages:
+                        resultList[item + '.' + complexKey + appendStr] = complexMessages[complexKey]
+                    for key in val:
+                        if key not in complexMessages:
+                            if '@' not in key and '#' not in key:
+                                rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', item + '.' + key + appendStr)
+                                counts['additional'] += 1
+                            resultList[item + '.' + key + appendStr] = (item, '-',
+                                                                 'Exists',
+                                                                 '-')
+                    cnt += 1
+                    continue
 
-                        try:            
-                                if ':' in PropertyName:
-                                        PropertyName = PropertyName[PropertyName.find(':')+1:]
+                elif propRealType == 'enum':
+                    if isinstance(val, str):
+                        paramPass = val in PropertyItem['typeprops']
+                        if not paramPass:
+                            rsvLogger.error("%s: Invalid enum found (check casing?)" % PropertyName)
+                    else:
+                        rsvLogger.error("%s: Expected string value for Enum" % PropertyName)
+                    
+                elif propRealType == 'deprecatedEnum':
+                    if isinstance(val, list):
+                        paramPass = True
+                        for enumItem in val:
+                            for k,v in enumItem.items():
+                                rsvLogger.debug('%s, %s' % (k,v))
+                                paramPass = paramPass and str(v) in PropertyItem['typeprops']
+                        if not paramPass:
+                            rsvLogger.error("%s: Invalid DeprecatedEnum found (check casing?)" % PropertyName)
+                    elif isinstance(val, str):
+                        rsvLogger.debug('%s' % val)
+                        paramPass = str(val) in PropertyItem['typeprops']
+                        if not paramPass:
+                            rsvLogger.error("%s: Invalid DeprecatedEnum found (check casing?)" % PropertyName)
+                    else:
+                        rsvLogger.error("%s: Expected list/str value for DeprecatedEnum? (" % PropertyName) 
 
-                                if 'Oem' in PropertyName:
-                                        propRow = propTable.tr
-                                        print 'OEM Properties outside of Compliance Tool scope. Skipping check for the property.'
-                                        print 80*'*'
-                                        propRow.td(PropertyName)
-                                        propRow.td("Skip")
-                                        propRow.td("No Value")
-                                        propRow.td("No Value")
-                                        propRow.td("Skip check for OEM", align = "center")
-                                        countSkipProp+=1
-                                        continue
-                                countTotProp+=1
-                                propMandatory = False
-                                try:
-                                        if PropertyName.count(".") == 2:
-                                                MainAttribute = midAttribute = SubAttribute = propValue = ""
+                elif propRealType == 'entity':
+                    # check if the entity is truly what it's supposed to be
+                    autoExpand = PropertyItem.get('OData.AutoExpand',None) is not None or\
+                    PropertyItem.get('OData.AutoExpand'.lower(),None) is not None
+                    splitURI = val['@odata.id'].rsplit('#',1)
+                    if not autoExpand:
+                        uri = splitURI[0]
+                        success, data, status = callResourceURI(uri)
+                    else:
+                        success, data, status = True, val, 200
 
-                                                MainAttribute = PropertyName.split(".")[0]
-                                                midAttribute = PropertyName.split(".")[1]
-                                                SubAttribute = PropertyName.split(".")[-1]
-                                                propValue = decoded[MainAttribute][midAttribute][SubAttribute]
-                                                
-                                        elif PropertyName.count(".") == 1:
-                                                MainAttribute = PropertyName.split(".")[0]
-                                                SubAttribute = PropertyName.split(".")[1]
-                                                propValue = decoded[MainAttribute][SubAttribute]
-                                        else:
-                                                propValue = decoded[PropertyName]
-                                except:
-                                        print 'Value not found for property', PropertyName
-                                        propValue = None
-
-                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Redfish.Required') or PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.DMTF.Required'):
-                                        propMandatory = True
-                                        countTotMandatoryProp+=1
-                                propAttr = PropertyDictionary[SchemaName + "-" + PropertyName+'.Attributes']
-                                print "propAttr:::::::::::::::::::::::::::", propAttr
+                    rsvLogger.debug('%s, %s, %s', success, propType, data)
+                    if propCollectionType == 'Resource.Item': 
+                        paramPass = success
+                    elif success:
+                        currentType = data.get('@odata.type', propCollectionType)
+                        if currentType is None:
+                            currentType = propType
+                        baseLink = refs.get(getNamespace(currentType),(getNamespace(currentType),data.get('@odata.context')))
+                        success, baseSoup = getSchemaDetails(*baseLink)
+                        rsvLogger.debug('success: %s %s',success, currentType)
                                 
-                                optionalFlag = True
-                                if (propAttr.has_key('type')):
-                                        propType = propAttr['type']
-                                if propAttr.has_key('nullable'):
-                                        optionalFlag = False
-                                        propNullable = propAttr['nullable']
-                                        if (propNullable == 'false' and propValue == ''):
-                                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Redfish.RequiredOnCreate'):
-                                                        generateLog(PropertyName, propType + ' (Not Nullable)', propValue, propMandatory, logPass = True)
-                                                else:
-                                                        generateLog(PropertyName, propType + ' (Not Nullable)', propValue, propMandatory, logPass = False)
-                                                continue
-                                if (propMandatory == True and (propValue == None or propValue == '')):
-                                        generateLog(PropertyName, propType + ' (Not Nullable)', propValue, propMandatory, logPass = False)
-                                        continue
-                                if propAttr.has_key(PropertyName+'.OData.Permissions'):
-                                        propPermissions = propAttr[PropertyName+'.OData.Permissions']['enummember']
-                                        if propPermissions == 'OData.Permissions/ReadWrite':
-                                                print 'Check Update Functionality for', PropertyName
-                                if propValue != None:
-                                        checkPropertyType(PropertyName, propValue, propType, optionalFlag, propMandatory, soup, SchemaName)
-                                elif propValue == None:
-                                        generateLog(PropertyName, propType, propValue, propMandatory)
-                                else:
-                                        generateLog(PropertyName, "No Value Specified", propValue, propMandatory)
-                        except:
-                                print "Inside inner exception"
-        except:
-                print "Inside exception"
-        
+                        if currentType is not None and success:
+                            currentType = currentType.replace('#','')
+                            baseRefs = getReferenceDetails(baseSoup)
+                            allTypes = []
+                            while currentType not in allTypes and success: 
+                                allTypes.append(currentType)
+                                success, baseSoup, baseRefs, currentType = getParentType(baseSoup, baseRefs, currentType, 'entitytype')
+                                rsvLogger.debug('success: %s %s',success, currentType)
+
+                            rsvLogger.debug('%s, %s, %s', propType, propCollectionType, allTypes)
+                            paramPass = propType in allTypes or propCollectionType in allTypes
+                            if not paramPass:
+                                rsvLogger.error("%s: Expected Entity type %s, but not found in type inhertiance %s" % (PropertyName, (propType, propCollectionType), allTypes))
+                        else:
+                            rsvLogger.error("%s: Could not get schema file for Entity check" % PropertyName)
+                    else:
+                        rsvLogger.error("%s: Could not get resource for Entity check" % PropertyName)
+
+
+        resultList[item + appendStr] = (val, (propType, propRealType),
+                                         'Exists' if propExists else 'DNE',
+                                         'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
+        cnt += 1
+        if paramPass and propNullablePass and propMandatoryPass:
+            counts['pass'] += 1
+            rsvLogger.info("\tSuccess")
+        else:
+            counts[propType] += 1
+            if not paramPass:
+                if propMandatory:
+                    rsvLogger.error("%s: Mandatory prop has failed to check" % PropertyName)
+                    counts['failMandatoryProp'] += 1
+                else:
+                    counts['failProp'] += 1
+            elif not propMandatoryPass:
+                rsvLogger.error("%s: Mandatory prop does not exist" % PropertyName)
+                counts['failMandatoryExist'] += 1
+            elif not propNullablePass:
+                rsvLogger.error("%s: This property is not nullable" % PropertyName)
+                counts['failNull'] += 1
+            rsvLogger.info("\tFAIL")
+
+    return resultList, counts
 
 # Function to collect all links in current resource schema
-def     getAllLinks(jsonData):
-        linkList = {}
-        for elem, value in jsonData.iteritems():
-                try:
-                        if type(value) is dict:
-                                for eachkey, eachvalue in value.iteritems():
-                                        try:
-                                                if eachkey == '@odata.id':
-                                                        ResourceName = elem
-                                                        SchemaURI = jsonData[ResourceName][eachkey]
-                                                        linkList[ResourceName] = SchemaURI
-                                        except:
-                                                pass
-                                        try:    
-                                                if jsonData[elem][eachkey].has_key('@odata.id'):
-                                                        ResourceName = eachkey
-                                                        SchemaURI = jsonData[elem][ResourceName]['@odata.id']
-                                                        linkList[ResourceName] = SchemaURI
-                                        except:
-                                                pass                                    
-                                        try:
-                                                if type(eachvalue) is list:             
-                                                        temp = {}
-                                                        i = 0
-                                                        for eachattr in eachvalue:
-                                                                try:
-                                                                        if type(eachattr) is dict:                                                                              
-                                                                                if eachattr.has_key('@odata.id'):
-                                                                                        SchemaURI = eachattr['@odata.id']
-                                                                                        temp[i] = SchemaURI
-                                                                                        i+=1
-                                                                except:
-                                                                        pass
-                                                        ResourceName = eachkey          
-                                                        linkList[ResourceName] = temp           
-                                        except:
-                                                pass
-                        elif type(value) is list:       
-                                try:
-                                        temp = {}
-                                        i = 0                                   
-                                        for eachattr in value:
-                                                try:
-                                                        if type(eachattr) is dict:                                                                              
-                                                                if eachattr.has_key('@odata.id'):
-                                                                        temp[i] = eachattr['@odata.id']
-                                                                        i+=1                                                                    
-                                                except:
-                                                        pass
-                                        ResourceName = elem             
-                                        linkList[ResourceName] = temp
-                                except:
-                                        pass
-                        elif jsonData[elem].has_key('@odata.id'):
-                                ResourceName = elem
-                                SchemaURI = jsonData[ResourceName]['@odata.id']
-                                linkList[ResourceName] = SchemaURI
-                        else:
-                                pass
-                except:
-                        pass
-        
-        print "linkList::::::::::::::::::::::::::::::::::::::::::::::", linkList
-        return linkList
 
-# Function to handle sub-Links retrieved from parent URI's which are not directly accessible from ServiceRoot
-def getChildLinks(PropertyList, decoded, soup):
-        global ComplexTypeLinksDictionary
-        global ComplexLinksFlag
-        global GlobalCount
-        linkList = getAllLinks(jsonData= decoded)
 
-        for PropertyName, value in linkList.iteritems():
-                
-                print "PropertyName::::::::::::::::::::::::::::::::::::::::::::::", PropertyName
-                print "value:::::::::::::::::::::::::::::::::::::::::::::::::::::", value
-                        
-                SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
-                try:
-                        AllComplexTypeDetails = soup.find_all('entitytype')
-                except:
-                        pass
-                        #ComplexTypeDetails = soup.find_all('entitytype')[0]
-                i = 0
-                for ComplexTypeDetails in AllComplexTypeDetails: 
-                        for child in ComplexTypeDetails.find_all('navigationproperty'):
-                                if PropertyName == child['name']:
-                                        NavigationPropertyName = child['name']
-                                        NavigationPropertyType = child['type']
-                                        PropIndex = NavigationPropertyName+":"+NavigationPropertyType
-                                        
-                                        
-                                        if 'Collection(' in NavigationPropertyType:
-                                                for elem, data in value.iteritems():
-                                                        LinkIndex = PropIndex+"_"+str(elem) + "_" + str(GlobalCount)
-                                                        try:
-                                                                NavigationPropertyLink = value[elem]
-                                                        except:
-                                                                NavigationPropertyLink = value['@odata.id']
+def getAllLinks(jsonData, propDict, refDict, prefix=''):
+    """
+    Function that returns all links provided in a given JSON response.
+    This result will include a link to itself.
 
-                                                        tempFlag = False
-                                                        temp = ""
-                                                        for eachCount in range(0, GlobalCount):
-                                                                
-                                                                temp = PropIndex + "_" +str(elem) + "_" + str(eachCount)
-                                                                if (temp in ComplexTypeLinksDictionary['SubLinks']) and (NavigationPropertyLink in ComplexTypeLinksDictionary[temp+'.Link']):
-                                                                        tempFlag = True # Skip duplicate sublink addition
-                                                                        break
-                                                        if tempFlag:
-                                                                continue
-                                                        else:
-                                                                GlobalCount = GlobalCount + 1
-                                                                
-                                                        
-                                                        ComplexTypeLinksDictionary['SubLinks'].append(LinkIndex)
-                                                        SchemaAlias = NavigationPropertyType[NavigationPropertyType.find('(')+1:NavigationPropertyType.find(')')]
-                                                        ComplexTypeLinksDictionary[LinkIndex+'.Schema'] = SchemaAlias
-                                                        ComplexTypeLinksDictionary[LinkIndex+'.Link'] = NavigationPropertyLink
-                                                        i+=1
-                                        else:
-                                                PropIndexAppend = PropIndex + "_" + str(GlobalCount)
-                                                NavigationPropertyLink = value
-                                                try:
-                                                        tempFlag = False
-                                                        temp = ""
-                                                        for eachCount in range(0, GlobalCount):
-                                                                temp = PropIndex + "_" + str(eachCount)
-                                                                
-                                                                if (temp in ComplexTypeLinksDictionary['SubLinks']) and (NavigationPropertyLink in ComplexTypeLinksDictionary[temp+'.Link']):
-                                                                        tempFlag = True # Skip duplicate sublink addition
-                                                                        break
-                                                        if tempFlag:
-                                                                continue
-                                                        else:
-                                                                GlobalCount = GlobalCount + 1
-                                                except:
-                                                        pass
-                                                        
-                                                ComplexTypeLinksDictionary['SubLinks'].append(PropIndexAppend)                                  
-                                                ComplexTypeLinksDictionary[PropIndexAppend+'.Schema'] = NavigationPropertyType
-                                                ComplexTypeLinksDictionary[PropIndexAppend+'.Link'] = NavigationPropertyLink
-                                                print "ComplexTypeLinksDictionary[PropIndex+'.Schema']:::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Schema']
-                                                print "ComplexTypeLinksDictionary[PropIndex+'.Link']:::::::::::::::::::::::::", ComplexTypeLinksDictionary[PropIndexAppend+'.Link']
-                                                
-                                ComplexLinksFlag = True                         
-                i = 0
-                ComplexTypeDetails = soup.find('complextype', attrs={'name':"Links"})
-                try:                    
-                        for child in ComplexTypeDetails.find_all('navigationproperty'):
-                                if PropertyName == child['name']:
-                                        NavigationPropertyName = child['name']
-                                        NavigationPropertyType = child['type']
-                                        PropIndex = NavigationPropertyName+":"+NavigationPropertyType
-                                        
-                                        if 'Collection(' in NavigationPropertyType:
-                                                for elem, data in value.iteritems():
-                                                        LinkIndex = PropIndex+"_"+str(elem) + "_" + str(GlobalCount)
-                                                        try:
-                                                                NavigationPropertyLink = value[elem]
-                                                        except:
-                                                                NavigationPropertyLink = value['@odata.id']                                                     
-                                                        
-                                                        tempFlag = False
-                                                        temp = ""
-                                                        for eachCount in range(0, GlobalCount):
-                                                                
-                                                                temp = PropIndex + "_" +str(elem) + "_" + str(eachCount)
-                                                                if (temp in ComplexTypeLinksDictionary['SubLinks']) and (NavigationPropertyLink in ComplexTypeLinksDictionary[temp+'.Link']):
-                                                                        tempFlag = True # Skip duplicate sublink addition
-                                                                        break
-                                                        if tempFlag:
-                                                                continue
-                                                        else:
-                                                                GlobalCount = GlobalCount + 1
-                                                                
-                                                        ComplexTypeLinksDictionary['SubLinks'].append(LinkIndex)
-                                                        SchemaAlias = NavigationPropertyType[NavigationPropertyType.find('(')+1:NavigationPropertyType.find(')')]
-                                                        ComplexTypeLinksDictionary[LinkIndex+'.Schema'] = SchemaAlias
+    :param arg1: json dict
+    :param arg2: property dict
+    :param linkName: json dict
+    :return: list of links
+    """
+    linkList = OrderedDict()
+    # check keys in propertyDictionary
+    # if it is a Nav property, check that it exists
+    #   if it is not a Nav Collection, add it to list
+    #   otherwise, add everything IN Nav collection
+    # if it is a Complex property, check that it exists
+    #   if it is, recurse on collection or individual item
+    for key in propDict:
+        item = getType(key).split(':')[-1]
+        if propDict[key]['isNav']:
+            insideItem = jsonData.get(item)
+            if insideItem is not None:
+                cType = propDict[key].get('isCollection') 
+                autoExpand = propDict[key].get('OData.AutoExpand',None) is not None or\
+                    propDict[key].get('OData.AutoExpand'.lower(),None) is not None
+                if cType is not None:
+                    cnt = 0
+                    cSchema = refDict.get(getNamespace(cType),(getNamespace(cType),None))[1]
+                    for listItem in insideItem:
+                        linkList[prefix+str(item)+'.'+getType(propDict[key]['isCollection']) +
+                                 '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
+                        cnt += 1
+                else:
+                    cType = propDict[key]['attrs'].get('type')
+                    cSchema = refDict.get(getNamespace(cType),(getNamespace(cType),None))[1]
+                    linkList[prefix+str(item)+'.'+getType(propDict[key]['attrs']['name'])] = (\
+                            insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
+    for key in propDict:
+        item = getType(key).split(':')[-1]
+        if propDict[key]['realtype'] == 'complex':
+            if jsonData.get(item) is not None:
+                if propDict[key].get('isCollection') is not None:
+                    for listItem in jsonData[item]:
+                        linkList.update(getAllLinks(
+                            listItem, propDict[key]['typeprops'],refDict,prefix+item+'.'))
+                else:
+                    linkList.update(getAllLinks(
+                        jsonData[item], propDict[key]['typeprops'],refDict,prefix+item+'.'))
+    rsvLogger.debug(str(linkList))
+    return linkList
 
-                                                        ComplexTypeLinksDictionary[LinkIndex+'.Link'] = NavigationPropertyLink
-                                                        i+=1
-                                        else:
-                                                PropIndexAppend = PropIndex + "_" + str(GlobalCount)
-                                                NavigationPropertyLink = value
-                                                try:
-                                                        tempFlag = False
-                                                        temp = ""
-                                                        for eachCount in range(0, GlobalCount):
-                                                                print "GlobalCount::::::::::::::::::::::::::::::::::::::::::::", GlobalCount
-                                                                temp = PropIndex + "_" + str(eachCount)
-                                                                if (temp in ComplexTypeLinksDictionary['SubLinks']) and (NavigationPropertyLink in ComplexTypeLinksDictionary[temp+'.Link']):
-                                                                        tempFlag = True # Skip duplicate sublink addition
-                                                                        break
-                                                        if tempFlag:
-                                                                continue
-                                                        else:
-                                                                GlobalCount = GlobalCount + 1
-                                                except:
-                                                        pass    
-                                                
-                                                ComplexTypeLinksDictionary['SubLinks'].append(PropIndex)
-                                                
-                                                ComplexTypeLinksDictionary[PropIndex+'.Schema'] = NavigationPropertyType
-                                                ComplexTypeLinksDictionary[PropIndex+'.Link'] = NavigationPropertyLink          
-                                ComplexLinksFlag = True         
 
-                except:
-                        pass
-        return ComplexLinksFlag
-        
-        
-# Function to generate Random Value for PATCH requests
-def getRandomValue(PropertyName, SchemaAlias, soup, propOrigValue, SchemaName):
-        propUpdateValue = propMinValue = propMaxValue = propValuePattern = None
+def checkAnnotationCompliance(soup, refs, decoded):
+    for key in [k for k in decoded if '@' in k]:
+        splitKey = key.split('@')
+        target = splitKey[0]
+
+        rsvLogger.info('%s, %s, %s', key, splitKey, decoded[key])    
+
+# Consider removing this as a global
+def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=set()):
+    allLinks.add(URI)
+    
+    validateSuccess, counts, results, links = \
+            validateSingleURI(URI, uriName, expectedType, expectedSchema, expectedJson)
+    if validateSuccess:
+        for linkName in links:
+            if links[linkName][0] in allLinks:
+                counts['repeat'] += 1
+                continue
+
+            allLinks.add(links[linkName][0])
+            linkURI, autoExpand, linkType, linkSchema, innerJson = links[linkName]
+            rsvLogger.debug('%s', links[linkName])
+
+            if linkType is not None and autoExpand:
+                success, linkCounts, linkResults = validateURITree(
+                        linkURI, uriName + ' -> ' + linkName, linkType, linkSchema, innerJson, allLinks)
+            else:
+                success, linkCounts, linkResults = validateURITree(
+                        linkURI, uriName + ' -> ' + linkName, allLinks=allLinks)
+            if not success:
+                counts['unvalidated'] += 1
+            rsvLogger.info('%s, %s', linkName, linkCounts)
+            results.update(linkResults)
+    
+    return validateSuccess, counts, results
+
+
+def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None):
+    # rs-assertion: 9.4.1
+    # Initial startup here
+    errorMessages = io.StringIO()
+    errh = logging.StreamHandler(errorMessages)
+    errh.setLevel(logging.ERROR)
+    rsvLogger.addHandler(errh)
+
+    rsvLogger.info("\n*** %s, %s", uriName, URI)
+    rsvLogger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)
+    counts = Counter()
+    propertyDict = OrderedDict()
+    results = OrderedDict()
+    messages = OrderedDict()
+
+    results[uriName] = (URI, False, counts, messages, errorMessages)
+
+    # Get from service by URI, ex: "/redfish/v1"
+    if expectedJson is None:
+        success, jsonData, status = callResourceURI(URI)
+        rsvLogger.debug('%s, %s, %s', success, jsonData, status)
+        if not success:
+            rsvLogger.error('%s:  URI could not be acquired: %s' % (URI, status))
+            counts['failGet'] += 1
+            rsvLogger.removeHandler(errh) 
+            return False, counts, results, None
+        counts['passGet'] += 1
+    else:
+        jsonData = expectedJson
+
+    # check for @odata mandatory stuff
+    # check for version numbering problems
+    # check id if its the same as URI
+    # check @odata.context instead of local
+    
+    if expectedType is None:
+        SchemaFullType = jsonData.get('@odata.type')
+        if SchemaFullType is None:
+            counts['failJsonError'] += 1
+            rsvLogger.error(str(URI) + ':  Json does not contain @odata.type',)
+            rsvLogger.removeHandler(errh) 
+            return False, counts, results, None
+    else:
+        SchemaFullType = expectedType
+    rsvLogger.info(SchemaFullType)
+
+    # Parse @odata.type, get schema XML and its references from its namespace
+
+    SchemaNamespace, SchemaType = getNamespace(SchemaFullType), getType(SchemaFullType)
+    if expectedSchema is None:
+        SchemaURI = jsonData.get('@odata.context',None)
+        if SchemaURI is not None:
+            SchemaURI = SchemaURI.split('#')[0]
+    else:
+        SchemaURI = expectedSchema
+    rsvLogger.debug("%s %s", SchemaType, SchemaURI)
+       
+    success, SchemaSoup = getSchemaDetails( SchemaNamespace, SchemaURI=SchemaURI)
+
+    if success:
+        refDict = getReferenceDetails(SchemaSoup)
+        if SchemaNamespace in refDict:
+            success, SchemaSoup = getSchemaDetails(
+                SchemaNamespace, SchemaURI=refDict[getNamespace(SchemaFullType)][1])
+    else:
+        success, SchemaSoup = getSchemaDetails(SchemaNamespace)
+        if not success:
+            success, SchemaSoup = getSchemaDetails(SchemaType)
+
+    if not success:
+        rsvLogger.error("validateURI: No schema XML for %s %s",
+                        SchemaFullType, SchemaType)
+        counts['failSchema'] += 1
+        rsvLogger.removeHandler(errh) 
+        return False, counts, results, None
+
+    refDict = getReferenceDetails(SchemaSoup)
+
+    rsvLogger.debug(jsonData)
+    rsvLogger.debug(SchemaSoup)
+
+    checkAnnotationCompliance(SchemaSoup, refDict, jsonData)
+    # Attempt to get a list of properties
+    try:
+        propertyList = getTypeDetails(
+            SchemaSoup, refDict, SchemaFullType, 'entitytype')
+    except Exception as ex:
+        rsvLogger.error(traceback.format_exc())
+        counts['exceptionGetType'] += 1
+        rsvLogger.error(URI + ':  Getting type failed for ' + SchemaFullType,)
+        rsvLogger.removeHandler(errh) 
+        return False, counts, results, None
+    rsvLogger.debug(item for item in propertyList)
+
+    # Generate dictionary of property info
+    for prop in propertyList:
         try:
-                propAttr = PropertyDictionary[SchemaName + "-" + PropertyName+'.Attributes']
-                if propAttr.has_key('type'):
-                        propType = propAttr['type']
+            propertyDict[prop[2]] = getPropertyDetails(*prop)
+        except Exception as ex:
+            rsvLogger.debug(traceback.format_exc())
+            rsvLogger.error('%s:  Could not get details on this property: %s, %s' % (prop, str(type(ex).__name__), str(ex)),)
+            counts['exceptionGetDict'] += 1
+    rsvLogger.debug(propertyDict)
 
-                        if propType == 'Edm.Int16' or propType == 'Edm.Int32' or propType == 'Edm.Int64':
-                                valueType = 'Int'
-                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Minimum'):
-                                        propMinValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Minimum']['int'])
-                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Maximum'):
-                                        propMaxValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Maximum']['int'])
-                                if propMinValue == None and propMaxValue == None:
-                                        propUpdateValue = random.randint(30,200)
-                                elif propMinValue == None:
-                                        propUpdateValue = random.randint(1, propMaxValue)
-                                else:
-                                        propMinValue = 30
-                                        propMaxValue = 200
-                                        propUpdateValue = random.randint(propMinValue, propMaxValue)
-                
-                        elif propType == 'Edm.String':
-                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Pattern'):
-                                        propValuePattern = PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Pattern']['string']
-                                        propUpdateValue = str(propOrigValue)
-                                else:
-                                        propUpdateValue = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(7))
-                                valueType = 'Str'
-                        elif propType == 'Edm.DateTimeOffset':
-                                propUpdateValue = strftime("%Y-%m-%d")+"T00:00:00+0000"
-                                valueType = 'Date'
-                        elif SchemaAlias in propType:
-                                enumName = propType.split(".")[-1]
-                                validList = getEnumTypeDetails(soup, enumName)
-                                if validList:
-                                        propUpdateValue = str(random.choice(validList))
-                                        try:
-                                                propUpdateValue = int(propUpdateValue)
-                                                valueType = 'Int'
-                                        except:
-                                                valueType = 'Str'                                       
-                                else:
-                                        propUpdateValue = "None"                                
-                        elif PropertyName.count(".") == 2:
-                                        status, moreSoup = getSchemaDetails("Resource")
-                                        validList = getEnumTypeDetails(moreSoup, enumName)
-                                        if validList:
-                                                propUpdateValue = str(random.choice(validList))
-                                                try:
-                                                        propUpdateValue = int(propUpdateValue)
-                                                        valueType = 'Int'
-                                                except:
-                                                        valueType = 'Str'                                       
-                                        else:
-                                                propUpdateValue = "None"
-                        elif propType == "Edm.Boolean":
-                                if str(propOrigValue).lower() == "true":
-                                        propUpdateValue = False
-                                else:
-                                        propUpdateValue = True
-                                valueType = 'Bool'
-                else:
-                        propUpdateValue = "None"
-                        valueType = 'Str'
-        except:
-                pass
-        return propUpdateValue, valueType
+    # With dictionary of property details, check json against those details
+    # rs-assertion: test for AdditionalProperties
+    for prop in propertyDict:
+        try:
+            propMessages, propCounts = checkPropertyCompliance(prop, propertyDict[prop], jsonData, refDict)
+            messages.update(propMessages)
+            counts.update(propCounts)
+        except Exception as ex:
+            rsvLogger.debug(traceback.format_exc())
+            rsvLogger.error('%s:  Could not finish compliance check on this property: %s, %s' % (prop, str(type(ex).__name__), str(ex)),)
+            counts['exceptionPropCompliance'] += 1
 
-# Function to handle Patch functionality checks for ReadWrite attributes
-def checkPropertyPatchCompliance(PropertyList, PatchURI, decoded, soup, headers, SchemaName):
-        global countTotProp, countPassProp, countFailProp, countSkipProp
-        try:    
-                def propertyUpdate(PropertyName, PatchURI, payload):
-                        statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'PATCH', payload)
-                        if not(status):
-                                failMessage = "Update Failed - " + str(statusCode)
-                                return statusCode, status, failMessage
-                        time.sleep(5)
-                        statusCode, status, jsonSchema, headers = callResourceURI('', PatchURI, 'ReGET')
-                        if not(status):
-                                failMessage = "GET after Update Failed - " + str(statusCode)
-                                return statusCode, status, failMessage
-                
-                        try:
-                                if PropertyName.count(".") == 2:
-                                        MainAttribute = midAttribute = SubAttribute = propNewValue = ""
-                                        try:
-                                                MainAttribute = PropertyName.split(".")[0]
-                                                midAttribute = PropertyName.split(".")[1]
-                                                SubAttribute = PropertyName.split(".")[-1]
-                                                propNewValue = jsonSchema[MainAttribute][midAttribute][SubAttribute]
-                                        except:
-                                                propNewValue = "Value Not Available"
-                                                return statusCode, False, propNewValue
-                                                
-                                elif PropertyName.count(".") == 1:
-                                        try:
-                                                MainAttribute = PropertyName.split(".")[0]
-                                                SubAttribute = PropertyName.split(".")[1]
-                                                propNewValue = jsonSchema[MainAttribute][SubAttribute]                                                  
-                                        except:
-                                                propNewValue = "Value Not Available"
-                                                return statusCode, False, propNewValue
-                                else:
-                                        propNewValue = jsonSchema[PropertyName] 
-                                return statusCode, True, propNewValue
-                        except Exception:
-                                propNewValue = "Value Not Available"                    
-                                return statusCode, False, propNewValue
-                        
-                def logPatchResult(status, patchTable, logText, expValue, actValue, WarnCheck = None):
-                        global countTotProp, countPassProp, countFailProp, countWarnProp
-                        countTotProp+=1
-                        if isinstance(expValue, int):
-                                expValue = str(expValue)
-                        if isinstance(actValue, int):
-                                actValue = str(actValue)
-                        if status:
-                                propRow = patchTable.tr(style="color: #006B24")
-                                propRow.td(logText)
-                                propRow.td(expValue)
-                                propRow.td(actValue)
-                                propRow.td("PASS", align = "center")
-                                countPassProp+=1
-                        else:
-                                if WarnCheck:
-                                        propRow = patchTable.tr(style="color: #0000ff")
-                                        propRow.td(logText)
-                                        propRow.td(expValue)
-                                        propRow.td(actValue)
-                                        propRow.td("Warning", align = "center")
-                                        countWarnProp+=1                                
-                                else:
-                                        propRow = patchTable.tr(style="color: #ff0000")
-                                        propRow.td(logText)
-                                        propRow.td(expValue)
-                                        propRow.td(actValue)
-                                        propRow.td("FAIL", align = "center")
-                                        countFailProp+=1        
-                                        
-                for PropertyName in PropertyList:
-                        try:
-                                if ':' in PropertyName:
-                                        PropertyName = PropertyName[PropertyName.find(':')+1:]
-                                if 'Oem' in PropertyName:
-                                        continue
-                                countTotProp+=1
-                                propMandatory = False
+    # List all items checked and unchecked
+    # current logic does not check inside complex types
+    fmt = '%-30s%30s'
+    rsvLogger.info('%s, %s', uriName, SchemaType)
 
-                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.OData.Permissions'):
-                                        propPermissions = PropertyDictionary[SchemaName + "-" + PropertyName+'.OData.Permissions']['enummember']
-                                else:
-                                        propPermissions = ""
-                                print "Property Name:", PropertyName, "Permission:", propPermissions
-                                
-                                if propPermissions == 'OData.Permissions/ReadWrite' or propPermissions == "":
-                                        propAttr = PropertyDictionary[SchemaName + "-" + PropertyName+'.Attributes']
-                                        if (propAttr.has_key('type')):
-                                                propType = propAttr['type']                             
-                                        if PropertyName.__contains__("UserName") or PropertyName.__contains__("Password") or PropertyName == "Links" or PropertyName.__contains__("HTTP") or PropertyName == "Enabled"  or PropertyName == "Locked":
-                                                continue
+    for key in jsonData:
+        item = jsonData[key]
+        rsvLogger.info(fmt % (
+            key, messages[key][3] if key in messages else 'Exists, no schema check'))
+        if key not in messages:
+            # note: extra messages for "unchecked" properties
+            if '@' not in key:
+                rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)
+                counts['additional'] += 1
+            messages[key] = (item, '-',
+                             'Exists',
+                             '-')
+    for key in messages:
+        if key not in jsonData:
+            rsvLogger.info(fmt % (key, messages[key][3]))
 
-                                        SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
-                                        propUpdateValue = ""
-                                        try:
-                                                if PropertyName.count(".") == 2:
-                                                        MainAttribute = midAttribute = SubAttribute = propOrigValue = ""
-                                                        try:
-                                                                MainAttribute = PropertyName.split(".")[0]
-                                                                midAttribute = PropertyName.split(".")[1]
-                                                                SubAttribute = PropertyName.split(".")[-1]
-                                                                propOrigValue = decoded[MainAttribute][midAttribute][SubAttribute]
-                                                        except:
-                                                                propOrigValue = None
-                                                elif PropertyName.count(".") == 1:
-                                                        try:
-                                                                MainAttribute = PropertyName.split(".")[0]
-                                                                SubAttribute = PropertyName.split(".")[1]
-                                                                propOrigValue = decoded[MainAttribute][SubAttribute]                                                    
-                                                        except:
-                                                                propOrigValue = None
-                                                else:
-                                                        try:
-                                                                propOrigValue = decoded[PropertyName]                                           
-                                                        except:
-                                                                propOrigValue = None
-                                                                
-                                        except Exception:
-                                                propOrigValue = "Value Not Available"
-                                        
-                                        if propOrigValue == None:
-                                                print "No Property available for patch: " % PropertyName
-                                                continue
-                                                
-                                        breakloop = 1   
-                                        while True:
-                                                breakloop = breakloop + 1
-                                                propUpdateValue, valueType = getRandomValue(PropertyName, SchemaAlias, soup, propOrigValue, SchemaName)
-                                                if not(str(propUpdateValue).lower() == str(propOrigValue).lower()):
-                                                        break
-                                                if propUpdateValue == "None" or propUpdateValue == "" or propUpdateValue == True or propUpdateValue == False or propUpdateValue == "Disabled" or propUpdateValue == "Enabled":
-                                                        break
-                                                if breakloop >= 5:
-                                                        break
-                                                        
-                                        if propUpdateValue == "None":
-                                                print "No patch support on: " % PropertyName
-                                                continue
-                                                
-                                        patchTable = htmlTable.tr.td.table(border='1', style="font-family: calibri; width: 100%")
-                                        header = patchTable.tr(style="background-color: #FFFFA3")
-                                        header.th("PATCH Compliance for Property: "+PropertyName, style="width: 40%")
-                                        header.th("Expected Value", style="width: 20%")
-                                        header.th("Actual Value", style="width: 20%")
-                                        header.th("Result", style="width: 20%")         
-                                        
-                                        if valueType == 'Int':
-                                                propMinValue = propMaxValue = None
-                                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Minimum'):
-                                                        propMinValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Minimum']['int'])
-                                                        if PropertyName.count(".") == 1:
-                                                                MainAttribute = PropertyName.split(".")[0]
-                                                                SubAttribute = PropertyName.split(".")[1]                                                       
-                                                                payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propMinValue)+"}}"
-                                                                
-                                                        else:
-                                                                payload = "{\""+PropertyName+"\":"+str(propMinValue)+"}"
-                                                                
-                                                        statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
-                                                        
-                                                        if retValue == propMinValue:
-                                                                logPatchResult(True, patchTable, "Valid Update Value", propMinValue, retValue)
-                                                        elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                                logPatchResult(False, patchTable, "Valid Update Value", propMinValue, retValue, WarnCheck = True)
-                                                        else:
-                                                                logPatchResult(False, patchTable, "Valid Update Value", propMinValue, retValue)                                                                 
+    rsvLogger.info('%s, %s, %s', SchemaFullType, counts, len(propertyList))
 
-                                                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Maximum'):
-                                                        propMaxValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Maximum']['int'])
-                                                        if PropertyName.count(".") == 1:
-                                                                MainAttribute = PropertyName.split(".")[0]
-                                                                SubAttribute = PropertyName.split(".")[1]                                                       
-                                                                payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propMaxValue)+"}}"
-                                                        else:
-                                                                payload = "{\""+PropertyName+"\":"+str(propMaxValue)+"}"
-                                                                
-                                                        statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
+    results[uriName] = (URI, success, counts, messages, errorMessages)
 
-                                                        if retValue == propMaxValue:
-                                                                logPatchResult(True, patchTable, "Valid Update Value", propMaxValue, retValue)
-                                                        elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                                logPatchResult(False, patchTable, "Valid Update Value", propMaxValue, retValue, WarnCheck = True)
-                                                        else:
-                                                                logPatchResult(False, patchTable, "Valid Update Value", propMaxValue, retValue)
-                                                                
-                                                if PropertyName.count(".") == 1:
-                                                        MainAttribute = PropertyName.split(".")[0]
-                                                        SubAttribute = PropertyName.split(".")[1]                                                       
-                                                        payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propUpdateValue)+"}}"
-                                                        payloadOriginalValue = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propOrigValue)+"}}"
-                                                else:                                                   
-                                                        payload = "{\""+PropertyName+"\":"+str(propUpdateValue)+"}"
-                                                        payloadOriginalValue = "{\""+PropertyName+"\":"+str(propOrigValue)+"}"
-                                                        
-                                                statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
-                                                if retValue == propUpdateValue:
-                                                        logPatchResult(True, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                                elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue, WarnCheck = True)
-                                                else:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                                
-                                                statusCode, status, jsonSchema, headers = ResetPatchedAttribute('', PatchURI, 'PATCH', payload=payloadOriginalValue)
+    # Get all links available
+    links = getAllLinks(jsonData, propertyDict, refDict)
 
-                                        elif valueType == 'Bool':
-                                                if PropertyName.count(".") == 1:
-                                                        MainAttribute = PropertyName.split(".")[0]
-                                                        SubAttribute = PropertyName.split(".")[1]                                                       
-                                                        payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propUpdateValue).lower() +"}}"
-                                                        payloadOriginalValue = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":"+str(propOrigValue).lower() +"}}"
-                                                else:
-                                                        payload = "{\""+PropertyName+"\":"+str(propUpdateValue).lower()+"}"
-                                                        payloadOriginalValue = "{\""+PropertyName+"\":"+str(propOrigValue).lower()+"}"
-                                                        
-                                                statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
-
-                                                if str(retValue).lower() == str(propUpdateValue).lower():
-                                                        logPatchResult(True, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                                elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue, WarnCheck = True)
-                                                else:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                        
-                                                statusCode, status, jsonSchema, headers = ResetPatchedAttribute('', PatchURI, 'PATCH', payload=payloadOriginalValue)
-                                                
-                                        else:
-                                                if PropertyName.count(".") == 1:
-                                                        MainAttribute = PropertyName.split(".")[0]
-                                                        SubAttribute = PropertyName.split(".")[1]                                                       
-                                                        payload = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":\""+str(propUpdateValue)+"\"}}"
-                                                        payloadOriginalValue = "{\""+ MainAttribute +"\":{\""+SubAttribute+"\":\""+str(propOrigValue)+"\"}}"
-                                                else:
-                                                        payload = "{\""+PropertyName+"\":\""+propUpdateValue+"\"}"
-                                                        payloadOriginalValue = "{\""+PropertyName+"\":\""+str(propOrigValue)+"\"}"
-                                                        
-                                                statusCode, status, retValue = propertyUpdate(PropertyName, PatchURI, payload)
-
-                                                if str(retValue).lower() == str(propUpdateValue).lower():
-                                                        logPatchResult(True, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                                elif str(statusCode) in ["200", "204", "400", "405"]:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue, WarnCheck = True)
-                                                else:
-                                                        logPatchResult(False, patchTable, "Valid Update Value", propUpdateValue, retValue)
-                                        
-                                                statusCode, status, jsonSchema, headers = ResetPatchedAttribute('', PatchURI, 'PATCH', payload=payloadOriginalValue)
-
-                                else:
-                                        continue
-                        except:
-                                pass
-        except:
-                pass
-
-#Check all the GET property comparison with Schema files                
-def checkPropertyType(PropertyName, propValue, propType, optionalFlag, propMandatory, soup, SchemaName):
-        global countTotSchemaProp, countPassSchemaProp, countFailSchemaProp, countSkipSchemaProp, countWarnSchemaProp
-        global countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp, countWarnMandatoryProp
-        global countTotProp, countPassProp, countFailProp, countSkipProp, countWarnProp
-
-        if propType == 'Edm.Boolean':
-                if str(propValue).lower() == "true" or str(propValue).lower() == "false":
-                        generateLog(PropertyName, "Boolean Value", str(propValue), propMandatory)
-                else:
-                        generateLog(PropertyName, "Boolean Value", str(propValue), propMandatory, logPass = False)
-        elif propType == 'Edm.String':
-                if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Pattern'):
-                        propValuePattern = PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Pattern']['string']
-                        if "\\" in propValuePattern:
-                                propValuePattern = propValuePattern.replace("\\\\", "\\")
-                        if (re.match(propValuePattern, propValue) == None):
-                                generateLog(PropertyName, "String Value (Pattern: "+propValuePattern+")", propValue, propMandatory, logPass = False)
-                        else:
-                                generateLog(PropertyName, "String Value (Pattern: "+propValuePattern+")", propValue, propMandatory)
-                elif (len(propValue) >= 1 or (optionalFlag and len(propValue) == 0)):
-                        generateLog(PropertyName, "String Value", propValue, propMandatory)
-                else:
-                        generateLog(PropertyName, "String Value", propValue, propMandatory, logPass = False)
-        elif propType == 'Edm.DateTimeOffset':
-                temp = False
-                try: 
-                        propValueCheck = propValue[:19]
-                        d1 = strptime(propValueCheck, "%Y-%m-%dT%H:%M:%S" )
-                        temp = True
-                except:
-                        pass
-                try: 
-                        propValueCheck = propValue.split("T")[0]
-                        d1 = strptime(propValueCheck, "%Y-%m-%d" )
-                        temp = True
-                except:
-                        pass
-                try:
-                        propValueCheck = propValue.split(" ")[0]
-                        d1 = strptime(propValueCheck, "%Y-%m-%d" )
-                        temp = True
-                except:
-                        pass                    
-                if (temp):
-                        generateLog(PropertyName, "DateTime Value", propValue, propMandatory)
-                else:
-                        generateLog(PropertyName, "DateTime Value", propValue, propMandatory, logPass = False)
-        elif propType == 'Edm.Int16' or propType == 'Edm.Int32' or propType == 'Edm.Int64':
-                if isinstance(propValue, int):
-                        logText = "Integer Value"
-                        if PropertyDictionary.has_key(SchemaName + "-" + PropertyName+'.Validation.Minimum'):
-                                propMinValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Minimum']['int'])
-                                if propValue >= propMinValue:
-                                        logText += " Range: "+str(propMinValue)
-                                else:
-                                        generateLog("Check failed for property " + PropertyName, "Minimum Boundary = " + str(propMinValue), str(propValue), propMandatory, logPass = False)
-                                        return
-                        if PropertyDictionary.has_key(SchemaName + "-"  +PropertyName+'.Validation.Maximum'):
-                                propMaxValue = int(PropertyDictionary[SchemaName + "-" + PropertyName+'.Validation.Maximum']['int'])
-                                if propValue <= propMaxValue:
-                                        logText += " - "+str(propMaxValue)
-                                else:
-                                        generateLog("Check failed for property " + PropertyName, "Maximum Boundary = " + str(propMaxValue), str(propValue), propMandatory, logPass = False)
-                                        return
-                        generateLog(PropertyName, logText, str(propValue), propMandatory)
-                else:
-                        generateLog(PropertyName, logText, str(propValue), propMandatory, logPass = False)
-                        
-        elif propType == 'Edm.Guid':
-                propValuePattern = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-                if (re.match(propValuePattern, propValue) == None):
-                        generateLog(PropertyName, "String Value (Pattern: "+propValuePattern+")", propValue, propMandatory, logPass = False)
-                else:
-                        generateLog(PropertyName, "String Value (Pattern: "+propValuePattern+")", propValue, propMandatory)
-        else:
-                validList = temp = ""
-                templist = []
-                print "Inside Complex Data Type"
-                if propType.__contains__("Resource"):
-                        status, soup = getSchemaDetails("Resource")
-                        SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
-                else:
-                        SchemaAlias = soup.find('schema')['namespace'].split(".")[0]
-                        
-                if SchemaAlias in propType:
-                        if 'Collection(' in propType:
-                                propType = propType.replace('Collection(', "")
-                                propType = propType.replace(')', "")
-                        
-                        validList = getEnumTypeDetails(soup, propType.split(".")[-1])   
-
-                        if not validList:
-                                print 'Special verification for Complex Data Types defined in schema', SchemaAlias+':', propType
-                                generateLog(PropertyName, "Complex Data Type", propType, propMandatory)                         
-                        else:
-                                flag =True
-                                if type(propValue) is list:
-                                        temp = str(propValue)
-                                        temp = temp.replace("[","")
-                                        temp = temp.replace("]","")
-                                        temp = temp.replace("u'","")
-                                        temp = temp.replace("'","")
-                                        temp = temp.replace(", ",",")
-                                        temp = temp.replace("\"","")
-                                        templist = temp.split(",")
-                                        templist = list(templist)
-                                        for eachValue in templist:
-                                                if eachValue.lower() in [element.lower() for element in validList]:
-                                                        print "Covered"
-                                                else:
-                                                        flag = False
-                                        if flag:
-                                                print 'Property present in List', SchemaAlias+':', propValue
-                                                generateLog(PropertyName, "Value Matched", str(propValue), propMandatory)
-                                        else:
-                                                generateLog(PropertyName, "Value Not Matched", str(propValue), propMandatory, logPass = False)
-                                                        
-                                elif propValue.lower() in [element.lower() for element in validList]:
-                                        print 'Property present in List', SchemaAlias+':', propValue
-                                        generateLog(PropertyName, "Value Matched", propValue, propMandatory)    
-                                else:
-                                        generateLog(PropertyName, "Value Not Matched", propValue, propMandatory, logPass = False)
-
-# Common function to handle rerport generation in HTML/XML format
-def generateLog(logText, expValue, actValue, propMandatory = False, logPass = True, incrementCounter = True, header = False, spacer = False, summaryLog = False):
-        global countTotSchemaProp, countPassSchemaProp, countFailSchemaProp, countSkipSchemaProp, countWarnSchemaProp
-        global countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp, countWarnMandatoryProp
-        global countTotProp, countPassProp, countFailProp, countSkipProp, countWarnProp
-        global propTable
-
-        if summaryLog:
-                logTable = htmlSumTable
-        else:
-                logTable = htmlTable
-
-        if spacer:
-                logTable.tr.td(style = "height: 30")
-                return
-
-        if (expValue == None and actValue == None): # Add Information steps to log
-                print 80*'*'
-                print logText
-                if header:
-                        rowData = logTable.tr(align = "center", style = "font-size: 21px; background-color: #E6E6F0")
-                else:
-                        rowData = logTable.tr(align = "center", style = "font-size: 18px; background-color: #FFE0E0")
-
-                if logText.__contains__("Compliance Check"):
-                        clickLink = rowData.td.a(id = logText, href= SummaryLogFile)
-                        clickLink(logText)                      
-                else:
-                        rowData.td(logText)
-                
-                return
-
-        if propMandatory:
-                logManOpt = 'Mandatory'
-        else:
-                logManOpt = 'Optional'
-        if logPass:
-                print 'PASS:', 'Compliance successful for', logText, '|| Value matches compliance:', actValue
-                propRow = propTable.tr(style="color: #006B24")
-                propRow.td(logText)
-                propRow.td(logManOpt)
-                if expValue == None:
-                        propRow.td("No Value")
-                else:
-                        propRow.td(expValue)
-                if (actValue == None or actValue == ""):
-                        propRow.td("No Value Returned")
-                        propRow.td("SKIP", align = "center")
-                        countSkipProp+=1
-                        countTotProp-=1
-                        incrementCounter = False
-                else:
-                        propRow.td(actValue)
-                        propRow.td("PASS", align = "center")
-                if incrementCounter:
-                        countPassProp+=1
-                        if propMandatory:
-                                countPassMandatoryProp+=1
-        else:
-                print 'FAIL:', 'Compliance unsuccessful for', logText, '|| Expected:', expValue, '|| Actual:', actValue
-                propRow = propTable.tr(style="color: #ff0000")
-                propRow.td(logText)
-                propRow.td(logManOpt)
-                if expValue == None:
-                        propRow.td("No Value")
-                else:
-                        propRow.td(expValue)
-                if (actValue == None or actValue == ""):
-                        propRow.td("No Value Returned")
-                else:
-                        propRow.td(actValue)
-                propRow.td("FAIL", align = "center")
-                if incrementCounter:
-                        countFailProp+=1
-                        if propMandatory:
-                                countFailMandatoryProp+=1
-
-# Common module to handle tabular reporting in HTML
-def insertResultTable():
-        global propTable
-        propTable = htmlTable.tr.td.table(border='1', style="font-family: calibri; width: 100%")
-        header = propTable.tr(style="background-color: #FFFFA3")
-        header.th("Property Name", style="width: 40%")
-        header.th("Type", style="width: 9%")
-        header.th("Expected Value", style="width: 17%")
-        header.th("Actual Value", style="width: 17%")
-        header.th("Result", style="width: 17%")
-        return propTable
-
-# Function to traverse thorough all the pages of service
-def corelogic(ResourceName, SchemaURI):
-        global AllLinks
-        global SerialNumber
-        global countTotSchemaProp, countPassSchemaProp, countFailSchemaProp, countSkipSchemaProp, countWarnSchemaProp
-        global countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp, countWarnMandatoryProp
-        global countTotProp, countPassProp, countFailProp, countSkipProp, countWarnProp
-        
-        global ComplexTypeLinksDictionary
-        global ComplexLinksIndex
-
-#       if not (ResourceName == 'Manager'):
-#               return 0
-        status, SchemaAlias = getMappedSchema(ResourceName, rootSoup)
-        countTotSchemaProp = countTotProp
-        countPassSchemaProp = countPassProp
-        countFailSchemaProp = countFailProp
-        countSkipSchemaProp = countSkipProp
-        countWarnSchemaProp = countWarnProp
-        ComplexLinksFlag = False
-        linkvar = ""
-        ResourceURIlink2 = "ServiceRoot -> " + ResourceName
-        if status:
-                print SchemaAlias
-                generateLog(None, None, None, spacer = True)
-                generateLog(None, None, None, spacer = True)
-
-                status, schemaSoup = getSchemaDetails(SchemaAlias)              
-                if not(status):
-                        return None     # Continue check of next schema         
-                EntityName, PropertyList = getEntityTypeDetails(schemaSoup, SchemaAlias)
-                SerialNumber = SerialNumber + 1
-                linkvar = "Compliance Check for Schema: "+EntityName + "-" + str(SerialNumber)
-                generateLog(linkvar, None, None)
-                
-                propTable = insertResultTable()
-                statusCode, status, jsonSchema, headers = callResourceURI(ResourceName, SchemaURI, 'GET')               
-                if status:
-                        
-                        PropertyDictionary = {}
-                        getPropertyDetails(schemaSoup, PropertyList, SchemaAlias)
-                        propTable = insertResultTable()
-                        try:
-                                SchemaName = SchemaAlias.split(".")[-1]
-                                checkPropertyCompliance(PropertyList, jsonSchema, schemaSoup, SchemaName)
-                                checkPropertyPatchCompliance(PropertyList, SchemaURI, jsonSchema, schemaSoup, headers, SchemaName)
-                        except:
-                                pass
-                        try:
-                                ComplexLinksFlag = getChildLinks(PropertyList, jsonSchema, schemaSoup)
-                        except:
-                                pass
-                else:
-                        print 80*'*'
-                        print schemaSoup
-                        print 80*'*'
-                        
-                generateLog("Properties checked for Schema %s: %s || Pass: %s || Fail: %s || Warning: %s " %(SchemaAlias, countTotProp-countTotSchemaProp, countPassProp-countPassSchemaProp, countFailProp-countFailSchemaProp, countWarnProp-countWarnSchemaProp), None, None)
-                propRow = summaryLogTable.tr(align = "center")
-                propRow.td(str(SerialNumber))           
-                propRow.td(ResourceURIlink2, align = "left")
-                propRow.td(SchemaURI, align = "left")
-                propRow.td(str(countPassProp-countPassSchemaProp))
-                propRow.td(str(countFailProp-countFailSchemaProp))
-                propRow.td(str(countSkipProp-countSkipSchemaProp))
-                propRow.td(str(countWarnProp-countWarnSchemaProp))
-                clickLink = propRow.td.a(href= HTMLLogFile + "#" + linkvar)
-                clickLink("Click")
-                
-                oldSchemaAlias = ""
-                ResourceURIlink3 = ""
-                while ComplexLinksFlag: # Go into loop only if SubLinks have been found
-                        ResourceURIlink2 = ResourceURIlink2
-                        SubLinks = ComplexTypeLinksDictionary['SubLinks'][ComplexLinksIndex:]
-                        ComplexLinksFlag = False        # Reset the Flag to stop looping
-                        for elem in SubLinks:
-                                ComplexLinksIndex+=1    # Track the Index counter
-                                #if elem in ComplexTypeLinksDictionary['SubLinks'][:ComplexLinksIndex-1]:
-                                #       continue
-                                countTotSchemaProp = countTotProp
-                                countPassSchemaProp = countPassProp
-                                countFailSchemaProp = countFailProp
-                                countSkipSchemaProp = countSkipProp
-                                countWarnSchemaProp = countWarnProp
-                                SchemaAlias = ComplexTypeLinksDictionary[elem+'.Schema']
-                                subLinkURI = ComplexTypeLinksDictionary[elem+'.Link']
-
-                                if subLinkURI.strip().lower() in AllLinks:
-                                        continue
-                                else:
-                                        AllLinks.append(subLinkURI.strip().lower())
-                                
-                                generateLog(None, None, None, spacer = True)
-                                generateLog(None, None, None, spacer = True)
-
-                                status, schemaSoup = getSchemaDetails(SchemaAlias)
-                                if not(status):
-                                        continue        # Continue check of next schema 
-                        
-                                EntityName, PropertyList = getEntityTypeDetails(schemaSoup, SchemaAlias)
-                                
-                                        
-                                SerialNumber = SerialNumber + 1
-                                linkvar = "Compliance Check for Sub-Link Schema: "+EntityName + "-" + str(SerialNumber)
-                                generateLog(linkvar, None, None)
-                                
-                                propTable = insertResultTable()                         
-                                statusCode, status, jsonSchema, headers = callResourceURI(SchemaAlias, subLinkURI, 'GET')
-                                
-                                if status:
-                                        PropertyDictionary = {}
-                                        getPropertyDetails(schemaSoup, PropertyList, SchemaAlias)
-                                        propTable = insertResultTable()
-                                        try:
-                                                SchemaName = SchemaAlias.split(".")[-1]
-                                                checkPropertyCompliance(PropertyList, jsonSchema, schemaSoup, SchemaName)
-                                                checkPropertyPatchCompliance(PropertyList, subLinkURI, jsonSchema, schemaSoup, headers, SchemaName)
-                                                #checkPropertyPostCompliance(PropertyList, subLinkURI, jsonSchema, schemaSoup)
-                                        except:
-                                                pass
-                                        try:
-                                                ComplexLinksFlag = getChildLinks(PropertyList, jsonSchema, schemaSoup)
-
-                                        except:
-                                                pass
-                                else:
-                                        print 80*'*'
-                                        print schemaSoup
-                                        print 80*'*'
-                                
-                                ResourceURIlink3 = ResourceURIlink2 + " -> " + SchemaAlias.split(".")[0]
-                                        
-                                generateLog("Properties checked for Sub-Link Schema %s: %s || Pass: %s || Fail: %s || Warning: %s " %(SchemaAlias, countTotProp-countTotSchemaProp, countPassProp-countPassSchemaProp, countFailProp-countFailSchemaProp, countWarnProp-countWarnSchemaProp), None, None)
-                                propRow = summaryLogTable.tr(align = "center")
-
-                                propRow.td(str(SerialNumber))
-                                propRow.td(ResourceURIlink3, align = "left")
-                                propRow.td(subLinkURI, align = "left")
-                                propRow.td(str(countPassProp-countPassSchemaProp))
-                                propRow.td(str(countFailProp-countFailSchemaProp))
-                                propRow.td(str(countSkipProp-countSkipSchemaProp))
-                                propRow.td(str(countWarnProp-countWarnSchemaProp))
-                                clickLink = propRow.td.a(href= HTMLLogFile + "#" + linkvar)
-                                clickLink("Click")
-                        oldSchemaAlias = SchemaAlias.split(".")[0]      
-        else:
-                print 80*'*'
-                print SchemaAlias
-                print 80*'*'
-
+    rsvLogger.debug(links)
+    rsvLogger.removeHandler(errh) 
+    return True, counts, results, links
 
 ##########################################################################
-######################          Script starts here              ######################
+######################          Script starts here              ##########
 ##########################################################################
 
-# Initialize Log files for HTML report
-HTMLLogFile = strftime("ComplianceTestDetailedResult_%m_%d_%Y_%H%M%S.html")
-SummaryLogFile = strftime("ComplianceTestSummary_%m_%d_%Y_%H%M%S.html")
-logHTML = HTML('html')
-logSummary = HTML('html')
-loghead = logHTML.head
-logbody = logHTML.body
-loghead.title('Compliance Log')
-logSumhead = logSummary.head
-logSumbody = logSummary.body
-logSumhead.title('Compliance Test Summary')
-startTime = DT.now()
 
-htmlTable = logbody.table(border='1', style="font-family: calibri; width: 100%; font-size: 14px")
-generateLog("#####         Starting Redfish Compliance Test || System: %s as User: %s     #####" %(ConfigURI, User), None, None, header = True)
-htmlSumTable = logSumbody.table(border='1', style="font-family: calibri; width: 80%; font-size: 14px", align = "center")
-generateLog("#####         Redfish Compliance Test Report         #####", None, None, header = True, summaryLog = True)
-generateLog("System: %s" %ConfigURI[ConfigURI.find("//")+2:], None, None, summaryLog = True)
-generateLog("User: %s" %(User), None, None, summaryLog = True)
-generateLog("Execution Date: %s" %strftime("%m/%d/%Y %H:%M:%S"), None, None, summaryLog = True)
-generateLog(None, None, None, spacer = True, summaryLog = True)
+if __name__ == '__main__':
+    # Logging config
+    # logging
+    startTick = datetime.now()
+    if not os.path.isdir('logs'):
+           os.makedirs('logs')
+    fmt = logging.Formatter('%(levelname)s - %(message)s')
+    fh = logging.FileHandler(datetime.strftime(startTick, "logs/ComplianceLog_%m_%d_%Y_%H%M%S.txt"))
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(fmt)
+    rsvLogger.addHandler(fh)
+    rsvLogger.info("RedfishServiceValidator Config details: %s", str(
+        (ConfigURI, 'user:' + str(User), SchemaLocation, 'chkCert' if chkCert else '', 'localOnly' if localOnly else '')))
+    
+    # Start main
+    status_code = 1
+    success, counts, results = validateURITree('/redfish/v1', 'ServiceRoot')
+    finalCounts = Counter()
+    nowTick = datetime.now()
+    # Render html
+    htmlStrTop = '<html><head><title>Compliance Test Summary</title>\
+            <style>\
+            .pass {background-color:#99EE99; text-align:center}\
+            .fail {background-color:#EE9999; text-align:center}\
+            .failLog {background-color:#EE9999; text-align:left; white-space:pre}\
+            .title {background-color:#DDDDDD; border: 1pt solid; padding: 8px}\
+            .titlerow {border: 2pt solid}\
+            body {background-color:lightgrey; border: 1pt solid; text-align:center; margin-left:auto; margin-right:auto}\
+            th {text-align:center; background-color:beige; border: 1pt solid}\
+            td {text-align:left; background-color:white; border: 1pt solid}\
+            table {width:90%; margin: 0px auto;}\
+            .titletable {width:100%}\
+            </style>\
+            </head>'
+    htmlStrBodyHeader = '<body><table>\
+                <tr><th>##### Redfish Compliance Test Report #####</th></tr>\
+                <tr><th>System: ' + ConfigURI + '</th></tr>\
+                <tr><th>User: ' + User + '</th></tr>\
+                <tr><th>Start time: ' + str(startTick) + '</th></tr>\
+                <tr><th>Run time: ' + str(nowTick - startTick) + '</th></tr>\
+                <tr><th></th></tr>'
 
-summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
-header = summaryLogTable.tr(style="background-color: #FFFFA3")
-header.th("Serial No", style="width: 5%")
-header.th("Resource Name", style="width: 30%")
-header.th("Resource URI", style="width: 40%")
-header.th("Passed", style="width: 5%")
-header.th("Failed", style="width: 5%")
-header.th("Skipped", style="width: 5%")
-header.th("Warning", style="width: 5%")
-header.th("Details", style="width: 5%")
-linkvar = "Compliance Check for Root Schema" + "-" + str(SerialNumber)
-print 80*'*'
-generateLog(None, None, None, spacer = True)
-propTable = insertResultTable()
-generateLog(linkvar, None, None)
+    htmlStr = '' 
 
-# Retrieve output of ServiceRoot URI
-status, jsonData = getRootURI()
-                                                        
-ResourceURIlink1 = "ServiceRoot"
-if status:
-        # Check compliance for ServiceRoot
-        status, schemaSoup = getSchemaDetails('ServiceRoot')
+    cnt = 1
+    rsvLogger.info(len(results))
+    for item in results:
+        cnt += 1
+        htmlStr += '<tr><td class="titlerow"><table class="titletable"><tr>'
+        htmlStr += '<td class="title" style="width:40%">' + item + '</td>'
+        htmlStr += '<td style="width:20%">' + str(results[item][0]) + '</td>'
+        htmlStr += '<td style="width:10%"' + \
+            ('class="pass"> PASS' if results[item]
+             [1] else 'class="fail"> FAIL') + '</td>'
+        htmlStr += '<td>'
+        innerCounts = results[item][2]
+        finalCounts.update(innerCounts)
+        for countType in innerCounts:
+            innerCounts[countType] += 0
+            htmlStr += '{p}: {q},   '.format(p=countType,
+                                             q=innerCounts.get(countType, 0))
+        htmlStr += '</td></tr>'
+        htmlStr += '</table></td></tr>'
+        htmlStr += '<tr><td><table><tr><th> Name</th> <th> Value</th> <th>Type</th> <th>Exists?</th> <th>Success</th> <tr>'
+        if results[item][3] is not None:
+            for i in results[item][3]:
+                htmlStr += '<tr>'
+                htmlStr += '<td>' + str(i) + '</td>'
+                for j in results[item][3][i]:
+                    if 'PASS' in str(j):
+                        htmlStr += '<td class="pass">' + str(j) + '</td>'
+                    elif 'FAIL' in str(j):
+                        htmlStr += '<td class="fail">' + str(j) + '</td>'
+                    else:
+                        htmlStr += '<td >' + str(j) + '</td>'
+                htmlStr += '</tr>'
+        htmlStr += '</table></td></tr>'
+        if results[item][4] is not None:
+            htmlStr += '<tr><td class="failLog">' + str(results[item][4].getvalue()).replace('\n','<br />') + '</td></tr>'
+            results[item][4].close()
+        htmlStr += '<tr><td>---</td></tr>'
+    htmlStr += '</table></body></html>'
+    htmlStr += '</table></body></html>'
 
-        Name, PropertyList = getEntityTypeDetails(schemaSoup, 'ServiceRoot')
-        
-        PropertyDictionary = {}
-        ComplexLinksFlag = False
-        getPropertyDetails(schemaSoup, PropertyList, 'ServiceRoot')
-        
-        propTable = insertResultTable()
-        checkPropertyCompliance(PropertyList, jsonData, schemaSoup, 'ServiceRoot')
-        # Report log statistics for ServiceRoot schema
-        generateLog("Properties checked: %s || Pass: %s || Fail: %s || Warning: %s " %(countTotProp, countPassProp, countFailProp, countWarnProp), None, None)
-        propRow = summaryLogTable.tr(align = "center")
-        propRow.td(str(SerialNumber))
-        propRow.td(ResourceURIlink1, align = "left")
-        propRow.td("/redfish/v1", align = "left")
-        propRow.td(str(countPassProp-countPassSchemaProp))
-        propRow.td(str(countFailProp-countFailSchemaProp))
-        propRow.td(str(countSkipProp-countSkipSchemaProp))
-        propRow.td(str(countWarnProp-countWarnSchemaProp))
-        clickLink = propRow.td.a(href= HTMLLogFile + "#" + linkvar)
-        clickLink("Click")
+    htmlStrTotal = '<tr><td>Final counts: '
+    for countType in finalCounts:
+        htmlStrTotal += '{p}: {q},   '.format(p=countType,
+                                         q=finalCounts.get(countType, 0))
+    htmlStrTotal += '</td></tr>'
 
-        rootSoup = schemaSoup
-        generateLog(None, None, None, spacer = True)
-        propTable = htmlTable.tr.td.table(border='1', style="width: 100%")
-        header = propTable.tr(style="background-color: #FFFFA3")
-        header.th("Resource Name", style="width: 30%")
-        header.th("URI", style="width: 70%")
+    htmlPage = htmlStrTop + htmlStrBodyHeader + htmlStrTotal + htmlStr
 
-        
-### Only for output
-        
-        for elem, value in jsonData.iteritems():
-                try:
-                        if type(value) is dict:
-                                for eachkey, eachvalue in value.iteritems():
-                                        try:
-                                                if eachkey == '@odata.id':
-                                                        ResourceName = elem
-                                                        SchemaURI = jsonData[ResourceName][eachkey]
-                                                        propRow = propTable.tr()
-                                                        propRow.td(ResourceName)
-                                                        propRow.td(SchemaURI)
-                                                        
-                                                elif jsonData[elem][eachkey].has_key('@odata.id'):
-                                                        ResourceName = eachkey
-                                                        SchemaURI = jsonData[elem][ResourceName]['@odata.id']
-                                                        propRow = propTable.tr()
-                                                        propRow.td(ResourceName)
-                                                        propRow.td(SchemaURI)                                           
-                                                else:
-                                                        pass
-                                        except:
-                                                pass
-                                        
-                        elif jsonData[elem].has_key('@odata.id'):
-                                ResourceName = elem
-                                SchemaURI = jsonData[ResourceName]['@odata.id']
-                                propRow = propTable.tr()
-                                propRow.td(ResourceName)
-                                propRow.td(SchemaURI)
-                        else:
-                                pass
-                except:
-                        pass    
-        
-### Executing all the links on root URI         
-        for elem, value in jsonData.iteritems():
-                try:
-                        if type(value) is dict:
-                                for eachkey, eachvalue in value.iteritems():
-                                        try:
-                                                if eachkey == '@odata.id':
-                                                        ResourceName = elem
-                                                        SchemaURI = jsonData[ResourceName][eachkey]
-                                                        corelogic(ResourceName, SchemaURI)
-                                                        
-                                                elif jsonData[elem][eachkey].has_key('@odata.id'):
-                                                        ResourceName = eachkey
-                                                        SchemaURI = jsonData[elem][ResourceName]['@odata.id']
-                                                        corelogic(ResourceName, SchemaURI)
-                                                else:
-                                                        pass
-                                        except:
-                                                pass
-                                        
-                        elif jsonData[elem].has_key('@odata.id'):
-                                ResourceName = elem
-                                SchemaURI = jsonData[ResourceName]['@odata.id']
-                                corelogic(ResourceName, SchemaURI)
-                        else:
-                                pass
-                except:
-                        pass
-                        
-#        generateLog("Total Properties checked: %s || Pass: %s || Fail: %s" %(countTotProp, countPassProp, countFailProp), None, None)
-#        generateLog("Total Mandatory Properties checked: %s || Pass: %s || Fail: %s" %(countTotMandatoryProp, countPassMandatoryProp, countFailMandatoryProp), None, None)
-        generateLog(None, None, None, spacer = True, summaryLog = True)
-        summaryLogTable = htmlSumTable.tr.td.table(border='1', style="width: 100%")
-        header = summaryLogTable.tr(style="background-color: #FFFFA3")
-        header.th("Compliance Test Summary", style="width: 40%")
-        header.th("Passed", style="width: 15%")
-        header.th("Failed", style="width: 15%")
-        header.th("Skipped", style="width: 15%")
-        header.th("Warning", style="width: 15%")
+    with open(datetime.strftime(startTick, "logs/ComplianceHtmlLog_%m_%d_%Y_%H%M%S.html"), 'w') as f:
+        f.write(htmlPage)
+    
+    fails = 0
+    for key in finalCounts:
+        if 'fail' in key or 'exception' in key:
+            fails += finalCounts[key]
 
-        summaryRow = summaryLogTable.tr(align = "center")
-        summaryRow.td("Mandatory Properties", align = "left")
-        summaryRow.td(str(countPassMandatoryProp))
-        summaryRow.td(str(countFailMandatoryProp))
-        summaryRow.td('0')
-        summaryRow.td(str(countWarnMandatoryProp))
-        
-        summaryRow = summaryLogTable.tr(align = "center")
-        summaryRow.td("Optional Properties", align = "left")
-        summaryRow.td(str(countPassProp - countPassMandatoryProp))
-        summaryRow.td(str(countFailProp - countFailMandatoryProp))
-        summaryRow.td(str(countSkipProp))
-        summaryRow.td(str(countWarnProp - countWarnMandatoryProp))
-        summaryRow = summaryLogTable.tr(align = "center", style = "background-color: #E6E6F0")
-        summaryRow.td("Total Properties", align = "left")
-        summaryRow.td(str(countPassProp))
-        summaryRow.td(str(countFailProp))
-        summaryRow.td(str(countSkipProp))
-        summaryRow.td(str(countWarnProp))
+    success = success and not (fails > 0)
+    rsvLogger.info(finalCounts)
 
-        generateLog(None, None, None, spacer = True, summaryLog = True)
-        if (countFailProp > 0 or countFailMandatoryProp > 0):
-                logComment = "Compliance Test Result: FAIL"
-                summaryRow = htmlSumTable.tr(align = "center", style = "font-size: 18px; background-color: #E6E6F0; color: #ff0000")
-        elif (countPassProp > 0):
-                logComment = "Compliance Test Result: PASS"
-                summaryRow = htmlSumTable.tr(align = "center", style = "font-size: 18px; background-color: #E6E6F0; color: #006B24")
-        else:
-                logComment = "Compliance Test Result: INCOMPLETE"
-        summaryRow.td(logComment)
-else:
-        print "Compliance FAIL for ServiceRoot. Error:", jsonData
+    if not success:
+        rsvLogger.info("Validation has failed: %d problems found", fails)
+    else:
+        rsvLogger.info("Validation has succeeded.")
+        status_code = 0
 
-endTime = DT.now()
-execTime = endTime - startTime
-timeLog = htmlSumTable.tr(align = "left", style="font-size: 11px")
-timeLog.td("Execution Time: " + str(execTime))
-
-timeLog = htmlSumTable.tr(align = "left", style="font-size: 11px")
-timeLog.td("* Warning: " + str("Value which we are trying to configure is not getting set using compliance tool are may be due to external dependency."))
-
-# Save HTML Log Files
-filehandle = open(os.path.join('.', 'logs', HTMLLogFile), "w")
-filehandle.write(str(logHTML))
-filehandle.close()
-filehandle = open(os.path.join('.', 'logs', SummaryLogFile), "w")
-filehandle.write(str(logSummary))
-filehandle.close()
-
-generateLog("#####        End of Compliance Check. Please refer logs.    #####", None, None)
-print 80*'*'
+    sys.exit(status_code)
