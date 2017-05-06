@@ -85,7 +85,7 @@ def callResourceURI(URILink):
                         if isinstance( decoded, dict ):
                             decoded = decoded.get(item)
                         if isinstance( decoded, list ):
-                            decoded = decoded[item] if item < len(decoded) else None
+                            decoded = decoded[int(item)] if int(item) < len(decoded) else None
             else:
                 decoded = response.text
             return decoded is not None, decoded, statusCode
@@ -378,7 +378,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             rsvLogger.debug("go deeper in type")
             propList = getTypeDetails( typeSoup, typeRefs, propType, tagType='complextype')
             propDict = {item[2]: getPropertyDetails( *item, tagType='complextype') for item in propList}
-            rsvLogger.debug(propDict)
+            rsvLogger.debug(key for key in propDict)
             propEntry['realtype'] = 'complex'
             propEntry['typeprops'] = propDict
             break
@@ -587,7 +587,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                             if '@' not in key and '#' not in key:
                                 rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', item + '.' + key + appendStr)
                                 counts['additional'] += 1
-                            resultList[item + '.' + key + appendStr] = (item, '-',
+                            resultList[item + '.' + key + appendStr] = (val[key], '-',
                                                                  'Exists',
                                                                  '-')
                     continue
@@ -750,14 +750,14 @@ def checkAnnotationCompliance(soup, refs, decoded):
 
         rsvLogger.info('%s, %s, %s', key, splitKey, decoded[key])    
 
-# Consider removing this as a global
 def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=set()):
     allLinks.add(URI)
     
     validateSuccess, counts, results, links = \
             validateSingleURI(URI, uriName, expectedType, expectedSchema, expectedJson)
     if validateSuccess:
-        for linkName in links:
+        refLinks = {linkName: links[linkName] for linkName in links if 'Links' in linkName.split('.',1)[0] or 'RelatedItem' in linkName.split('.',1)[0]}
+        for linkName in links.keys() ^ refLinks.keys():
             if links[linkName][0] in allLinks:
                 counts['repeat'] += 1
                 continue
@@ -870,7 +870,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             rsvLogger.debug(traceback.format_exc())
             rsvLogger.error('%s:  Could not get details on this property: %s, %s' % (prop, str(type(ex).__name__), str(ex)),)
             counts['exceptionGetDict'] += 1
-    rsvLogger.debug(propertyDict)
+    rsvLogger.debug(key for key in propertyDict)
 
     # With dictionary of property details, check json against those details
     # rs-assertion: test for AdditionalProperties
