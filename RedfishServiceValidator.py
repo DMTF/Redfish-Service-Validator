@@ -265,8 +265,11 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
                 newProp = SchemaAlias + ':' + newProp
             rsvLogger.debug("ADDING :::: %s", newProp)
             if newProp not in PropertyList:
-                PropertyList.append((soup,refs,newProp))
-
+                PropertyList.append((soup,refs,newProp,tagType))
+        
+    for element in innerschema.find_all('action'):
+        rsvLogger.debug(element)
+    
     return PropertyList
 
 
@@ -303,18 +306,25 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
 
     # check if this property is a nav property
     propEntry['isNav'] = False
+    
+    # Checks if this prop is an annotation
+    if '@' not in propChild:
+        if propTag is None:
+            propTag = propEntity.find(
+                'navigationproperty', attrs={'name': propChild})
+            propEntry['isNav'] = True
 
-    if propTag is None:
-        propTag = propEntity.find(
-            'navigationproperty', attrs={'name': propChild})
-        propEntry['isNav'] = True
+        # start adding attrs and props together
+        propAll = propTag.find_all()
 
-    # start adding attrs and props together
-    propAll = propTag.find_all()
+        for tag in propAll:
+            propEntry[tag['term']] = tag.attrs
+    
+    else:
+        propTag = propEntity
+
     propEntry['attrs'] = propTag.attrs
-
-    for tag in propAll:
-        propEntry[tag['term']] = tag.attrs
+    
     rsvLogger.debug(propEntry)
 
     success, typeSoup, typeRefs, propType = getParentType(innerSoup, innerRefs, SchemaType, tagType)
@@ -377,7 +387,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
         elif typeComplexTag is not None:
             rsvLogger.debug("go deeper in type")
             propList = getTypeDetails( typeSoup, typeRefs, propType, tagType='complextype')
-            propDict = {item[2]: getPropertyDetails( *item, tagType='complextype') for item in propList}
+            propDict = {item[2]: getPropertyDetails( *item) for item in propList}
             rsvLogger.debug(key for key in propDict)
             propEntry['realtype'] = 'complex'
             propEntry['typeprops'] = propDict
@@ -743,12 +753,20 @@ def getAllLinks(jsonData, propDict, refDict, prefix='', context=''):
     return linkList
 
 
-def checkAnnotationCompliance(soup, refs, decoded):
-    for key in [k for k in decoded if '@' in k]:
-        splitKey = key.split('@')
-        target = splitKey[0]
+def getAnnotations(soup, refs, decoded, prefix=''):
+    additionalProps = list() 
+    for key in [k for k in decoded if prefix+'@' in k]:
+        splitKey = key.split('@',1)
+        fullItem = splitKey[1]
+        realType, refLink = refs.get(getNamespace(fullItem),(None,None))
+        success, annotationSoup = getSchemaDetails(realType, refLink)
+        rsvLogger.info('%s, %s, %s, %s, %s', str(success), key, splitKey, decoded[key], realType)
+        if success:
+            realItem = realType + '.' + fullItem.split('.',1)[1]
+            annotationRefs = getReferenceDetails(annotationSoup)
+            additionalProps.append( (annotationSoup, annotationRefs, realItem+':'+key, 'term') )
 
-        rsvLogger.info('%s, %s, %s', key, splitKey, decoded[key])    
+    return True, additionalProps 
 
 def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=set()):
     allLinks.add(URI)
@@ -795,7 +813,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results = OrderedDict()
     messages = OrderedDict()
 
-    results[uriName] = (URI, False, counts, messages, errorMessages)
+    results[uriName] = (URI, False, counts, messages, errorMessages, None, None)
 
     # Get from service by URI, ex: "/redfish/v1"
     if expectedJson is None:
@@ -814,6 +832,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # check for version numbering problems
     # check id if its the same as URI
     # check @odata.context instead of local
+    
     
     if expectedType is None:
         SchemaFullType = jsonData.get('@odata.type')
@@ -848,8 +867,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     rsvLogger.debug(jsonData)
     rsvLogger.debug(SchemaSoup)
+    
+    success, additionalProps = getAnnotations(SchemaSoup, refDict, jsonData)
 
-    checkAnnotationCompliance(SchemaSoup, refDict, jsonData)
     # Attempt to get a list of properties
     try:
         propertyList = getTypeDetails(
@@ -861,6 +881,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         rsvLogger.removeHandler(errh) 
         return False, counts, results, None
     rsvLogger.debug(item[2] for item in propertyList)
+    
+    if success:
+        propertyList.extend(additionalProps)
 
     # Generate dictionary of property info
     for prop in propertyList:
@@ -868,7 +891,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             propertyDict[prop[2]] = getPropertyDetails(*prop)
         except Exception as ex:
             rsvLogger.debug(traceback.format_exc())
-            rsvLogger.error('%s:  Could not get details on this property: %s, %s' % (prop, str(type(ex).__name__), str(ex)),)
+            rsvLogger.error('%s:  Could not get details on this property: %s' % ( str(type(ex).__name__), str(ex)),)
             counts['exceptionGetDict'] += 1
     rsvLogger.debug(key for key in propertyDict)
 
@@ -933,7 +956,7 @@ if __name__ == '__main__':
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)
     rsvLogger.info("RedfishServiceValidator Config details: %s", str(
-        (ConfigURI, 'user:' + str(User), SchemaLocation, 'chkCert' if chkCert else '', 'localOnly' if localOnly else '')))
+        (ConfigURI, 'user:' + str(User), SchemaLocation, 'CheckCert' if chkCert else 'no CheckCert', 'localOnly' if localOnly else 'Attempt for Online Schema')))
     
     # Start main
     status_code = 1
@@ -958,7 +981,9 @@ if __name__ == '__main__':
     htmlStrBodyHeader = '<body><table>\
                 <tr><th>##### Redfish Compliance Test Report #####</th></tr>\
                 <tr><th>System: ' + ConfigURI + '</th></tr>\
-                <tr><th>User: ' + User + '</th></tr>\
+                <tr><th>User: ' + User + ' ###  \
+                SSL Cert Check: ' + str(chkCert) + ' ###  \n\
+                Local Only Schema:' + str(localOnly) + ' ###  Local Schema Location :' + SchemaLocation + '</th></tr>\
                 <tr><th>Start time: ' + str(startTick) + '</th></tr>\
                 <tr><th>Run time: ' + str(nowTick - startTick) + '</th></tr>\
                 <tr><th></th></tr>'
@@ -971,8 +996,8 @@ if __name__ == '__main__':
         htmlStr += '<td class="title" style="width:40%">' + item + '</td>'
         htmlStr += '<td style="width:20%">' + str(results[item][0]) + '</td>'
         htmlStr += '<td style="width:10%"' + \
-            ('class="pass"> PASS' if results[item]
-             [1] else 'class="fail"> FAIL') + '</td>'
+            ('class="pass"> GET Success' if results[item]
+             [1] else 'class="fail"> GET Failure') + '</td>'
         htmlStr += '<td>'
         innerCounts = results[item][2]
         finalCounts.update(innerCounts)
