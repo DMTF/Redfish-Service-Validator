@@ -84,7 +84,7 @@ def callResourceURI(URILink):
                     for item in fragNavigate:
                         if isinstance( decoded, dict ):
                             decoded = decoded.get(item)
-                        if isinstance( decoded, list ):
+                        elif isinstance( decoded, list ):
                             decoded = decoded[int(item)] if int(item) < len(decoded) else None
             else:
                 decoded = response.text
@@ -636,15 +636,15 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                         success, data, status = callResourceURI(uri)
                     else:
                         success, data, status = True, val, 200
-                    rsvLogger.debug('%s, %s, %s', success, propType, data)
-                    if propCollectionType == 'Resource.Item': 
+                    rsvLogger.debug('%s, %s, %s', success, (propType, propCollectionType), data)
+                    if propCollectionType == 'Resource.Item' or propType == 'Resource.Item': 
                         paramPass = success
                     elif success:
                         currentType = data.get('@odata.type', propCollectionType)
                         if currentType is None:
                             currentType = propType
-                                                    
                         baseLink = refs.get(getNamespace(propCollectionType if propCollectionType is not None else propType))
+                        baseLinkObj = refs.get(getNamespace(currentType.split('.')[0]))
                         if soup.find('schema',attrs={'namespace': getNamespace(currentType)}) is not None:
                             success, baseSoup = True, soup
                         elif baseLink is not None:
@@ -768,13 +768,37 @@ def getAnnotations(soup, refs, decoded, prefix=''):
 
     return True, additionalProps 
 
+def checkPayloadCompliance(decoded):
+    messages = dict()
+    for key in [k for k in decoded if '@odata' in k]:
+        itemType = key.split('.',1)[-1]
+        itemTarget = key.split('.',1)[0]
+        paramPass = False
+        if key == 'id':
+            pass
+        elif key == 'count':
+            pass
+        elif key == 'context':
+            pass
+        elif key == 'type':
+            pass
+        else:
+            paramPass = True
+        paramPass = True
+        messages[key] = (decoded[key], 'odata',
+                                         'Exists',
+                                         'PASS' if paramPass else 'FAIL')
+    return messages 
+
+
 def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=set()):
     allLinks.add(URI)
     
     validateSuccess, counts, results, links = \
             validateSingleURI(URI, uriName, expectedType, expectedSchema, expectedJson)
     if validateSuccess:
-        refLinks = {linkName: links[linkName] for linkName in links if 'Links' in linkName.split('.',1)[0] or 'RelatedItem' in linkName.split('.',1)[0]}
+        refLinks = {linkName: links[linkName] for linkName in links if 'Links' in linkName.split('.',1)[0] or 
+                'RelatedItem' in linkName.split('.',1)[0] or 'Redundancy' in linkName.split('.',1)[0]}
         for linkName in links.keys() ^ refLinks.keys():
             if links[linkName][0] in allLinks:
                 counts['repeat'] += 1
@@ -802,8 +826,10 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # rs-assertion: 9.4.1
     # Initial startup here
     errorMessages = io.StringIO()
+    fmt = logging.Formatter('%(levelname)s - %(message)s')
     errh = logging.StreamHandler(errorMessages)
-    errh.setLevel(logging.ERROR)
+    errh.setLevel(logging.WARN)
+    errh.setFormatter(fmt)
     rsvLogger.addHandler(errh)
 
     rsvLogger.info("\n*** %s, %s", uriName, URI)
@@ -833,7 +859,6 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # check id if its the same as URI
     # check @odata.context instead of local
     
-    
     if expectedType is None:
         SchemaFullType = jsonData.get('@odata.type')
         if SchemaFullType is None:
@@ -842,7 +867,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             rsvLogger.removeHandler(errh) 
             return False, counts, results, None
     else:
-        SchemaFullType = expectedType
+        SchemaFullType = jsonData.get('@odata.type', expectedType) 
     rsvLogger.info(SchemaFullType)
 
     # Parse @odata.type, get schema XML and its references from its namespace
@@ -868,10 +893,21 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     rsvLogger.debug(jsonData)
     rsvLogger.debug(SchemaSoup)
     
-    success, additionalProps = getAnnotations(SchemaSoup, refDict, jsonData)
+    success, serviceSchemaSoup = getSchemaDetails('metadata','/redfish/v1/$metadata','')
+    if success:
+        serviceRefs = getReferenceDetails(serviceSchemaSoup)
+
+        success, additionalProps = getAnnotations(serviceSchemaSoup, serviceRefs, jsonData)
 
     # Attempt to get a list of properties
     try:
+        if expectedType is SchemaFullType:
+            for schema in SchemaSoup.find_all('schema'):
+                newNamespace = schema.get('namespace')
+                if schema.find('entitytype',attrs={'name': SchemaType}):
+                    SchemaNamespace = newNamespace
+                    SchemaFullType = newNamespace + '.' + SchemaType
+            rsvLogger.warn('No @odata.type present, assuming highest type %s', SchemaFullType)
         propertyList = getTypeDetails(
             SchemaSoup, refDict, SchemaFullType, 'entitytype')
     except Exception as ex:
@@ -912,15 +948,16 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     fmt = '%-30s%30s'
     rsvLogger.info('%s, %s', uriName, SchemaType)
 
+    messages.update(checkPayloadCompliance(jsonData))
+
     for key in jsonData:
         item = jsonData[key]
         rsvLogger.info(fmt % (
             key, messages[key][3] if key in messages else 'Exists, no schema check'))
         if key not in messages:
             # note: extra messages for "unchecked" properties
-            if '@' not in key:
-                rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)
-                counts['additional'] += 1
+            rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)
+            counts['additional'] += 1
             messages[key] = (item, '-',
                              'Exists',
                              '-')
