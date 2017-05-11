@@ -42,11 +42,7 @@ def callResourceURI(URILink):
     return: (success boolean, data)
     """ 
     # rs-assertions: 6.4.1, including accept, content-type and odata-versions
-    # rs-assertion: clients cannot make assumptions about URIs
     # rs-assertion: handle redirects?  and target permissions
-    # rs-assertion: uris may contain '?' queries and '#' frags
-    # what about $metadata?  frags are for clients..
-
     # rs-assertion: require no auth for serviceroot calls
     nonService = 'http' in URILink[:8]
     statusCode = ''
@@ -86,6 +82,8 @@ def callResourceURI(URILink):
                             decoded = decoded.get(item)
                         elif isinstance( decoded, list ):
                             decoded = decoded[int(item)] if int(item) < len(decoded) else None
+                    if not isinstance( decoded, dict ):
+                        rsvLogger.warn(URILink + " decoded object no longer a dictionary")
             else:
                 decoded = response.text
             return decoded is not None, decoded, statusCode
@@ -121,7 +119,7 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
             soup = BeautifulSoup(data, "html.parser")
             if '#' in SchemaURI: 
                 SchemaURI, frag = tuple(SchemaURI.rsplit('#',1))
-                refLink = getReferenceDetails(soup).get(getNamespace(frag))[1]
+                refType, refLink = getReferenceDetails(soup).get(getNamespace(frag))
                 if refLink is not None:
                     success, data, status = callResourceURI(refLink)
                     if success:
@@ -217,7 +215,6 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
 
     return True, innerSoup, innerRefs, currentType 
 
-
 def getTypeDetails(soup, refs, SchemaAlias, tagType):
     """
     Gets list of surface level properties for a given SchemaAlias,
@@ -249,7 +246,6 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
         rsvLogger.debug(element.attrs)
         rsvLogger.debug(element.get('basetype'))
         
-        usableActions = innerschema.find_all('action')
         usableProperties = element.find_all('property')
         usableNavProperties = element.find_all('navigationproperty')
        
@@ -268,10 +264,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
             if newProp not in PropertyList:
                 PropertyList.append((soup,refs,newProp,tagType))
         
-    for element in innerschema.find_all('action'):
-        rsvLogger.debug(element)
-    
-    return PropertyList
+    return PropertyList 
 
 
 def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
@@ -309,22 +302,17 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             propTag = propEntity.find(
                 'navigationproperty', attrs={'name': propChild})
             propEntry['isNav'] = True
-
         # start adding attrs and props together
         propAll = propTag.find_all()
-
         for tag in propAll:
-            propEntry[tag['term']] = tag.attrs
-    
+            propEntry[tag['term']] = tag.attrs 
     else:
         propTag = propEntity
 
     propEntry['attrs'] = propTag.attrs
-    
     rsvLogger.debug(propEntry)
 
     success, typeSoup, typeRefs, propType = getParentType(innerSoup, innerRefs, SchemaType, tagType)
-   
     propType = propTag.get('type')
     
     # find the real type of this, by inheritance
@@ -570,6 +558,16 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
             else:
                 if propRealType == 'complex':
                     rsvLogger.info('\t***going into Complex')
+                    if not isinstance( val, dict ):
+                        resultList[item + appendStr]\
+                                = ('ComplexDictionary' + appendStr, (propType, propRealType),\
+                                            'Exists' if propExists else 'DNE',\
+                                            'complexFAIL')
+                        rsvLogger.error(item + ' : Complex item not a dictionary')
+                        counts['complex'] += 1
+                        counts['failComplex'] += 1
+                        continue
+                        
                     complexMessages = OrderedDict()
                     complexCounts = Counter()
                     innerPropDict = PropertyItem['typeprops']
@@ -584,18 +582,47 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                         propMessages, propCounts = checkPropertyCompliance(innerPropSoup, prop, innerPropDict[prop], val, refs)
                         complexMessages.update(propMessages)
                         complexCounts.update(propCounts)
-                    odataMessages = checkPayloadCompliance('',val)
+                    successPayload, odataMessages = checkPayloadCompliance('',val)
                     complexMessages.update(odataMessages)
                     rsvLogger.info('\t***out of Complex')
                     rsvLogger.info('complex %s', complexCounts)
                     counts.update(complexCounts)
-                    counts['complex'] += 1
                     resultList[item + appendStr]\
                             = ('ComplexDictionary' + appendStr, (propType, propRealType),\
                                         'Exists' if propExists else 'DNE',\
                                         'complex')
+                    if item == "Actions":
+                        success, baseSoup, baseRefs, baseType = True, innerPropSoup, getReferenceDetails(innerPropSoup), decoded.get('@odata.type')
+                        actionsDict = dict()
+
+                        while success:
+                            SchemaNamespace, SchemaType = getNamespace(baseType), getType(baseType)
+                            innerschema = baseSoup.find('schema', attrs={'namespace': SchemaNamespace})
+                            actions = innerschema.find_all('action')
+                            for act in actions:
+                                keyname = '#%s.%s' % (SchemaNamespace, act['name'])
+                                actionsDict[keyname] = act
+                            success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, 'entitytype')
+                        
+                        for k in actionsDict:
+                            actionDecoded = val.get(k, 'n/a')
+                            actPass = False
+                            if actionDecoded != 'n/a':
+                                target = actionDecoded.get('target')
+                                if target is not None and isinstance( target, str ):
+                                    actPass = True
+                                else:
+                                    rsvLogger.error(k + ': target for action is malformed')
+                            else:
+                                rsvLogger.error(k + ': action not Found')
+                            complexMessages[k] = ('Action', '-',\
+                                        'Exists' if actionDecoded != 'n/a'  else 'DNE',\
+                                        'PASS' if actPass else 'FAIL') 
+                            counts['pass'] += 1
+                    
                     for complexKey in complexMessages:
                         resultList[item + '.' + complexKey + appendStr] = complexMessages[complexKey]
+
                     for key in val:
                         if key not in complexMessages:
                             rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', item + '.' + key + appendStr)
@@ -755,7 +782,6 @@ def getAllLinks(jsonData, propDict, refDict, prefix='', context=''):
     rsvLogger.debug(str(linkList))
     return linkList
 
-
 def getAnnotations(soup, refs, decoded, prefix=''):
     additionalProps = list() 
     for key in [k for k in decoded if prefix+'@' in k]:
@@ -763,7 +789,7 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         fullItem = splitKey[1]
         realType, refLink = refs.get(getNamespace(fullItem),(None,None))
         success, annotationSoup, uri = getSchemaDetails(realType, refLink)
-        rsvLogger.info('%s, %s, %s, %s, %s', str(success), key, splitKey, decoded[key], realType)
+        rsvLogger.debug('%s, %s, %s, %s, %s', str(success), key, splitKey, decoded[key], realType)
         if success:
             realItem = realType + '.' + fullItem.split('.',1)[1]
             annotationRefs = getReferenceDetails(annotationSoup)
@@ -773,25 +799,32 @@ def getAnnotations(soup, refs, decoded, prefix=''):
 
 def checkPayloadCompliance(uri, decoded):
     messages = dict()
+    success = True
     for key in [k for k in decoded if '@odata' in k]:
         itemType = key.split('.',1)[-1]
         itemTarget = key.split('.',1)[0]
         paramPass = False
         if key == 'id':
+            paramPass = isinstance( decoded[key], str)
             pass
         elif key == 'count':
+            paramPass = isinstance( decoded[key], int)
             pass
         elif key == 'context':
+            paramPass = isinstance( decoded[key], str)
             pass
         elif key == 'type':
+            paramPass = isinstance( decoded[key], str)
             pass
         else:
             paramPass = True
-        paramPass = True
+        if not paramPass:
+            rsvLogger.error(key + "@odata item not compliant: " + decoded[key])
+            success = False
         messages[key] = (decoded[key], 'odata',
                                          'Exists',
                                          'PASS' if paramPass else 'FAIL')
-    return messages
+    return success, messages
 
 
 def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=set()):
@@ -836,7 +869,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     errh.setLevel(logging.WARN)
     errh.setFormatter(fmt)
     rsvLogger.addHandler(errh)
-
+    
+    # Start 
     rsvLogger.info("\n*** %s, %s", uriName, URI)
     rsvLogger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)
     counts = Counter()
@@ -863,7 +897,15 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # check for @odata mandatory stuff
     # check for version numbering problems
     # check id if its the same as URI
-    # check @odata.context instead of local
+    # check @odata.context instead of local.  Realize that @odata is NOT a "property"
+    successPayload, odataMessages = checkPayloadCompliance(URI,jsonData)
+    messages.update(odataMessages)
+    
+    if not successPayload:
+        counts['failPayloadError'] += 1
+        rsvLogger.error(str(URI) + ':  payload error, @odata property noncompliant',)
+        rsvLogger.removeHandler(errh) 
+        return False, counts, results, None
     
     if expectedType is None:
         SchemaFullType = jsonData.get('@odata.type')
@@ -877,7 +919,6 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     rsvLogger.info(SchemaFullType)
 
     # Parse @odata.type, get schema XML and its references from its namespace
-
     SchemaNamespace, SchemaType = getNamespace(SchemaFullType), getType(SchemaFullType)
     if expectedSchema is None:
         SchemaURI = jsonData.get('@odata.context',None)
@@ -902,20 +943,21 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     successService, serviceSchemaSoup, SchemaServiceURI = getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
     if successService:
         serviceRefs = getReferenceDetails(serviceSchemaSoup)
-
         successService, additionalProps = getAnnotations(serviceSchemaSoup, serviceRefs, jsonData)
     
     results[uriName] = (URI, success, counts, messages, errorMessages, SchemaURI, SchemaFullType)
 
+    # Fallback typing for properties without types
+    if expectedType is SchemaFullType:
+        for schema in SchemaSoup.find_all('schema'):
+            newNamespace = schema.get('namespace')
+            if schema.find('entitytype',attrs={'name': SchemaType}):
+                SchemaNamespace = newNamespace
+                SchemaFullType = newNamespace + '.' + SchemaType
+        rsvLogger.warn('No @odata.type present, assuming highest type %s', SchemaFullType)
+
     # Attempt to get a list of properties
     try:
-        if expectedType is SchemaFullType:
-            for schema in SchemaSoup.find_all('schema'):
-                newNamespace = schema.get('namespace')
-                if schema.find('entitytype',attrs={'name': SchemaType}):
-                    SchemaNamespace = newNamespace
-                    SchemaFullType = newNamespace + '.' + SchemaType
-            rsvLogger.warn('No @odata.type present, assuming highest type %s', SchemaFullType)
         propertyList = getTypeDetails(
             SchemaSoup, refDict, SchemaFullType, 'entitytype')
     except Exception as ex:
@@ -940,6 +982,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             counts['exceptionGetDict'] += 1
     for key in propertyDict:
         rsvLogger.debug(key)
+
     # With dictionary of property details, check json against those details
     # rs-assertion: test for AdditionalProperties
     for prop in propertyDict:
@@ -956,9 +999,6 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # current logic does not check inside complex types
     fmt = '%-30s%30s'
     rsvLogger.info('%s, %s', uriName, SchemaType)
-
-    odataMessages = checkPayloadCompliance(URI,jsonData)
-    messages.update(odataMessages)
 
     for key in jsonData:
         item = jsonData[key]
@@ -1016,7 +1056,7 @@ if __name__ == '__main__':
             .warn {background-color:#EEEE99}\
             .button {padding: 12px; display: inline-block}\
             .center {text-align:center;}\
-            .log {text-align:left; white-space:pre; font-size:smaller}\
+            .log {text-align:left; white-space:pre-wrap; font-size:smaller}\
             .title {background-color:#DDDDDD; border: 1pt solid; font-height: 30px; padding: 8px}\
             .titlesub {padding: 8px}\
             .titlerow {border: 2pt solid}\
@@ -1044,11 +1084,12 @@ if __name__ == '__main__':
     for cnt, item in enumerate(results):
         htmlStr += '<tr><td class="titlerow"><table class="titletable"><tr>'
         htmlStr += '<td class="title" style="width:40%"><div>{}</div><div class="button warn" onClick="document.getElementById(\'resNum{}\').style.display = \'table-row\';">Show results</div></td>'.format(item, cnt)
-        htmlStr += '<td class="titlesub" style="width:30%"><div>URI: {}</div><div>XML: {}</div><div>type: {}</div></td>'.format(results[item][0],results[item][5],results[item][6])
+        htmlStr += '<td class="titlesub" style="width:30%"><div><b>URI:</b> {}</div><div><b>XML:</b> {}</div><div><b>type:</b> {}</div></td>'.format(results[item][0],results[item][5],results[item][6])
         htmlStr += '<td style="width:10%"' + \
             ('class="pass"> GET Success' if results[item]
              [1] else 'class="fail"> GET Failure') + '</td>'
-        htmlStr += '<td>'
+        htmlStr += '<td style="width:10%">'
+
         innerCounts = results[item][2]
         finalCounts.update(innerCounts)
         for countType in innerCounts:
@@ -1080,8 +1121,7 @@ if __name__ == '__main__':
 
     htmlStrTotal = '<tr><td>Final counts: '
     for countType in finalCounts:
-        htmlStrTotal += '{p}: {q},   '.format(p=countType,
-                                         q=finalCounts.get(countType, 0))
+        htmlStrTotal += '{p}: {q},   '.format(p=countType, q=finalCounts.get(countType, 0))
     htmlStrTotal += '</td></tr>'
 
     htmlPage = htmlStrTop + htmlStrBodyHeader + htmlStrTotal + htmlStr
