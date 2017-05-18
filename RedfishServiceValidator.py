@@ -75,6 +75,7 @@ def callResourceURI(URILink):
             contenttype = response.headers.get('content-type')
             if contenttype is not None and 'application/json' in contenttype:
                 decoded = response.json(object_pairs_hook=OrderedDict)
+                # navigate fragment
                 if '#' in URILink:
                     URILink, frag = tuple(URILink.rsplit('#',1))
                     fragNavigate = frag.split('/')[1:]
@@ -120,7 +121,7 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
             soup = BeautifulSoup(data, "html.parser")
             if '#' in SchemaURI: 
                 SchemaURI, frag = tuple(SchemaURI.rsplit('#',1))
-                refType, refLink = getReferenceDetails(soup).get(getNamespace(frag))
+                refType, refLink = getReferenceDetails(soup).get(getNamespace(frag),(None,None))
                 if refLink is not None:
                     success, data, status = callResourceURI(refLink)
                     if success:
@@ -313,6 +314,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
 
     success, typeSoup, typeRefs, propType = getParentType(innerSoup, innerRefs, SchemaType, tagType)
     propType = propTag.get('type')
+    propEntry['realtype'] = 'none'
     
     # find the real type of this, by inheritance
     while propType is not None:
@@ -338,7 +340,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
 
         if not success:
             rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
-            return None
+            return propEntry
 
         propEntry['soup'] = typeSoup
         
@@ -715,6 +717,9 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                             rsvLogger.error("%s: Could not get schema file for Entity check" % PropertyName)
                     else:
                         rsvLogger.error("%s: Could not get resource for Entity check" % PropertyName)
+                else:
+                    rsvLogger.error("%s: This type is invalid %s" % (PropertyName, propRealType))
+                    paramPass = False
 
 
         resultList[item + appendStr] = (val, (propType, propRealType),
@@ -821,15 +826,18 @@ def checkPayloadCompliance(uri, decoded):
         paramPass = False
         if key == 'id':
             paramPass = isinstance( decoded[key], str)
+            paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
             pass
         elif key == 'count':
             paramPass = isinstance( decoded[key], int)
             pass
         elif key == 'context':
             paramPass = isinstance( decoded[key], str)
+            paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
             pass
         elif key == 'type':
             paramPass = isinstance( decoded[key], str)
+            paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
             pass
         else:
             paramPass = True
@@ -842,13 +850,16 @@ def checkPayloadCompliance(uri, decoded):
     return success, messages
 
 
-def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=set()):
+def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=None):
+    top = allLinks is None
+    if top:
+        allLinks = set()
     allLinks.add(URI)
+    refLinks = OrderedDict()
     
     validateSuccess, counts, results, links = \
             validateSingleURI(URI, uriName, expectedType, expectedSchema, expectedJson)
     if validateSuccess:
-        refLinks = OrderedDict()
         for linkName in links:
             if 'Links' in linkName.split('.',1)[0] or 'RelatedItem' in linkName.split('.',1)[0] or 'Redundancy' in linkName.split('.',1)[0]:
                 refLinks[linkName] = links[linkName]
@@ -858,8 +869,31 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
                 continue
 
             allLinks.add(links[linkName][0])
-            linkURI, autoExpand, linkType, linkSchema, innerJson = links[linkName]
             rsvLogger.debug('%s', links[linkName])
+            
+            linkURI, autoExpand, linkType, linkSchema, innerJson = links[linkName]
+
+            if linkType is not None and autoExpand:
+                success, linkCounts, linkResults, xlinks = validateURITree(
+                        linkURI, uriName + ' -> ' + linkName, linkType, linkSchema, innerJson, allLinks)
+            else:
+                success, linkCounts, linkResults, xlinks = validateURITree(
+                        linkURI, uriName + ' -> ' + linkName, allLinks=allLinks)
+            refLinks.update(xlinks)
+            if not success:
+                counts['unvalidated'] += 1
+            rsvLogger.info('%s, %s', linkName, linkCounts)
+            results.update(linkResults)
+
+    if top:
+        for linkName in refLinks:
+            if refLinks[linkName][0] not in allLinks:
+                rsvLogger.info('%s, %s', linkName, refLinks[linkName])
+                counts['reflink'] += 1
+            else:
+                continue
+            
+            linkURI, autoExpand, linkType, linkSchema, innerJson = refLinks[linkName]
 
             if linkType is not None and autoExpand:
                 success, linkCounts, linkResults, xlinks = validateURITree(
@@ -872,7 +906,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
             rsvLogger.info('%s, %s', linkName, linkCounts)
             results.update(linkResults)
     
-    return validateSuccess, counts, results, allLinks
+    return validateSuccess, counts, results, refLinks
 
 
 def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None):
@@ -953,15 +987,13 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     refDict = getReferenceDetails(SchemaSoup)
 
     rsvLogger.debug(jsonData)
-    rsvLogger.debug(SchemaSoup)
+    rsvLogger.debug(SchemaURI)
     
     successService, serviceSchemaSoup, SchemaServiceURI = getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
     if successService:
         serviceRefs = getReferenceDetails(serviceSchemaSoup)
         successService, additionalProps = getAnnotations(serviceSchemaSoup, serviceRefs, jsonData)
     
-    results[uriName] = (URI, success, counts, messages, errorMessages, SchemaURI, ('assuming ' if expectedType is SchemaFullType else '') + str(SchemaFullType))
-
     # Fallback typing for properties without types
     # Use string comprehension to get highest type
     if expectedType is SchemaFullType:
@@ -971,6 +1003,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 SchemaNamespace = newNamespace
                 SchemaFullType = newNamespace + '.' + SchemaType
         rsvLogger.warn('No @odata.type present, assuming highest type %s', SchemaFullType)
+    
+    results[uriName] = (URI, success, counts, messages, errorMessages, SchemaURI, ('assuming ' if expectedType is SchemaFullType else '') + str(SchemaFullType))
 
     # Attempt to get a list of properties
     propertyList = list()
@@ -982,9 +1016,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, 'entitytype')
         except Exception as ex:
             rsvLogger.exception("Something went wrong")
-            rsvLogger.error(URI + ':  Getting type failed for ' + SchemaFullType,)
+            rsvLogger.error(URI + ':  Getting type failed for ' + SchemaFullType, baseType)
             counts['exceptionGetType'] += 1
-            rsvLogger.removeHandler(errh) 
     for item in propertyList:
         rsvLogger.debug(item[2])
     
@@ -1047,8 +1080,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 ######################          Script starts here              ##########
 ##########################################################################
 
-
-if __name__ == '__main__':
+def main(argv):
     # Logging config
     # logging
     startTick = datetime.now()
@@ -1079,7 +1111,7 @@ if __name__ == '__main__':
             .warn {background-color:#EEEE99}\
             .button {padding: 12px; display: inline-block}\
             .center {text-align:center;}\
-            .log {text-align:left; white-space:pre-wrap; font-size:smaller}\
+            .log {text-align:left; white-space:pre-wrap; word-wrap:break-word; font-size:smaller}\
             .title {background-color:#DDDDDD; border: 1pt solid; font-height: 30px; padding: 8px}\
             .titlesub {padding: 8px}\
             .titlerow {border: 2pt solid}\
@@ -1087,8 +1119,8 @@ if __name__ == '__main__':
             .resultsShow {display: block; opacity: 1}\
             body {background-color:lightgrey; border: 1pt solid; text-align:center; margin-left:auto; margin-right:auto}\
             th {text-align:center; background-color:beige; border: 1pt solid}\
-            td {text-align:left; background-color:white; border: 1pt solid}\
-            table {width:90%; margin: 0px auto;}\
+            td {text-align:left; background-color:white; border: 1pt solid; word-wrap:break-word;}\
+            table {width:90%; margin: 0px auto; table-layout:fixed;}\
             .titletable {width:100%}\
             </style>\
             </head>'
@@ -1126,7 +1158,7 @@ if __name__ == '__main__':
                                              style='class="fail log"' if 'fail' in countType or 'exception' in countType else 'class=log')
         htmlStr += '</td></tr>'
         htmlStr += '</table></td></tr>'
-        htmlStr += '<tr><td class="results" id=\'resNum{}\'><table><tr><td><table><tr><th> Name</th> <th> Value</th> <th>Type</th> <th>Exists?</th> <th>Success</th> <tr>'.format(cnt)
+        htmlStr += '<tr><td class="results" id=\'resNum{}\'><table><tr><td><table><tr><th style="width:15%"> Name</th> <th> Value</th> <th>Type</th> <th style="width:10%">Exists?</th> <th style="width:10%">Success</th> <tr>'.format(cnt)
         if results[item][3] is not None:
             for i in results[item][3]:
                 htmlStr += '<tr>'
@@ -1171,4 +1203,7 @@ if __name__ == '__main__':
         rsvLogger.info("Validation has succeeded.")
         status_code = 0
 
-    sys.exit(status_code)
+    return status_code
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
