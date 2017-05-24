@@ -12,27 +12,45 @@ from collections import Counter, OrderedDict
 from functools import lru_cache
 import logging
 
-# Make logging blocks for each SingleURI Validate
-rsvLogger = logging.getLogger("rsv")
+rsvLogger = logging.getLogger(__name__)
 rsvLogger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 rsvLogger.addHandler(ch)
+confDict = dict()
+confDict['configSet'] = False
+useSSL = ConfigURI = User = Passwd = sysDescription = SchemaLocation = chkCert = localOnly = serviceOnly = None
+
+# Make logging blocks for each SingleURI Validate
+def getLogger():
+    return rsvLogger
 
 # Read config info from ini file placed in config folder of tool
-config = configparser.ConfigParser()
-config.read(os.path.join('.', 'config', 'config.ini'))
-useSSL = config.getboolean('Options', 'UseSSL')
 
-ConfigURI = ('https' if useSSL else 'http') + '://' + \
-    config.get('SystemInformation', 'TargetIP')
-User = config.get('SystemInformation', 'UserName')
-Passwd = config.get('SystemInformation', 'Password')
-sysDescription = config.get('SystemInformation', 'SystemInfo')
+def setConfig(filename):
+    global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly
+    config = configparser.ConfigParser()
+    config.read(filename)
+    useSSL = config.getboolean('Options', 'UseSSL')
 
-SchemaLocation = config.get('Options', 'MetadataFilePath')
-chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
-localOnly = config.getboolean('Options', 'LocalOnlyMode')
+    ConfigURI = ('https' if useSSL else 'http') + '://' + \
+        config.get('SystemInformation', 'TargetIP')
+    User = config.get('SystemInformation', 'UserName')
+    Passwd = config.get('SystemInformation', 'Password')
+    sysDescription = config.get('SystemInformation', 'SystemInfo')
+
+    SchemaLocation = config.get('Options', 'MetadataFilePath')
+    chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
+    localOnly = config.getboolean('Options', 'LocalOnlyMode')
+    serviceOnly = config.getboolean('Options', 'ServiceMode')
+
+    confDict['configSet'] = True
+
+def isConfigSet():
+    if confDict['configSet']:
+        return True
+    else:
+        raise Exception("Configuration is not set")
 
 @lru_cache(maxsize=64)
 def callResourceURI(URILink):
@@ -51,13 +69,17 @@ def callResourceURI(URILink):
         # feel free to make this into a regex
         noauthchk = \
             ('/redfish' in URILink and '/redfish/v1' not in URILink) or\
-            URILink in ['/redfish/v1', '/redfish/v1/', '/redfish/v1/odata', 'redfish/v1/odata/'] or\
+           URILink in ['/redfish/v1', '/redfish/v1/', '/redfish/v1/odata', 'redfish/v1/odata/'] or\
             '/redfish/v1/$metadata' in URILink
         if noauthchk:
             rsvLogger.debug('dont chkauth')
             auth = None
         else:
             auth = (User, Passwd)
+    
+    if nonService and serviceOnly:
+        rsvLogger.info('Disallowed out of service URI')
+        return False, None, -1
 
     # rs-assertion: do not send auth over http
     if not useSSL or nonService:
@@ -134,8 +156,9 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
             else:
                 return True, soup, SchemaURI
         rsvLogger.error("SchemaURI unsuccessful: %s", SchemaURI)
-        return False, None, None
+    return False, None, None
    
+def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
     # Use local if no URI or LocalOnly
     Alias = getNamespace(SchemaAlias).split('.')[0]
     try:
@@ -152,7 +175,6 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
     except Exception as ex:
         rsvLogger.exception("Something went wrong")
     return False, None, None
-
 
 def getReferenceDetails(soup):
     """
@@ -1081,8 +1103,14 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 ##########################################################################
 
 def main(argv):
+    # Set config
+    if (len(argv) == 1):
+        setConfig('./config/config.ini')
+    else:
+        setConfig(argv[1])
+    isConfigSet()
+
     # Logging config
-    # logging
     startTick = datetime.now()
     if not os.path.isdir('logs'):
            os.makedirs('logs')
