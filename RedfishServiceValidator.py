@@ -13,12 +13,6 @@ from functools import lru_cache
 import logging
 import traverseService as rst
 
-rsvLogger = logging.getLogger(__name__)
-rsvLogger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.INFO)
-rsvLogger.addHandler(ch)
-
 def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     """
     Given a dictionary of properties, check the validitiy of each item, and return a
@@ -29,6 +23,8 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     param arg3: json payload
     param arg4: refs
     """
+    rsvLogger = rst.getLogger()
+
     resultList = OrderedDict()
     counts = Counter()
 
@@ -374,6 +370,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     errh = logging.StreamHandler(errorMessages)
     errh.setLevel(logging.ERROR)
     errh.setFormatter(fmt)
+    rsvLogger = rst.getLogger()
     rsvLogger.addHandler(errh)
     
     # Start 
@@ -473,8 +470,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'entitytype')
         except Exception as ex:
             rsvLogger.exception("Something went wrong")
-            rsvLogger.error(URI + ':  Getting type failed for ' + SchemaFullType, baseType)
+            rsvLogger.error(URI + ':  Getting type failed for ' + SchemaFullType + " " + baseType)
             counts['exceptionGetType'] += 1
+            break
     for item in propertyList:
         rsvLogger.debug(item[2])
     
@@ -544,6 +542,7 @@ def main(argv):
     else:
         rst.setConfig(argv[1])
     rst.isConfigSet()
+    rsvLogger = rst.getLogger()
 
     sysDescription, ConfigURI, chkCert, localOnly = (rst.sysDescription, rst.ConfigURI, rst.chkCert, rst.localOnly)
     User, SchemaLocation = rst.User, rst.SchemaLocation

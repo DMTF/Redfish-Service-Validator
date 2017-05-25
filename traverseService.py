@@ -13,24 +13,24 @@ from collections import Counter, OrderedDict
 from functools import lru_cache
 import logging
 
-rsvLogger = logging.getLogger(__name__)
-rsvLogger.setLevel(logging.DEBUG)
+traverseLogger = logging.getLogger(__name__)
+traverseLogger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
-rsvLogger.addHandler(ch)
-confDict = dict()
-confDict['configSet'] = False
-useSSL = ConfigURI = User = Passwd = sysDescription = SchemaLocation = chkCert = localOnly = serviceOnly = None
+traverseLogger.addHandler(ch)
+config = configparser.ConfigParser()
+config['DEFAULT'] = {'SchemaSuffix': '_v1.xml', 'timeout': 30}
+config['internal'] = {'configSet': '0'}
+SchemaSuffix = useSSL = ConfigURI = User = Passwd = sysDescription = SchemaLocation = chkCert = localOnly = serviceOnly = timeout = None
 
 # Make logging blocks for each SingleURI Validate
 def getLogger():
-    return rsvLogger
+    return traverseLogger
 
 # Read config info from ini file placed in config folder of tool
 
 def setConfig(filename):
-    global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly
-    config = configparser.ConfigParser()
+    global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly, SchemaSuffix, timeout
     config.read(filename)
     useSSL = config.getboolean('Options', 'UseSSL')
 
@@ -42,13 +42,15 @@ def setConfig(filename):
 
     SchemaLocation = config.get('Options', 'MetadataFilePath')
     chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
+    SchemaSuffix = config.get('Options', 'SchemaSuffix')
+    timeout = config.getint('Options', 'timeout')
     localOnly = config.getboolean('Options', 'LocalOnlyMode')
     serviceOnly = config.getboolean('Options', 'ServiceMode')
 
-    confDict['configSet'] = True
+    config['internal']['configSet'] = '1'
 
 def isConfigSet():
-    if confDict['configSet']:
+    if config['internal']['configSet'] == '1':
         return True
     else:
         raise Exception("Configuration is not set")
@@ -64,6 +66,8 @@ def callResourceURI(URILink):
     # rs-assertions: 6.4.1, including accept, content-type and odata-versions
     # rs-assertion: handle redirects?  and target permissions
     # rs-assertion: require no auth for serviceroot calls
+    if URILink is None:
+        return False, None, -1
     nonService = 'http' in URILink[:8]
     statusCode = ''
     if not nonService:
@@ -73,13 +77,13 @@ def callResourceURI(URILink):
            URILink in ['/redfish/v1', '/redfish/v1/', '/redfish/v1/odata', 'redfish/v1/odata/'] or\
             '/redfish/v1/$metadata' in URILink
         if noauthchk:
-            rsvLogger.debug('dont chkauth')
+            traverseLogger.debug('dont chkauth')
             auth = None
         else:
             auth = (User, Passwd)
     
     if nonService and serviceOnly:
-        rsvLogger.info('Disallowed out of service URI')
+        traverseLogger.info('Disallowed out of service URI')
         return False, None, -1
 
     # rs-assertion: do not send auth over http
@@ -87,13 +91,13 @@ def callResourceURI(URILink):
         auth = None
     
     # rs-assertion: must have application/json or application/xml
-    rsvLogger.debug('callingResourceURI: %s', URILink)
+    traverseLogger.debug('callingResourceURI: %s', URILink)
     try:
         response = requests.get(ConfigURI + URILink if not nonService else URILink,
-                                auth=auth, verify=chkCert)
+                                auth=auth, verify=chkCert, timeout=timeout)
         expCode = [200]
         statusCode = response.status_code
-        rsvLogger.debug('%s, %s, %s', statusCode, expCode, response.headers)
+        traverseLogger.debug('%s, %s, %s', statusCode, expCode, response.headers)
         if statusCode in expCode:
             contenttype = response.headers.get('content-type')
             if contenttype is not None and 'application/json' in contenttype:
@@ -108,12 +112,12 @@ def callResourceURI(URILink):
                         elif isinstance( decoded, list ):
                             decoded = decoded[int(item)] if int(item) < len(decoded) else None
                     if not isinstance( decoded, dict ):
-                        rsvLogger.warn(URILink + " decoded object no longer a dictionary")
+                        traverseLogger.warn(URILink + " decoded object no longer a dictionary")
             else:
                 decoded = response.text
             return decoded is not None, decoded, statusCode
     except Exception as ex:
-        rsvLogger.exception("Something went wrong")
+        traverseLogger.exception("Something went wrong")
     return False, None, statusCode
 
 
@@ -126,7 +130,7 @@ def getType(string):
 
 
 @lru_cache(maxsize=64)
-def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
+def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix=None):
     """
     Find Schema file for given Namespace.
 
@@ -136,6 +140,8 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
     """
     if SchemaAlias is None:
         return False, None, None
+    if suffix is None:
+        suffix = SchemaSuffix
     
     # rs-assertion: parse frags
     if SchemaURI is not None and not localOnly:
@@ -151,17 +157,19 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
                         soup = BeautifulSoup(data, "html.parser")
                         return True, soup, refLink
                     else:
-                        rsvLogger.error("SchemaURI couldn't call reference link: %s %s", SchemaURI, frag)
+                        traverseLogger.error("SchemaURI couldn't call reference link: %s %s", SchemaURI, frag)
                 else:
-                    rsvLogger.error("SchemaURI missing reference link: %s %s", SchemaURI, frag)
+                    traverseLogger.error("SchemaURI missing reference link: %s %s", SchemaURI, frag)
             else:
                 return True, soup, SchemaURI
-        rsvLogger.error("SchemaURI unsuccessful: %s", SchemaURI)
-    return False, None, None
+        traverseLogger.error("SchemaURI unsuccessful: %s", SchemaURI)
+    return getSchemaDetailsLocal(SchemaAlias, SchemaURI, suffix)
    
-def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
+def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix=None):
     # Use local if no URI or LocalOnly
     Alias = getNamespace(SchemaAlias).split('.')[0]
+    if suffix is None:
+        suffix = SchemaSuffix
     try:
         filehandle = open(SchemaLocation + '/' + Alias + suffix, "r")
         filedata = filehandle.read()
@@ -174,7 +182,7 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix='_v1.xml'):
         if FoundAlias == Alias:
             return True, soup, "local" + SchemaLocation + '/' + Alias + suffix
     except Exception as ex:
-        rsvLogger.exception("Something went wrong")
+        traverseLogger.exception("Something went wrong")
     return False, None, None
 
 def getReferenceDetails(soup):
@@ -190,7 +198,7 @@ def getReferenceDetails(soup):
         includes = ref.find_all('edmx:include')
         for item in includes:
             if item.get('namespace') is None or ref.get('uri') is None:
-                rsvLogger.error("Reference incorrect for: ", item)
+                traverseLogger.error("Reference incorrect for: ", item)
                 continue
             if item.get('alias') is not None:
                 refDict[item['alias']] = (item['namespace'], ref['uri'])
@@ -257,33 +265,33 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
 
     SchemaNamespace, SchemaType = getNamespace(SchemaAlias), getType(SchemaAlias)
 
-    rsvLogger.debug("Schema is %s, %s, %s", SchemaAlias,
+    traverseLogger.debug("Schema is %s, %s, %s", SchemaAlias,
                     SchemaType, SchemaNamespace)
 
     innerschema = soup.find('schema', attrs={'namespace': SchemaNamespace})
 
     if innerschema is None:
-        rsvLogger.error("Got XML, but schema still doesn't exist...? %s, %s" %
+        traverseLogger.error("Got XML, but schema still doesn't exist...? %s, %s" %
                             (getNamespace(SchemaAlias), SchemaAlias))
         raise Exception('exceptionType: Was not able to get type, is Schema in XML? '  + str(refs.get(getNamespace(SchemaAlias), (getNamespace(SchemaAlias), None))))
 
     for element in innerschema.find_all(tagType, attrs={'name': SchemaType}):
-        rsvLogger.debug("___")
-        rsvLogger.debug(element['name'])
-        rsvLogger.debug(element.attrs)
-        rsvLogger.debug(element.get('basetype'))
+        traverseLogger.debug("___")
+        traverseLogger.debug(element['name'])
+        traverseLogger.debug(element.attrs)
+        traverseLogger.debug(element.get('basetype'))
         
         usableProperties = element.find_all('property')
         usableNavProperties = element.find_all('navigationproperty')
        
         for innerelement in usableProperties + usableNavProperties:
-            rsvLogger.debug(innerelement['name'])
-            rsvLogger.debug(innerelement.get('type'))
-            rsvLogger.debug(innerelement.attrs)
+            traverseLogger.debug(innerelement['name'])
+            traverseLogger.debug(innerelement.get('type'))
+            traverseLogger.debug(innerelement.attrs)
             newProp = innerelement['name']
             if SchemaAlias:
                 newProp = SchemaAlias + ':' + newProp
-            rsvLogger.debug("ADDING :::: %s", newProp)
+            traverseLogger.debug("ADDING :::: %s", newProp)
             if newProp not in PropertyList:
                 PropertyList.append((soup,refs,newProp,tagType))
         
@@ -302,12 +310,12 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
 
     propOwner, propChild = PropertyItem.split(':')[0].replace('#',''), PropertyItem.split(':')[-1]
     SchemaNamespace, SchemaType = getNamespace(propOwner), getType(propOwner)
-    rsvLogger.debug('___')
-    rsvLogger.debug('%s, %s', SchemaNamespace, PropertyItem)
+    traverseLogger.debug('___')
+    traverseLogger.debug('%s, %s', SchemaNamespace, PropertyItem)
 
     propSchema = soup.find('schema', attrs={'namespace': SchemaNamespace})
     if propSchema is None:
-        rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+        traverseLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
         return None
     else:
         innerSoup = soup
@@ -333,7 +341,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
         propTag = propEntity
 
     propEntry['attrs'] = propTag.attrs
-    rsvLogger.debug(propEntry)
+    traverseLogger.debug(propEntry)
 
     success, typeSoup, typeRefs, propType = getParentType(innerSoup, innerRefs, SchemaType, tagType)
     propType = propTag.get('type')
@@ -341,10 +349,10 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
     
     # find the real type of this, by inheritance
     while propType is not None:
-        rsvLogger.debug("HASTYPE")
+        traverseLogger.debug("HASTYPE")
         TypeNamespace, TypeSpec = getNamespace(propType), getType(propType)
 
-        rsvLogger.debug('%s, %s', TypeNamespace, propType)
+        traverseLogger.debug('%s, %s', TypeNamespace, propType)
         # Type='Collection(Edm.String)'
         # If collection, check its inside type
         if re.match('Collection(.*)', propType) is not None:
@@ -362,7 +370,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             success, typeSoup = True, innerSoup
 
         if not success:
-            rsvLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+            traverseLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
             return propEntry
 
         propEntry['soup'] = typeSoup
@@ -387,12 +395,12 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
 
                 for member in memberList:
                     propEntry['typeprops'].append( member.get('string'))
-                rsvLogger.debug("%s", str(propEntry['typeprops']))
+                traverseLogger.debug("%s", str(propEntry['typeprops']))
                 break
             else:
                 continue
         elif typeComplexTag is not None:
-            rsvLogger.debug("go deeper in type")
+            traverseLogger.debug("go deeper in type")
             propertyList = list()
             success, baseSoup, baseRefs, baseType = True, typeSoup, typeRefs, propType
             while success:
@@ -400,7 +408,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
                     baseSoup, baseRefs, baseType, 'complextype'))
                 success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, 'complextype')
             propDict = {item[2]: getPropertyDetails( *item) for item in propertyList}
-            rsvLogger.debug(key for key in propDict)
+            traverseLogger.debug(key for key in propDict)
             propEntry['realtype'] = 'complex'
             propEntry['typeprops'] = propDict
             break
@@ -413,10 +421,10 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
         elif typeEntityTag is not None:
             propEntry['realtype'] = 'entity'
             propEntry['typeprops'] = dict()
-            rsvLogger.debug("typeEntityTag found %s", propTag['name'])
+            traverseLogger.debug("typeEntityTag found %s", propTag['name'])
             break
         else:
-            rsvLogger.error("type doesn't exist? %s", propType)
+            traverseLogger.error("type doesn't exist? %s", propType)
             raise Exception("getPropertyDetails: problem grabbing type: " + propType)
             break
 
@@ -473,7 +481,7 @@ def getAllLinks(jsonData, propDict, refDict, prefix='', context=''):
                 else:
                     linkList.update(getAllLinks(
                         jsonData[item], propDict[key]['typeprops'], refDict, prefix+item+'.', context))
-    rsvLogger.debug(str(linkList))
+    traverseLogger.debug(str(linkList))
     return linkList
 
 def getAnnotations(soup, refs, decoded, prefix=''):
@@ -483,7 +491,7 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         fullItem = splitKey[1]
         realType, refLink = refs.get(getNamespace(fullItem),(None,None))
         success, annotationSoup, uri = getSchemaDetails(realType, refLink)
-        rsvLogger.debug('%s, %s, %s, %s, %s', str(success), key, splitKey, decoded[key], realType)
+        traverseLogger.debug('%s, %s, %s, %s, %s', str(success), key, splitKey, decoded[key], realType)
         if success:
             realItem = realType + '.' + fullItem.split('.',1)[1]
             annotationRefs = getReferenceDetails(annotationSoup)
@@ -516,7 +524,7 @@ def checkPayloadCompliance(uri, decoded):
         else:
             paramPass = True
         if not paramPass:
-            rsvLogger.error(key + "@odata item not compliant: " + decoded[key])
+            traverseLogger.error(key + "@odata item not compliant: " + decoded[key])
             success = False
         messages[key] = (decoded[key], 'odata',
                                          'Exists',
@@ -533,7 +541,7 @@ def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchem
         else:
             returnVal = validateURITree(
                     linkURI, uriName + ' -> ' + linkName, funcValidate, allLinks=allLinks)
-        rsvLogger.info('%s, %s', linkName, returnVal[1])
+        traverseLogger.info('%s, %s', linkName, returnVal[1])
         return returnVal
 
     top = allLinks is None
@@ -562,12 +570,12 @@ def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchem
     if top:
         for linkName in refLinks:
             if refLinks[linkName][0] not in allLinks:
-                rsvLogger.info('%s, %s', linkName, refLinks[linkName])
+                traverseLogger.info('%s, %s', linkName, refLinks[linkName])
                 counts['reflink'] += 1
             else:
                 continue
             
-            success, linkCounts, linkResults, xlinks = executeLink(links[linkName])
+            success, linkCounts, linkResults, xlinks = executeLink(refLinks[linkName])
             if not success:
                 counts['unvalidatedRef'] += 1
             results.update(linkResults)
