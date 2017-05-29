@@ -13,11 +13,41 @@ from functools import lru_cache
 import logging
 import traverseService as rst
 
-def validateEntity(name, val, soup):
+rsvLogger = rst.getLogger()
+
+def validateActions(name, val, propSoup, typeOf):
+    success, baseSoup, baseRefs, baseType = True, propSoup, rst.getReferenceDetails(innerPropSoup), decoded.get('@odata.type')
+    actionsDict = dict()
+
+    while success:
+        SchemaNamespace, SchemaType = rst.getNamespace(baseType), rst.getType(baseType)
+        innerschema = baseSoup.find('schema', attrs={'namespace': SchemaNamespace})
+        actions = innerschema.find_all('action')
+        for act in actions:
+            keyname = '#%s.%s' % (SchemaNamespace, act['name'])
+            actionsDict[keyname] = act
+        success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'entitytype')
+    
+    for k in actionsDict:
+        actionDecoded = val.get(k, 'n/a')
+        actPass = False
+        if actionDecoded != 'n/a':
+            target = actionDecoded.get('target')
+            if target is not None and isinstance( target, str ):
+                actPass = True
+            else:
+                rsvLogger.error(k + ': target for action is malformed')
+        else:
+            rsvLogger.error(k + ': action not Found')
+        complexMessages[k] = ('Action', '-',\
+                    'Exists' if actionDecoded != 'n/a'  else 'DNE',\
+                    'PASS' if actPass else 'FAIL') 
+        counts['pass'] += 1
+
+def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpand):
     # check if the entity is truly what it's supposed to be
-    autoExpand = PropertyItem.get('OData.AutoExpand',None) is not None or\
-    PropertyItem.get('OData.AutoExpand'.lower(),None) is not None
     uri = val['@odata.id']
+    paramPass = False
     if not autoExpand:
         success, data, status = rst.callResourceURI(uri)
     else:
@@ -56,106 +86,101 @@ def validateEntity(name, val, soup):
             rsvLogger.error("%s: Could not get schema file for Entity check" % PropertyName)
     else:
         rsvLogger.error("%s: Could not get resource for Entity check" % PropertyName)
+    return paramPass
 
 def validateComplex(name, val, propDict, propSoup):
     rsvLogger.info('\t***going into Complex')
     if not isinstance( val, dict ):
-        rsvLogger.error(item + ' : Complex item not a dictionary')
-        return 
-        
-    # innerPropDict = PropertyItem['typeprops']
-    # innerPropSoup = PropertyItem['soup']
+        rsvLogger.error(name + ' : Complex item not a dictionary')
+        return False, None, None
+    
+    complexMessages = OrderedDict()
+    complexCounts = Counter()
+
+    # propDict = PropertyItem['typeprops']
+    # propSoup = PropertyItem['soup']
     successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
     if successService:
         serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
         successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
         for prop in additionalProps:
-            innerPropDict[prop[2]] = rst.getPropertyDetails(*prop)
-    for prop in innerPropDict:
-        propMessages, propCounts = checkPropertyCompliance(innerPropSoup, prop, innerPropDict[prop], val, refs)
+            propDict[prop[2]] = rst.getPropertyDetails(*prop)
+    refs = rst.getReferenceDetails(propSoup)
+    for prop in propDict:
+        propMessages, propCounts = checkPropertyCompliance(propSoup, prop, propDict[prop], val, refs)
         complexMessages.update(propMessages)
         complexCounts.update(propCounts)
     successPayload, odataMessages = rst.checkPayloadCompliance('',val)
     complexMessages.update(odataMessages)
     rsvLogger.info('\t***out of Complex')
     rsvLogger.info('complex %s', complexCounts)
-    if item == "Actions":
-        def validateActions(name, val, innerPropSoup, typeOf):
-            success, baseSoup, baseRefs, baseType = True, innerPropSoup, rst.getReferenceDetails(innerPropSoup), decoded.get('@odata.type')
-            actionsDict = dict()
+    if name == "Actions":
+        pass
+    return True, complexCounts, complexMessages
 
-            while success:
-                SchemaNamespace, SchemaType = rst.getNamespace(baseType), rst.getType(baseType)
-                innerschema = baseSoup.find('schema', attrs={'namespace': SchemaNamespace})
-                actions = innerschema.find_all('action')
-                for act in actions:
-                    keyname = '#%s.%s' % (SchemaNamespace, act['name'])
-                    actionsDict[keyname] = act
-                success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'entitytype')
-            
-            for k in actionsDict:
-                actionDecoded = val.get(k, 'n/a')
-                actPass = False
-                if actionDecoded != 'n/a':
-                    target = actionDecoded.get('target')
-                    if target is not None and isinstance( target, str ):
-                        actPass = True
-                    else:
-                        rsvLogger.error(k + ': target for action is malformed')
-                else:
-                    rsvLogger.error(k + ': action not Found')
-                complexMessages[k] = ('Action', '-',\
-                            'Exists' if actionDecoded != 'n/a'  else 'DNE',\
-                            'PASS' if actPass else 'FAIL') 
-                counts['pass'] += 1
-        
 def validateDeprecatedEnum(name, val, listEnum):
+    paramPass = True
     if isinstance(val, list):
-        paramPass = True
         for enumItem in val:
             for k,v in enumItem.items():
                 rsvLogger.debug('%s, %s' % (k,v))
-                paramPass = paramPass and str(v) in PropertyItem['typeprops']
+                paramPass = paramPass and str(v) in listEnum
         if not paramPass:
-            rsvLogger.error("%s: Invalid DeprecatedEnum found (check casing?)" % PropertyName)
+            rsvLogger.error("%s: Invalid DeprecatedEnum found (check casing?)" % name)
     elif isinstance(val, str):
         rsvLogger.debug('%s' % val)
-        paramPass = str(val) in PropertyItem['typeprops']
+        paramPass = str(val) in listEnum
         if not paramPass:
-            rsvLogger.error("%s: Invalid DeprecatedEnum found (check casing?)" % PropertyName)
+            rsvLogger.error("%s: Invalid DeprecatedEnum found (check casing?)" % name)
     else:
-        rsvLogger.error("%s: Expected list/str value for DeprecatedEnum? (" % PropertyName) 
+        rsvLogger.error("%s: Expected list/str value for DeprecatedEnum? " % name) 
+    return paramPass
 
 def validateEnum(name, val, listEnum):
+    paramPass = False
     if isinstance(val, str):
         paramPass = val in listEnum
         if not paramPass:
-            rsvLogger.error("%s: Invalid enum found (check casing?)" % PropertyName)
+            rsvLogger.error("%s: Invalid enum found (check casing?)" % name)
     else:
-        rsvLogger.error("%s: Expected string value for Enum" % PropertyName)
+        rsvLogger.error("%s: Expected string value for Enum" % name)
+    return paramPass
 
-def validateString(name, val, pattern):
+def validateString(name, val, pattern=None):
+    paramPass = False
     if isinstance(val, str):
-        if validPatternAttr is not None:
-            pattern = validPatternAttr.get('string', '')
+        if pattern is not None:
             match = re.fullmatch(pattern, val)
             paramPass = match is not None
             if not paramPass:
-                rsvLogger.error("%s: Malformed String" % PropertyName)
+                rsvLogger.error("%s: Malformed String" % name)
         else:
             paramPass = True
     else:
-        rsvLogger.error("%s: Expected string value" % PropertyName)
+        rsvLogger.error("%s: Expected string value" % name)
     return paramPass
 
-def validateNumber(name, val, numType, minVal=None, maxVal=None):
-    rsvLogger = rst.getLogger()
+def validateDatetime(name, val):
+    paramPass = validateString(name, val, '.*(Z|(\+|-)[0-9][0-9]:[0-9][0-9])')
+    if not paramPass:
+        rsvLogger.error("\t%s: Malformed DateTimeOffset" % name)
+    return paramPass
+def validateGuid(name, val):
+    paramPass = validateString(name, val, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+    if not paramPass:
+        rsvLogger.error("\t%s: Malformed Guid" % name)
+    return paramPass
+
+def validateInt(name, val, minVal=None, maxVal = None):
+    if not isinstance(val, int):
+        rsvLogger.error("%s: Expected int" % name)
+        return False
+    else:
+        return validateNumber(name, val, minVal, maxVal)
+
+def validateNumber(name, val, minVal=None, maxVal=None):
     paramPass = isinstance( val, (int, float) ) 
     if paramPass:
-        if 'Int' in numType:
-            paramPass = isinstance( val, int )
-            if not paramPass:
-                rsvLogger.error("%s: Expected int" % name)
         if minVal is not None:
             paramPass = paramPass and minVal <= val
             if not paramPass:
@@ -178,8 +203,6 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     param arg3: json payload
     param arg4: refs
     """
-    rsvLogger = rst.getLogger()
-
     resultList = OrderedDict()
     counts = Counter()
 
@@ -254,8 +277,8 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     validMinAttr = PropertyItem.get('Validation.Minimum')
     validMaxAttr = PropertyItem.get('Validation.Maximum')
 
-    validMin, validMax = validMinAttr['int'] if validMinAttr is not None else None, \
-                            validMaxAttr['int'] if validMaxAttr is not None else None
+    validMin, validMax = int(validMinAttr['int']) if validMinAttr is not None else None, \
+                            int(validMaxAttr['int']) if validMaxAttr is not None else None
     validPattern = validPatternAttr.get('string','') if validPatternAttr is not None else None
     paramPass = True
 
@@ -288,32 +311,42 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                     rsvLogger.error("%s: Not a boolean" % PropertyName)
 
             elif propRealType == 'Edm.DateTimeOffset':
-                paramPass = validateString(name, val, 
-                        '.*(Z|(\+|-)[0-9][0-9]:[0-9][0-9])')
-                if not paramPass:
-                    rsvLogger.error("\t%s: Malformed DateTimeOffset" % PropertyName)
+                validateDatetime(name, val)
 
             elif propRealType == 'Edm.Int16' or propRealType == 'Edm.Int32' or\
-                    propRealType == 'Edm.Int64' or propRealType == 'Edm.Int' or\
-                    propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
-                paramPass = validateNumber(PropertyName, val, propRealType, validMin, validMax) 
+                    propRealType == 'Edm.Int64' or propRealType == 'Edm.Int':
+                paramPass = validateInt(PropertyName, val, validMin, validMax)
+                   
+            elif propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
+                paramPass = validateNumber(PropertyName, val, validMin, validMax)
 
             elif propRealType == 'Edm.Guid':
-                paramPass = validateString(name, val, 
-                        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-                if not paramPass:
-                    rsvLogger.error("\t%s: Malformed Guid" % PropertyName)
+                paramPass = validateGuid(PropertyName, val)
                     
             elif propRealType == 'Edm.String':
-                paramPass = validateString(PropertyName, val, validPatternAttr.get('string',''))
+                paramPass = validateString(PropertyName, val, validPattern)
 
             else:
                 if propRealType == 'complex':
                     counts['complex'] += 1
-                    counts['failComplex'] += 1
+                    innerPropDict = PropertyItem['typeprops']
+                    innerPropSoup = PropertyItem['soup']
+                    success, complexCounts, complexMessages = validateComplex(PropertyName, val, innerPropDict, innerPropSoup)
+                    if not success: 
+                        counts['failComplex'] += 1
+                        resultList[item + appendStr]\
+                            = ('ComplexDictionary' + appendStr, (propType, propRealType),\
+                                        'Exists' if propExists else 'DNE',\
+                                        'failComplex')
+                        continue
                     counts.update(complexCounts)
                     for complexKey in complexMessages:
                         resultList[item + '.' + complexKey + appendStr] = complexMessages[complexKey]
+                    
+                    resultList[item + appendStr]\
+                            = ('ComplexDictionary' + appendStr, (propType, propRealType),\
+                                        'Exists' if propExists else 'DNE',\
+                                        'complex')
 
                     for key in val:
                         if key not in complexMessages:
@@ -322,6 +355,9 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                             resultList[item + '.' + key + appendStr] = (val[key], '-',
                                                                  'Exists',
                                                                  '-')
+                    continue
+                        
+
                 elif propRealType == 'enum':
                     paramPass = validateEnum(PropertyName, val, PropertyItem['typeprops'])
                     
@@ -329,10 +365,12 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                     paramPass = validateDeprecatedEnum(PropertyName, val, PropertyItem['typeprops'])
 
                 elif propRealType == 'entity':
-                    paramPass = validateEntity(PropertyName, val, soup)
-            else:
-                rsvLogger.error("%s: This type is invalid %s" % (PropertyName, propRealType))
-                paramPass = False
+                    autoExpand = PropertyItem.get('OData.AutoExpand',None) is not None or\
+                    PropertyItem.get('OData.AutoExpand'.lower(),None) is not None
+                    paramPass = validateEntity(PropertyName, val, propType, propCollectionType, soup, refs, autoExpand)
+                else:
+                    rsvLogger.error("%s: This type is invalid %s" % (PropertyName, propRealType))
+                    paramPass = False
 
 
         resultList[item + appendStr] = (val, (propType, propRealType),
@@ -540,7 +578,6 @@ def main(argv):
     else:
         rst.setConfig(argv[1])
     rst.isConfigSet()
-    rsvLogger = rst.getLogger()
 
     sysDescription, ConfigURI, chkCert, localOnly = (rst.sysDescription, rst.ConfigURI, rst.chkCert, rst.localOnly)
     User, SchemaLocation = rst.User, rst.SchemaLocation

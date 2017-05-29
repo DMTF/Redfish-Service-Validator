@@ -55,6 +55,9 @@ def isConfigSet():
     else:
         raise Exception("Configuration is not set")
 
+def isNonService(uri):
+    return 'http' in uri[:8]
+
 @lru_cache(maxsize=64)
 def callResourceURI(URILink):
     """
@@ -68,7 +71,7 @@ def callResourceURI(URILink):
     # rs-assertion: require no auth for serviceroot calls
     if URILink is None:
         return False, None, -1
-    nonService = 'http' in URILink[:8]
+    nonService = isNonService(URILink)
     statusCode = ''
     if not nonService:
         # feel free to make this into a regex
@@ -162,7 +165,10 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix=None):
                     traverseLogger.error("SchemaURI missing reference link: %s %s", SchemaURI, frag)
             else:
                 return True, soup, SchemaURI
-        traverseLogger.error("SchemaURI unsuccessful: %s", SchemaURI)
+        if isNonService(SchemaURI) and serviceOnly:
+            traverseLogger.info("Nonservice URI skipped " + SchemaURI)
+        else:
+            traverseLogger.error("SchemaURI unsuccessful: %s", SchemaURI)
     return getSchemaDetailsLocal(SchemaAlias, SchemaURI, suffix)
    
 def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix=None):
@@ -208,6 +214,7 @@ def getReferenceDetails(soup):
     return refDict
 
 
+
 def getParentType(soup, refs, currentType, tagType='entitytype'):
     """
     Get parent type of given type.
@@ -218,6 +225,7 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
     param tagType: the type of tag for inheritance, default 'entitytype'
     return: success, associated soup, associated ref, new type
     """
+        
     propSchema = soup.find( 'schema', attrs={'namespace': getNamespace(currentType)})
     
     if propSchema is None:
@@ -251,6 +259,35 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
 
     return True, innerSoup, innerRefs, currentType 
 
+class BaseObj:
+    pass
+class ResourceObj:
+    name = None
+    parent = None
+    links = None
+    soup = None
+    typeTag = None
+class PropItem:
+    name = None
+    parent = None
+    soup = None
+    typeTag = None
+class PropType:
+    name = ''
+    parent = None
+    soup = None
+    refs = None
+    tagType = None
+    propList = None
+    def __init__(self, name, soup, refs, tagType):
+        self.name = name
+        self.soup = soup
+        self.refs = refs
+        self.tagType = tagType
+        self.isNav = False
+        self.propList = []
+
+
 def getTypeDetails(soup, refs, SchemaAlias, tagType):
     """
     Gets list of surface level properties for a given SchemaAlias,
@@ -261,8 +298,6 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
     param arg4: tag of Type, which can be EntityType or ComplexType...
     return: list of (soup, ref, string PropertyName, tagType)
     """
-    PropertyList = list()
-
     SchemaNamespace, SchemaType = getNamespace(SchemaAlias), getType(SchemaAlias)
 
     traverseLogger.debug("Schema is %s, %s, %s", SchemaAlias,
@@ -275,7 +310,10 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
                             (getNamespace(SchemaAlias), SchemaAlias))
         raise Exception('exceptionType: Was not able to get type, is Schema in XML? '  + str(refs.get(getNamespace(SchemaAlias), (getNamespace(SchemaAlias), None))))
 
+    returnType = PropType(SchemaAlias, soup, refs, tagType)
+
     for element in innerschema.find_all(tagType, attrs={'name': SchemaType}):
+        PropertyList = returnType.propList
         traverseLogger.debug("___")
         traverseLogger.debug(element['name'])
         traverseLogger.debug(element.attrs)
@@ -306,6 +344,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
     param arg2: references
     param arg3: a property string
     """
+
     propEntry = dict()
 
     propOwner, propChild = PropertyItem.split(':')[0].replace('#',''), PropertyItem.split(':')[-1]
