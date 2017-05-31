@@ -272,6 +272,9 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
         propPermissionsValue = propPermissions['enummember']
         rsvLogger.info("\tpermission %s", propPermissionsValue)
 
+    autoExpand = PropertyItem.get('OData.AutoExpand',None) is not None or\
+    PropertyItem.get('OData.AutoExpand'.lower(),None) is not None
+    
     validPatternAttr = PropertyItem.get(
         'Validation.Pattern')
     validMinAttr = PropertyItem.get('Validation.Minimum')
@@ -365,8 +368,6 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                     paramPass = validateDeprecatedEnum(PropertyName, val, PropertyItem['typeprops'])
 
                 elif propRealType == 'entity':
-                    autoExpand = PropertyItem.get('OData.AutoExpand',None) is not None or\
-                    PropertyItem.get('OData.AutoExpand'.lower(),None) is not None
                     paramPass = validateEntity(PropertyName, val, propType, propCollectionType, soup, refs, autoExpand)
                 else:
                     rsvLogger.error("%s: This type is invalid %s" % (PropertyName, propRealType))
@@ -397,6 +398,38 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
 
     return resultList, counts
 
+def checkPayloadCompliance(uri, decoded):
+    messages = dict()
+    success = True
+    for key in [k for k in decoded if '@odata' in k]:
+        itemType = key.split('.',1)[-1]
+        itemTarget = key.split('.',1)[0]
+        paramPass = False
+        if key == 'id':
+            paramPass = isinstance( decoded[key], str)
+            paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
+            pass
+        elif key == 'count':
+            paramPass = isinstance( decoded[key], int)
+            pass
+        elif key == 'context':
+            paramPass = isinstance( decoded[key], str)
+            paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+            pass
+        elif key == 'type':
+            paramPass = isinstance( decoded[key], str)
+            paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+            pass
+        else:
+            paramPass = True
+        if not paramPass:
+            traverseLogger.error(key + "@odata item not compliant: " + decoded[key])
+            success = False
+        messages[key] = (decoded[key], 'odata',
+                                         'Exists',
+                                         'PASS' if paramPass else 'FAIL')
+    return success, messages
+
 
 def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None):
     # rs-assertion: 9.4.1
@@ -418,26 +451,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     messages = OrderedDict()
     success = False
 
-    results[uriName] = (URI, success, counts, messages, errorMessages, '-', '-')
-
-    # Get from service by URI, ex: "/redfish/v1"
-    if expectedJson is None:
-        success, jsonData, status = rst.callResourceURI(URI)
-        rsvLogger.debug('%s, %s, %s', success, jsonData, status)
-        if not success:
-            rsvLogger.error('%s:  URI could not be acquired: %s' % (URI, status))
-            counts['failGet'] += 1
-            rsvLogger.removeHandler(errh) 
-            return False, counts, results, None
-        counts['passGet'] += 1
-    else:
-        jsonData = expectedJson
-
     # check for @odata mandatory stuff
     # check for version numbering problems
     # check id if its the same as URI
     # check @odata.context instead of local.  Realize that @odata is NOT a "property"
-    successPayload, odataMessages = rst.checkPayloadCompliance(URI,jsonData)
+    """successPayload, odataMessages = rst.checkPayloadCompliance(URI,jsonData)
     messages.update(odataMessages)
     
     if not successPayload:
@@ -445,90 +463,12 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         rsvLogger.error(str(URI) + ':  payload error, @odata property noncompliant',)
         rsvLogger.removeHandler(errh) 
         return False, counts, results, None
-    
-    if expectedType is None:
-        SchemaFullType = jsonData.get('@odata.type')
-        if SchemaFullType is None:
-            rsvLogger.error(str(URI) + ':  Json does not contain @odata.type',)
-            counts['failJsonError'] += 1
-            rsvLogger.removeHandler(errh) 
-            return False, counts, results, None
-    else:
-        SchemaFullType = jsonData.get('@odata.type', expectedType) 
-    rsvLogger.info(SchemaFullType)
-
-    # Parse @odata.type, get schema XML and its references from its namespace
-    SchemaNamespace, SchemaType = rst.getNamespace(SchemaFullType), rst.getType(SchemaFullType)
-    if expectedSchema is None:
-        SchemaURI = jsonData.get('@odata.context',None)
-    else:
-        SchemaURI = expectedSchema
-    rsvLogger.debug("%s %s", SchemaType, SchemaURI)
-       
-    success, SchemaSoup, SchemaURI = rst.getSchemaDetails( SchemaNamespace, SchemaURI=SchemaURI)
-
-    if not success:
-        rsvLogger.error("validateURI: No schema XML for %s %s",
-                        SchemaFullType, SchemaType)
-        counts['failSchema'] += 1
-        rsvLogger.removeHandler(errh) 
-        return False, counts, results, None
-
-    refDict = rst.getReferenceDetails(SchemaSoup)
-
-    rsvLogger.debug(jsonData)
-    rsvLogger.debug(SchemaURI)
-    
-    successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
-    if successService:
-        serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
-        successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, jsonData)
-    
-    # Fallback typing for properties without types
-    # Use string comprehension to get highest type
-    if expectedType is SchemaFullType:
-        for schema in SchemaSoup.find_all('schema'):
-            newNamespace = schema.get('namespace')
-            if schema.find('entitytype',attrs={'name': SchemaType}):
-                SchemaNamespace = newNamespace
-                SchemaFullType = newNamespace + '.' + SchemaType
-        rsvLogger.warn('No @odata.type present, assuming highest type %s', SchemaFullType)
-    
-    results[uriName] = (URI, success, counts, messages, errorMessages, SchemaURI, ('assuming ' if expectedType is SchemaFullType else '') + str(SchemaFullType))
-
+    """
     # Attempt to get a list of properties
-    propertyList = list()
-    success, baseSoup, baseRefs, baseType = True, SchemaSoup, refDict, SchemaFullType
-    while success:
-        try:
-            propertyList.extend(rst.getTypeDetails(
-                baseSoup, baseRefs, baseType, 'entitytype'))
-            success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'entitytype')
-        except Exception as ex:
-            rsvLogger.exception("Something went wrong")
-            rsvLogger.error(URI + ':  Getting type failed for ' + SchemaFullType + " " + baseType)
-            counts['exceptionGetType'] += 1
-            break
-    for item in propertyList:
-        rsvLogger.debug(item[2])
+    propResourceObj = rst.ResourceObj(uriName, URI, expectedType, expectedSchema, expectedJson)
     
-    if successService:
-        propertyList.extend(additionalProps)
-
     # Generate dictionary of property info
-    for prop in propertyList:
-        try:
-            propertyDict[prop[2]] = rst.getPropertyDetails(*prop)
-        except Exception as ex:
-            rsvLogger.exception("Something went wrong")
-            rsvLogger.error('%s:  Could not get details on this property' % (prop[2]))
-            counts['exceptionGetDict'] += 1
-    for key in propertyDict:
-        rsvLogger.debug(key)
-
-    # With dictionary of property details, check json against those details
-    # rs-assertion: test for AdditionalProperties
-    for prop in propertyDict:
+    for prop in propResourceObj.typeobj.propList:
         try:
             propMessages, propCounts = checkPropertyCompliance(SchemaSoup, prop, propertyDict[prop], jsonData, refDict)
             messages.update(propMessages)
@@ -561,11 +501,64 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     rsvLogger.info('%s, %s, %s', SchemaFullType, counts, len(propertyList))
     
     # Get all links available
-    links = rst.getAllLinks(jsonData, propertyDict, refDict, context=SchemaURI)
 
     rsvLogger.debug(links)
     rsvLogger.removeHandler(errh) 
     return True, counts, results, links
+
+def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=None):
+    traverseLogger = rst.getLogger()
+    def executeLink(linkItem):
+        linkURI, autoExpand, linkType, linkSchema, innerJson = linkItem
+
+        if linkType is not None and autoExpand:
+            returnVal = validateURITree(
+                    linkURI, uriName + ' -> ' + linkName, funcValidate, linkType, linkSchema, innerJson, allLinks)
+        else:
+            returnVal = validateURITree(
+                    linkURI, uriName + ' -> ' + linkName, funcValidate, allLinks=allLinks)
+        traverseLogger.info('%s, %s', linkName, returnVal[1])
+        return returnVal
+
+    top = allLinks is None
+    if top:
+        allLinks = set()
+    allLinks.add(URI)
+    refLinks = OrderedDict()
+    
+    validateSuccess, counts, results, links = \
+            funcValidate(URI, uriName, expectedType, expectedSchema, expectedJson)
+    if validateSuccess:
+        for linkName in links:
+            if 'Links' in linkName.split('.',1)[0] or 'RelatedItem' in linkName.split('.',1)[0] or 'Redundancy' in linkName.split('.',1)[0]:
+                refLinks[linkName] = links[linkName]
+                continue
+            if links[linkName][0] in allLinks:
+                counts['repeat'] += 1
+                continue
+
+            success, linkCounts, linkResults, xlinks = executeLink(links[linkName])
+            refLinks.update(xlinks)
+            if not success:
+                counts['unvalidated'] += 1
+            results.update(linkResults)
+
+    if top:
+        for linkName in refLinks:
+            if refLinks[linkName][0] not in allLinks:
+                traverseLogger.info('%s, %s', linkName, refLinks[linkName])
+                counts['reflink'] += 1
+            else:
+                continue
+            
+            success, linkCounts, linkResults, xlinks = executeLink(refLinks[linkName])
+            if not success:
+                counts['unvalidatedRef'] += 1
+            results.update(linkResults)
+    
+    return validateSuccess, counts, results, refLinks
+
+
 
 ##########################################################################
 ######################          Script starts here              ##########
@@ -598,7 +591,7 @@ def main(argv):
 
     # Start main
     status_code = 1
-    success, counts, results, xlinks = rst.validateURITree('/redfish/v1', 'ServiceRoot', validateSingleURI)
+    success, counts, results, xlinks = validateURITree('/redfish/v1', 'ServiceRoot', validateSingleURI)
     finalCounts = Counter()
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: ' + str(nowTick-startTick).rsplit('.',1)[0])

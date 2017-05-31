@@ -262,31 +262,105 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
 class BaseObj:
     pass
 class ResourceObj:
-    name = None
-    parent = None
-    links = None
-    soup = None
-    typeTag = None
+    def __init__(self, name, uri, expectedType=None, expectedSchema=None, expectedJson=None): 
+        self.uri, self.name = uri, name 
+        self.counts = Counter() 
+        self.messages = OrderedDict() 
+
+        if expectedJson is None: 
+            success, self.jsondata, status = callResourceURI(self.uri) 
+            traverseLogger.debug('%s, %s, %s', success, self.jsondata, status) 
+            if not success: 
+                traverseLogger.error('%s:  URI could not be acquired: %s' % (self.uri, status)) 
+                self.counts['failGet'] += 1 
+                # traverseLogger.removeHandler(errh)  
+                # return False, counts, results, None 
+            self.counts['passGet'] += 1 
+        else: 
+            self.jsondata = expectedJson 
+         
+        if expectedType is None: 
+            fullType = self.jsondata.get('@odata.type') 
+            if fullType is None: 
+                traverseLogger.error(str(self.uri) + ':  Json does not contain @odata.type',) 
+                self.counts['failJsonError'] += 1 
+                # traverseLogger.removeHandler(errh)  
+                # return False, counts, results, None 
+        else: 
+            fullType = self.jsondata.get('@odata.type', expectedType)  
+        
+        if expectedSchema is None: 
+            self.context = self.jsondata.get('@odata.context')
+        else: 
+            self.context = expectedSchema 
+            
+        # Use string comprehension to get highest type 
+        if fullType is expectedType: 
+            for schema in self.soup.find_all('schema'): 
+                newNamespace = schema.get('namespace') 
+                if schema.find('entitytype',attrs={'name': getType(fullType)}): 
+                    fullType = newNamespace + '.' + getType(fullType)
+            rsvLogger.warn('No @odata.type present, assuming highest type %s', self.fulltype) 
+        
+        success, typesoup, self.context = getSchemaDetails( getNamespace(fullType), SchemaURI=self.context) 
+ 
+        if not success: 
+            rsvLogger.error("validateURI: No schema XML for %s %s", 
+                            SchemaFullType, SchemaType) 
+            self.counts['failSchema'] += 1 
+            # rsvLogger.removeHandler(errh)  
+            # return False, counts, results, None 
+ 
+        typerefs = getReferenceDetails(typesoup) 
+        
+        self.typeobj = PropType(fullType, typesoup, typerefs, 'entitytype') 
+        self.links = getAllLinks(self.jsondata, self.typeobj.propertyDict, self.typeobj.refs, context=self.context)
+         
 class PropItem:
-    name = None
-    parent = None
-    soup = None
-    typeTag = None
+    pass
 class PropType:
-    name = ''
-    parent = None
-    soup = None
-    refs = None
-    tagType = None
-    propList = None
-    def __init__(self, name, soup, refs, tagType):
-        self.name = name
-        self.soup = soup
-        self.refs = refs
+    def __init__(self, fulltype, soup, refs, tagType):
+        self.fulltype = fulltype
+        self.soup, self.refs = soup, refs
+        self.snamespace, self.stype = getNamespace(self.fulltype), getType(self.fulltype)
+         
         self.tagType = tagType
         self.isNav = False
         self.propList = []
 
+        propertyList = self.propList
+        success, baseSoup, baseRefs, baseType = True, self.soup, self.refs, self.fulltype
+        try:
+            propertyList.extend(getTypeDetails(baseSoup, baseRefs, baseType, self.tagType))
+            success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, self.tagType)
+            if success:
+                self.parent = PropType(baseType, baseSoup, baseRefs, self.tagType)
+            else:
+                self.parent = None
+        except Exception as ex:
+            traverseLogger.exception("Something went wrong")
+            traverseLogger.error(':  Getting type failed for ' + self.fulltype + " " + baseType)
+            # self.counts['exceptionGetType'] += 1
+        for item in propertyList:
+            traverseLogger.info(item[2])
+        
+        self.propertyDict = dict()
+        node = self
+        while node is not None:
+            pList = node.propList
+            for prop in pList:
+                try:
+                    node.propertyDict[prop[2]] = getPropertyDetails(*prop)
+                except Exception as ex:
+                    traverseLogger.exception("Something went wrong")
+                    traverseLogger.error('%s:  Could not get details on this property' % (prop[2]))
+                    counts['exceptionGetDict'] += 1
+            for key in node.propertyDict:
+                traverseLogger.debug(key)
+            node = node.parent 
+        
+         
+         
 
 def getTypeDetails(soup, refs, SchemaAlias, tagType):
     """
@@ -298,6 +372,8 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
     param arg4: tag of Type, which can be EntityType or ComplexType...
     return: list of (soup, ref, string PropertyName, tagType)
     """
+    PropertyList = list()
+
     SchemaNamespace, SchemaType = getNamespace(SchemaAlias), getType(SchemaAlias)
 
     traverseLogger.debug("Schema is %s, %s, %s", SchemaAlias,
@@ -310,10 +386,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
                             (getNamespace(SchemaAlias), SchemaAlias))
         raise Exception('exceptionType: Was not able to get type, is Schema in XML? '  + str(refs.get(getNamespace(SchemaAlias), (getNamespace(SchemaAlias), None))))
 
-    returnType = PropType(SchemaAlias, soup, refs, tagType)
-
     for element in innerschema.find_all(tagType, attrs={'name': SchemaType}):
-        PropertyList = returnType.propList
         traverseLogger.debug("___")
         traverseLogger.debug(element['name'])
         traverseLogger.debug(element.attrs)
@@ -321,7 +394,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
         
         usableProperties = element.find_all('property')
         usableNavProperties = element.find_all('navigationproperty')
-       
+    
         for innerelement in usableProperties + usableNavProperties:
             traverseLogger.debug(innerelement['name'])
             traverseLogger.debug(innerelement.get('type'))
@@ -569,56 +642,4 @@ def checkPayloadCompliance(uri, decoded):
                                          'Exists',
                                          'PASS' if paramPass else 'FAIL')
     return success, messages
-
-def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=None):
-    def executeLink(linkItem):
-        linkURI, autoExpand, linkType, linkSchema, innerJson = linkItem
-
-        if linkType is not None and autoExpand:
-            returnVal = validateURITree(
-                    linkURI, uriName + ' -> ' + linkName, funcValidate, linkType, linkSchema, innerJson, allLinks)
-        else:
-            returnVal = validateURITree(
-                    linkURI, uriName + ' -> ' + linkName, funcValidate, allLinks=allLinks)
-        traverseLogger.info('%s, %s', linkName, returnVal[1])
-        return returnVal
-
-    top = allLinks is None
-    if top:
-        allLinks = set()
-    allLinks.add(URI)
-    refLinks = OrderedDict()
-    
-    validateSuccess, counts, results, links = \
-            funcValidate(URI, uriName, expectedType, expectedSchema, expectedJson)
-    if validateSuccess:
-        for linkName in links:
-            if 'Links' in linkName.split('.',1)[0] or 'RelatedItem' in linkName.split('.',1)[0] or 'Redundancy' in linkName.split('.',1)[0]:
-                refLinks[linkName] = links[linkName]
-                continue
-            if links[linkName][0] in allLinks:
-                counts['repeat'] += 1
-                continue
-
-            success, linkCounts, linkResults, xlinks = executeLink(links[linkName])
-            refLinks.update(xlinks)
-            if not success:
-                counts['unvalidated'] += 1
-            results.update(linkResults)
-
-    if top:
-        for linkName in refLinks:
-            if refLinks[linkName][0] not in allLinks:
-                traverseLogger.info('%s, %s', linkName, refLinks[linkName])
-                counts['reflink'] += 1
-            else:
-                continue
-            
-            success, linkCounts, linkResults, xlinks = executeLink(refLinks[linkName])
-            if not success:
-                counts['unvalidatedRef'] += 1
-            results.update(linkResults)
-    
-    return validateSuccess, counts, results, refLinks
-
 
