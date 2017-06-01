@@ -259,8 +259,6 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
 
     return True, innerSoup, innerRefs, currentType 
 
-class BaseObj:
-    pass
 class ResourceObj:
     def __init__(self, name, uri, expectedType=None, expectedSchema=None, expectedJson=None): 
         self.uri, self.name = uri, name 
@@ -272,9 +270,8 @@ class ResourceObj:
             traverseLogger.debug('%s, %s, %s', success, self.jsondata, status) 
             if not success: 
                 traverseLogger.error('%s:  URI could not be acquired: %s' % (self.uri, status)) 
-                self.counts['failGet'] += 1 
-                # traverseLogger.removeHandler(errh)  
-                # return False, counts, results, None 
+                self.counts['failGet'] += 1
+                return
             self.counts['passGet'] += 1 
         else: 
             self.jsondata = expectedJson 
@@ -284,8 +281,7 @@ class ResourceObj:
             if fullType is None: 
                 traverseLogger.error(str(self.uri) + ':  Json does not contain @odata.type',) 
                 self.counts['failJsonError'] += 1 
-                # traverseLogger.removeHandler(errh)  
-                # return False, counts, results, None 
+                return
         else: 
             fullType = self.jsondata.get('@odata.type', expectedType)  
         
@@ -294,30 +290,47 @@ class ResourceObj:
         else: 
             self.context = expectedSchema 
             
+        success, typesoup, self.context = getSchemaDetails( getNamespace(fullType), SchemaURI=self.context) 
+
+        if not success: 
+            traverseLogger.error("validateURI: No schema XML for %s %s", 
+                            SchemaFullType, SchemaType) 
+            self.counts['failSchema'] += 1 
+            return
+ 
         # Use string comprehension to get highest type 
         if fullType is expectedType: 
-            for schema in self.soup.find_all('schema'): 
+            for schema in typesoup.find_all('schema'): 
                 newNamespace = schema.get('namespace') 
                 if schema.find('entitytype',attrs={'name': getType(fullType)}): 
                     fullType = newNamespace + '.' + getType(fullType)
-            rsvLogger.warn('No @odata.type present, assuming highest type %s', self.fulltype) 
+            traverseLogger.warn('No @odata.type present, assuming highest type %s', fullType) 
         
-        success, typesoup, self.context = getSchemaDetails( getNamespace(fullType), SchemaURI=self.context) 
- 
-        if not success: 
-            rsvLogger.error("validateURI: No schema XML for %s %s", 
-                            SchemaFullType, SchemaType) 
-            self.counts['failSchema'] += 1 
-            # rsvLogger.removeHandler(errh)  
-            # return False, counts, results, None 
- 
         typerefs = getReferenceDetails(typesoup) 
         
         self.typeobj = PropType(fullType, typesoup, typerefs, 'entitytype') 
-        self.links = getAllLinks(self.jsondata, self.typeobj.propertyDict, self.typeobj.refs, context=self.context)
+        successService, serviceSchemaSoup, SchemaServiceURI = getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
+        if successService:
+            serviceRefs = getReferenceDetails(serviceSchemaSoup)
+            successService, additionalProps = getAnnotations(serviceSchemaSoup, serviceRefs, self.jsondata)
+            for prop in additionalProps:
+                typeobj.propList += rst.getPropertyDetails(*prop)
+        self.links = OrderedDict()
+        node = self.typeobj
+        while node is not None:
+            self.links.update(getAllLinks(self.jsondata, node.propList, node.refs, context=self.context))
+            node = node.parent
          
 class PropItem:
-    pass
+    def __init__(self, name, soup, refs, tagType):
+        try:
+            self.name = name
+            self.propDict = getPropertyDetails(soup, refs, name, tagType)
+        except Exception as ex:
+            traverseLogger.exception("Something went wrong")
+            traverseLogger.error('%s:  Could not get details on this property' % (prop[2]))
+            return
+        pass
 class PropType:
     def __init__(self, fulltype, soup, refs, tagType):
         self.fulltype = fulltype
@@ -340,28 +353,8 @@ class PropType:
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
             traverseLogger.error(':  Getting type failed for ' + self.fulltype + " " + baseType)
-            # self.counts['exceptionGetType'] += 1
-        for item in propertyList:
-            traverseLogger.info(item[2])
+            return
         
-        self.propertyDict = dict()
-        node = self
-        while node is not None:
-            pList = node.propList
-            for prop in pList:
-                try:
-                    node.propertyDict[prop[2]] = getPropertyDetails(*prop)
-                except Exception as ex:
-                    traverseLogger.exception("Something went wrong")
-                    traverseLogger.error('%s:  Could not get details on this property' % (prop[2]))
-                    counts['exceptionGetDict'] += 1
-            for key in node.propertyDict:
-                traverseLogger.debug(key)
-            node = node.parent 
-        
-         
-         
-
 def getTypeDetails(soup, refs, SchemaAlias, tagType):
     """
     Gets list of surface level properties for a given SchemaAlias,
@@ -400,11 +393,11 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
             traverseLogger.debug(innerelement.get('type'))
             traverseLogger.debug(innerelement.attrs)
             newProp = innerelement['name']
+            traverseLogger.debug("ADDING :::: %s", newProp)
             if SchemaAlias:
                 newProp = SchemaAlias + ':' + newProp
-            traverseLogger.debug("ADDING :::: %s", newProp)
             if newProp not in PropertyList:
-                PropertyList.append((soup,refs,newProp,tagType))
+                PropertyList.append( PropItem(newProp, soup, refs, tagType) )
         
     return PropertyList 
 
@@ -417,7 +410,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
     param arg2: references
     param arg3: a property string
     """
-
+    
     propEntry = dict()
 
     propOwner, propChild = PropertyItem.split(':')[0].replace('#',''), PropertyItem.split(':')[-1]
@@ -519,10 +512,8 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
                 propertyList.extend(getTypeDetails(
                     baseSoup, baseRefs, baseType, 'complextype'))
                 success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, 'complextype')
-            propDict = {item[2]: getPropertyDetails( *item) for item in propertyList}
-            traverseLogger.debug(key for key in propDict)
             propEntry['realtype'] = 'complex'
-            propEntry['typeprops'] = propDict
+            propEntry['typeprops'] = propertyList
             break
         elif typeEnumTag is not None:
             propEntry['realtype'] = 'enum'
@@ -543,7 +534,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
     return propEntry
 
 
-def getAllLinks(jsonData, propDict, refDict, prefix='', context=''):
+def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
     """
     Function that returns all links provided in a given JSON response.
     This result will include a link to itself.
@@ -560,39 +551,43 @@ def getAllLinks(jsonData, propDict, refDict, prefix='', context=''):
     #   otherwise, add everything IN Nav collection
     # if it is a Complex property, check that it exists
     #   if it is, recurse on collection or individual item
-    for key in propDict:
+    for propx in propList:
+        propDict = propx.propDict
+        key = propx.name
         item = getType(key).split(':')[-1]
-        if propDict[key]['isNav']:
+        if propDict['isNav']:
             insideItem = jsonData.get(item)
             if insideItem is not None:
-                cType = propDict[key].get('isCollection') 
-                autoExpand = propDict[key].get('OData.AutoExpand',None) is not None or\
-                    propDict[key].get('OData.AutoExpand'.lower(),None) is not None
+                cType = propDict.get('isCollection') 
+                autoExpand = propDict.get('OData.AutoExpand',None) is not None or\
+                    propDict.get('OData.AutoExpand'.lower(),None) is not None
                 if cType is not None:
                     cSchema = refDict.get(getNamespace(cType),(None,None))[1]
                     if cSchema is None:
                         cSchema = context 
                     for cnt, listItem in enumerate(insideItem):
-                        linkList[prefix+str(item)+'.'+getType(propDict[key]['isCollection']) +
+                        linkList[prefix+str(item)+'.'+getType(propDict['isCollection']) +
                                  '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
                 else:
-                    cType = propDict[key]['attrs'].get('type')
+                    cType = propDict['attrs'].get('type')
                     cSchema = refDict.get(getNamespace(cType),(None,None))[1]
                     if cSchema is None:
                         cSchema = context 
-                    linkList[prefix+str(item)+'.'+getType(propDict[key]['attrs']['name'])] = (\
+                    linkList[prefix+str(item)+'.'+getType(propDict['attrs']['name'])] = (\
                             insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
-    for key in propDict:
+    for propx in propList:
+        propDict = propx.propDict
+        key = propx.name
         item = getType(key).split(':')[-1]
-        if propDict[key]['realtype'] == 'complex':
+        if propDict['realtype'] == 'complex':
             if jsonData.get(item) is not None:
-                if propDict[key].get('isCollection') is not None:
+                if propDict.get('isCollection') is not None:
                     for listItem in jsonData[item]:
                         linkList.update(getAllLinks(
-                            listItem, propDict[key]['typeprops'], refDict, prefix+item+'.', context))
+                            listItem, propDict['typeprops'], refDict, prefix+item+'.', context))
                 else:
                     linkList.update(getAllLinks(
-                        jsonData[item], propDict[key]['typeprops'], refDict, prefix+item+'.', context))
+                        jsonData[item], propDict['typeprops'], refDict, prefix+item+'.', context))
     traverseLogger.debug(str(linkList))
     return linkList
 
@@ -610,36 +605,4 @@ def getAnnotations(soup, refs, decoded, prefix=''):
             additionalProps.append( (annotationSoup, annotationRefs, realItem+':'+key, 'term') )
 
     return True, additionalProps 
-
-def checkPayloadCompliance(uri, decoded):
-    messages = dict()
-    success = True
-    for key in [k for k in decoded if '@odata' in k]:
-        itemType = key.split('.',1)[-1]
-        itemTarget = key.split('.',1)[0]
-        paramPass = False
-        if key == 'id':
-            paramPass = isinstance( decoded[key], str)
-            paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
-            pass
-        elif key == 'count':
-            paramPass = isinstance( decoded[key], int)
-            pass
-        elif key == 'context':
-            paramPass = isinstance( decoded[key], str)
-            paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
-            pass
-        elif key == 'type':
-            paramPass = isinstance( decoded[key], str)
-            paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
-            pass
-        else:
-            paramPass = True
-        if not paramPass:
-            traverseLogger.error(key + "@odata item not compliant: " + decoded[key])
-            success = False
-        messages[key] = (decoded[key], 'odata',
-                                         'Exists',
-                                         'PASS' if paramPass else 'FAIL')
-    return success, messages
 

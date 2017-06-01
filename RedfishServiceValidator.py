@@ -97,20 +97,12 @@ def validateComplex(name, val, propDict, propSoup):
     complexMessages = OrderedDict()
     complexCounts = Counter()
 
-    # propDict = PropertyItem['typeprops']
-    # propSoup = PropertyItem['soup']
-    successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
-    if successService:
-        serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
-        successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
-        for prop in additionalProps:
-            propDict[prop[2]] = rst.getPropertyDetails(*prop)
     refs = rst.getReferenceDetails(propSoup)
     for prop in propDict:
-        propMessages, propCounts = checkPropertyCompliance(propSoup, prop, propDict[prop], val, refs)
+        propMessages, propCounts = checkPropertyCompliance(propSoup, prop.name, prop.propDict, val, refs)
         complexMessages.update(propMessages)
         complexCounts.update(propCounts)
-    successPayload, odataMessages = rst.checkPayloadCompliance('',val)
+    successPayload, odataMessages = checkPayloadCompliance('',val)
     complexMessages.update(odataMessages)
     rsvLogger.info('\t***out of Complex')
     rsvLogger.info('complex %s', complexCounts)
@@ -314,7 +306,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                     rsvLogger.error("%s: Not a boolean" % PropertyName)
 
             elif propRealType == 'Edm.DateTimeOffset':
-                validateDatetime(name, val)
+                paramPass = validateDatetime(PropertyName, val)
 
             elif propRealType == 'Edm.Int16' or propRealType == 'Edm.Int32' or\
                     propRealType == 'Edm.Int64' or propRealType == 'Edm.Int':
@@ -449,13 +441,20 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     propertyDict = OrderedDict()
     results = OrderedDict()
     messages = OrderedDict()
-    success = False
+    success = True
 
     # check for @odata mandatory stuff
     # check for version numbering problems
     # check id if its the same as URI
     # check @odata.context instead of local.  Realize that @odata is NOT a "property"
-    """successPayload, odataMessages = rst.checkPayloadCompliance(URI,jsonData)
+    
+    # Attempt to get a list of properties
+    propResourceObj = rst.ResourceObj(uriName, URI, expectedType, expectedSchema, expectedJson)
+    counts.update(propResourceObj.counts)
+    
+    results[uriName] = (URI, success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
+    
+    successPayload, odataMessages = checkPayloadCompliance(URI,propResourceObj.jsondata)
     messages.update(odataMessages)
     
     if not successPayload:
@@ -463,20 +462,23 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         rsvLogger.error(str(URI) + ':  payload error, @odata property noncompliant',)
         rsvLogger.removeHandler(errh) 
         return False, counts, results, None
-    """
-    # Attempt to get a list of properties
-    propResourceObj = rst.ResourceObj(uriName, URI, expectedType, expectedSchema, expectedJson)
-    
     # Generate dictionary of property info
-    for prop in propResourceObj.typeobj.propList:
-        try:
-            propMessages, propCounts = checkPropertyCompliance(SchemaSoup, prop, propertyDict[prop], jsonData, refDict)
-            messages.update(propMessages)
-            counts.update(propCounts)
-        except Exception as ex:
-            rsvLogger.exception("Something went wrong")
-            rsvLogger.error('%s:  Could not finish compliance check on this property' % (prop))
-            counts['exceptionPropCompliance'] += 1
+    
+    node = propResourceObj.typeobj
+    while node is not None:
+        for prop in node.propList: 
+            try:
+                propMessages, propCounts = checkPropertyCompliance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs)
+                messages.update(propMessages)
+                counts.update(propCounts)
+            except Exception as ex:
+                rsvLogger.exception("Something went wrong")
+                rsvLogger.error('%s:  Could not finish compliance check on this property' % (prop))
+                counts['exceptionPropCompliance'] += 1
+        node = node.parent
+    
+    uriName, SchemaFullType, jsonData = propResourceObj.name, propResourceObj.typeobj.fulltype, propResourceObj.jsondata
+    SchemaNamespace, SchemaType = rst.getNamespace(SchemaFullType), rst.getType(SchemaFullType)
 
     # List all items checked and unchecked
     # current logic does not check inside complex types
@@ -498,13 +500,13 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         if key not in jsonData:
             rsvLogger.info(fmt % (key, messages[key][3]))
 
-    rsvLogger.info('%s, %s, %s', SchemaFullType, counts, len(propertyList))
+    rsvLogger.info('%s, %s', SchemaFullType, counts)
     
     # Get all links available
 
-    rsvLogger.debug(links)
+    rsvLogger.debug(propResourceObj.links)
     rsvLogger.removeHandler(errh) 
-    return True, counts, results, links
+    return True, counts, results, propResourceObj.links
 
 def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=None):
     traverseLogger = rst.getLogger()
