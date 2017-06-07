@@ -15,8 +15,8 @@ import traverseService as rst
 
 rsvLogger = rst.getLogger()
 
-def validateActions(name, val, propSoup, typeOf):
-    success, baseSoup, baseRefs, baseType = True, propSoup, rst.getReferenceDetails(innerPropSoup), decoded.get('@odata.type')
+def validateActions(name, val, propTypeObj, complexMessages, counts, payloadType):
+    success, baseSoup, baseRefs, baseType = True, propTypeObj.soup, propTypeObj.refs, payloadType 
     actionsDict = dict()
 
     while success:
@@ -88,7 +88,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
         rsvLogger.error("%s: Could not get resource for Entity check" % PropertyName)
     return paramPass
 
-def validateComplex(name, val, propDict, propSoup):
+def validateComplex(name, val, propTypeObj, payloadType):
     rsvLogger.info('\t***going into Complex')
     if not isinstance( val, dict ):
         rsvLogger.error(name + ' : Complex item not a dictionary')
@@ -96,18 +96,31 @@ def validateComplex(name, val, propDict, propSoup):
     
     complexMessages = OrderedDict()
     complexCounts = Counter()
+    propList = list()
 
-    refs = rst.getReferenceDetails(propSoup)
-    for prop in propDict:
-        propMessages, propCounts = checkPropertyCompliance(propSoup, prop.name, prop.propDict, val, refs)
-        complexMessages.update(propMessages)
-        complexCounts.update(propCounts)
+    successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
+    if successService:
+        serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
+        successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
+        for prop in additionalProps:
+            propTypeObj.propList.append( prop ) 
+
+    node = propTypeObj
+    while node is not None:
+        propList = node.propList
+        propSoup = node.soup
+        propRefs = node.refs
+        for prop in propList:
+            propMessages, propCounts = checkPropertyCompliance(propSoup, prop.name, prop.propDict, val, propRefs)
+            complexMessages.update(propMessages)
+            complexCounts.update(propCounts)
+        node = node.parent
     successPayload, odataMessages = checkPayloadCompliance('',val)
     complexMessages.update(odataMessages)
     rsvLogger.info('\t***out of Complex')
     rsvLogger.info('complex %s', complexCounts)
-    if name == "Actions":
-        pass
+    if ":Actions" in name:
+        validateActions(name, val, propTypeObj, complexMessages, complexCounts, payloadType)
     return True, complexCounts, complexMessages
 
 def validateDeprecatedEnum(name, val, listEnum):
@@ -129,8 +142,8 @@ def validateDeprecatedEnum(name, val, listEnum):
     return paramPass
 
 def validateEnum(name, val, listEnum):
-    paramPass = False
-    if isinstance(val, str):
+    paramPass = isinstance(val, str)
+    if paramPass:
         paramPass = val in listEnum
         if not paramPass:
             rsvLogger.error("%s: Invalid enum found (check casing?)" % name)
@@ -139,8 +152,8 @@ def validateEnum(name, val, listEnum):
     return paramPass
 
 def validateString(name, val, pattern=None):
-    paramPass = False
-    if isinstance(val, str):
+    paramPass = isinstance(val, str)
+    if paramPass:
         if pattern is not None:
             match = re.fullmatch(pattern, val)
             paramPass = match is not None
@@ -157,6 +170,7 @@ def validateDatetime(name, val):
     if not paramPass:
         rsvLogger.error("\t%s: Malformed DateTimeOffset" % name)
     return paramPass
+
 def validateGuid(name, val):
     paramPass = validateString(name, val, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     if not paramPass:
@@ -324,9 +338,8 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
             else:
                 if propRealType == 'complex':
                     counts['complex'] += 1
-                    innerPropDict = PropertyItem['typeprops']
-                    innerPropSoup = PropertyItem['soup']
-                    success, complexCounts, complexMessages = validateComplex(PropertyName, val, innerPropDict, innerPropSoup)
+                    innerPropType = PropertyItem['typeprops']
+                    success, complexCounts, complexMessages = validateComplex(PropertyName, val, innerPropType, decoded.get('@odata.type'))
                     if not success: 
                         counts['failComplex'] += 1
                         resultList[item + appendStr]\
@@ -423,7 +436,7 @@ def checkPayloadCompliance(uri, decoded):
     return success, messages
 
 
-def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None):
+def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None, parent=None):
     # rs-assertion: 9.4.1
     # Initial startup here
     errorMessages = io.StringIO()
@@ -449,9 +462,13 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # check @odata.context instead of local.  Realize that @odata is NOT a "property"
     
     # Attempt to get a list of properties
-    propResourceObj = rst.ResourceObj(uriName, URI, expectedType, expectedSchema, expectedJson)
-    counts.update(propResourceObj.counts)
-    
+    propResourceObj = rst.ResourceObj(uriName, URI, expectedType, expectedSchema, expectedJson, parent)
+    if not propResourceObj.initiated:
+        counts['exceptionResource'] += 1 
+        success = False
+        results[uriName] = (URI, success, counts, messages, errorMessages, None, None)
+        return False, counts, results, None
+    counts['passGet'] += 1 
     results[uriName] = (URI, success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
     
     successPayload, odataMessages = checkPayloadCompliance(URI,propResourceObj.jsondata)
@@ -461,7 +478,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         counts['failPayloadError'] += 1
         rsvLogger.error(str(URI) + ':  payload error, @odata property noncompliant',)
         rsvLogger.removeHandler(errh) 
-        return False, counts, results, None
+        return False, counts, results, None, propResourceObj
     # Generate dictionary of property info
     
     node = propResourceObj.typeobj
@@ -506,19 +523,19 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     rsvLogger.debug(propResourceObj.links)
     rsvLogger.removeHandler(errh) 
-    return True, counts, results, propResourceObj.links
+    return True, counts, results, propResourceObj.links, propResourceObj
 
-def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=None):
+def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, parent=None, allLinks=None):
     traverseLogger = rst.getLogger()
-    def executeLink(linkItem):
+    def executeLink(linkItem, parent=None):
         linkURI, autoExpand, linkType, linkSchema, innerJson = linkItem
 
         if linkType is not None and autoExpand:
             returnVal = validateURITree(
-                    linkURI, uriName + ' -> ' + linkName, funcValidate, linkType, linkSchema, innerJson, allLinks)
+                    linkURI, uriName + ' -> ' + linkName, linkType, linkSchema, innerJson, parent, allLinks)
         else:
             returnVal = validateURITree(
-                    linkURI, uriName + ' -> ' + linkName, funcValidate, allLinks=allLinks)
+                    linkURI, uriName + ' -> ' + linkName, parent=parent, allLinks=allLinks)
         traverseLogger.info('%s, %s', linkName, returnVal[1])
         return returnVal
 
@@ -528,8 +545,8 @@ def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchem
     allLinks.add(URI)
     refLinks = OrderedDict()
     
-    validateSuccess, counts, results, links = \
-            funcValidate(URI, uriName, expectedType, expectedSchema, expectedJson)
+    validateSuccess, counts, results, links, thisobj = \
+            validateSingleURI(URI, uriName, expectedType, expectedSchema, expectedJson, parent)
     if validateSuccess:
         for linkName in links:
             if 'Links' in linkName.split('.',1)[0] or 'RelatedItem' in linkName.split('.',1)[0] or 'Redundancy' in linkName.split('.',1)[0]:
@@ -539,7 +556,7 @@ def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchem
                 counts['repeat'] += 1
                 continue
 
-            success, linkCounts, linkResults, xlinks = executeLink(links[linkName])
+            success, linkCounts, linkResults, xlinks = executeLink(links[linkName], thisobj)
             refLinks.update(xlinks)
             if not success:
                 counts['unvalidated'] += 1
@@ -553,7 +570,7 @@ def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchem
             else:
                 continue
             
-            success, linkCounts, linkResults, xlinks = executeLink(refLinks[linkName])
+            success, linkCounts, linkResults, xlinks = executeLink(refLinks[linkName], thisobj)
             if not success:
                 counts['unvalidatedRef'] += 1
             results.update(linkResults)
@@ -593,7 +610,7 @@ def main(argv):
 
     # Start main
     status_code = 1
-    success, counts, results, xlinks = validateURITree('/redfish/v1', 'ServiceRoot', validateSingleURI)
+    success, counts, results, xlinks = validateURITree('/redfish/v1', 'ServiceRoot')
     finalCounts = Counter()
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: ' + str(nowTick-startTick).rsplit('.',1)[0])
@@ -646,7 +663,7 @@ def main(argv):
 
         innerCounts = results[item][2]
         finalCounts.update(innerCounts)
-        for countType in innerCounts:
+        for countType in sorted(innerCounts.keys()):
             innerCounts[countType] += 0
             htmlStr += '<div {style}>{p}: {q}</div>'.format(p=countType,
                                              q=innerCounts.get(countType, 0),
@@ -674,7 +691,7 @@ def main(argv):
     htmlStr += '</table></body></html>'
 
     htmlStrTotal = '<tr><td><div>Final counts: '
-    for countType in finalCounts:
+    for countType in sorted(finalCounts.keys()):
         htmlStrTotal += '{p}: {q},   '.format(p=countType, q=finalCounts.get(countType, 0))
     htmlStrTotal += '</div><div class="button warn" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results resultsShow\'};">Expand All</div>'
     htmlStrTotal += '</div><div class="button fail" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results\'};">Collapse All</div>'

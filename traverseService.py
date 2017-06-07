@@ -191,6 +191,7 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix=None):
         traverseLogger.exception("Something went wrong")
     return False, None, None
 
+
 def getReferenceDetails(soup):
     """
     Create a reference dictionary from a soup file
@@ -260,19 +261,17 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
     return True, innerSoup, innerRefs, currentType 
 
 class ResourceObj:
-    def __init__(self, name, uri, expectedType=None, expectedSchema=None, expectedJson=None): 
+    def __init__(self, name, uri, expectedType=None, expectedSchema=None, expectedJson=None, parent=None): 
+        self.initiated = False
+        self.parent = parent
         self.uri, self.name = uri, name 
-        self.counts = Counter() 
-        self.messages = OrderedDict() 
 
         if expectedJson is None: 
             success, self.jsondata, status = callResourceURI(self.uri) 
             traverseLogger.debug('%s, %s, %s', success, self.jsondata, status) 
             if not success: 
                 traverseLogger.error('%s:  URI could not be acquired: %s' % (self.uri, status)) 
-                self.counts['failGet'] += 1
                 return
-            self.counts['passGet'] += 1 
         else: 
             self.jsondata = expectedJson 
          
@@ -280,7 +279,6 @@ class ResourceObj:
             fullType = self.jsondata.get('@odata.type') 
             if fullType is None: 
                 traverseLogger.error(str(self.uri) + ':  Json does not contain @odata.type',) 
-                self.counts['failJsonError'] += 1 
                 return
         else: 
             fullType = self.jsondata.get('@odata.type', expectedType)  
@@ -290,12 +288,11 @@ class ResourceObj:
         else: 
             self.context = expectedSchema 
             
-        success, typesoup, self.context = getSchemaDetails( getNamespace(fullType), SchemaURI=self.context) 
+        success, typesoup, self.context = getSchemaDetails( fullType, SchemaURI=self.context) 
 
         if not success: 
             traverseLogger.error("validateURI: No schema XML for %s %s", 
                             SchemaFullType, SchemaType) 
-            self.counts['failSchema'] += 1 
             return
  
         # Use string comprehension to get highest type 
@@ -308,13 +305,14 @@ class ResourceObj:
         
         typerefs = getReferenceDetails(typesoup) 
         
+        self.initiated = True
         self.typeobj = PropType(fullType, typesoup, typerefs, 'entitytype') 
         successService, serviceSchemaSoup, SchemaServiceURI = getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
         if successService:
             serviceRefs = getReferenceDetails(serviceSchemaSoup)
             successService, additionalProps = getAnnotations(serviceSchemaSoup, serviceRefs, self.jsondata)
             for prop in additionalProps:
-                typeobj.propList += rst.getPropertyDetails(*prop)
+                typeobj.propList += prop
         self.links = OrderedDict()
         node = self.typeobj
         while node is not None:
@@ -322,17 +320,21 @@ class ResourceObj:
             node = node.parent
          
 class PropItem:
-    def __init__(self, name, soup, refs, tagType):
+    def __init__(self, soup, refs, name, tagType):
         try:
             self.name = name
             self.propDict = getPropertyDetails(soup, refs, name, tagType)
+            self.attr = self.propDict['attrs']
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
             traverseLogger.error('%s:  Could not get details on this property' % (prop[2]))
+            self.propDict = None
             return
         pass
+
 class PropType:
     def __init__(self, fulltype, soup, refs, tagType):
+        self.initiated = False
         self.fulltype = fulltype
         self.soup, self.refs = soup, refs
         self.snamespace, self.stype = getNamespace(self.fulltype), getType(self.fulltype)
@@ -350,6 +352,7 @@ class PropType:
                 self.parent = PropType(baseType, baseSoup, baseRefs, self.tagType)
             else:
                 self.parent = None
+            self.initiated = True
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
             traverseLogger.error(':  Getting type failed for ' + self.fulltype + " " + baseType)
@@ -397,7 +400,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
             if SchemaAlias:
                 newProp = SchemaAlias + ':' + newProp
             if newProp not in PropertyList:
-                PropertyList.append( PropItem(newProp, soup, refs, tagType) )
+                PropertyList.append( PropItem(soup, refs, newProp, tagType=tagType) )
         
     return PropertyList 
 
@@ -478,7 +481,6 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             traverseLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
             return propEntry
 
-        propEntry['soup'] = typeSoup
         
         # traverse tags to find the type
         typeRefs = getReferenceDetails(typeSoup)
@@ -508,12 +510,8 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             traverseLogger.debug("go deeper in type")
             propertyList = list()
             success, baseSoup, baseRefs, baseType = True, typeSoup, typeRefs, propType
-            while success:
-                propertyList.extend(getTypeDetails(
-                    baseSoup, baseRefs, baseType, 'complextype'))
-                success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, 'complextype')
             propEntry['realtype'] = 'complex'
-            propEntry['typeprops'] = propertyList
+            propEntry['typeprops'] = PropType(baseType, typeSoup, typeRefs, 'complextype')
             break
         elif typeEnumTag is not None:
             propEntry['realtype'] = 'enum'
@@ -584,10 +582,10 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
                 if propDict.get('isCollection') is not None:
                     for listItem in jsonData[item]:
                         linkList.update(getAllLinks(
-                            listItem, propDict['typeprops'], refDict, prefix+item+'.', context))
+                            listItem, propDict['typeprops'].propList, refDict, prefix+item+'.', context))
                 else:
                     linkList.update(getAllLinks(
-                        jsonData[item], propDict['typeprops'], refDict, prefix+item+'.', context))
+                        jsonData[item], propDict['typeprops'].propList, refDict, prefix+item+'.', context))
     traverseLogger.debug(str(linkList))
     return linkList
 
@@ -602,7 +600,7 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         if success:
             realItem = realType + '.' + fullItem.split('.',1)[1]
             annotationRefs = getReferenceDetails(annotationSoup)
-            additionalProps.append( (annotationSoup, annotationRefs, realItem+':'+key, 'term') )
+            additionalProps.append( PropItem(annotationSoup, annotationRefs, realItem+':'+key, 'term') )
 
     return True, additionalProps 
 
