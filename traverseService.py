@@ -55,6 +55,9 @@ def isConfigSet():
     else:
         raise Exception("Configuration is not set")
 
+def isNonService(uri):
+    return 'http' in uri[:8]
+
 @lru_cache(maxsize=64)
 def callResourceURI(URILink):
     """
@@ -68,7 +71,7 @@ def callResourceURI(URILink):
     # rs-assertion: require no auth for serviceroot calls
     if URILink is None:
         return False, None, -1
-    nonService = 'http' in URILink[:8]
+    nonService = isNonService(URILink)
     statusCode = ''
     if not nonService:
         # feel free to make this into a regex
@@ -162,7 +165,10 @@ def getSchemaDetails(SchemaAlias, SchemaURI=None, suffix=None):
                     traverseLogger.error("SchemaURI missing reference link: %s %s", SchemaURI, frag)
             else:
                 return True, soup, SchemaURI
-        traverseLogger.error("SchemaURI unsuccessful: %s", SchemaURI)
+        if isNonService(SchemaURI) and serviceOnly:
+            traverseLogger.info("Nonservice URI skipped " + SchemaURI)
+        else:
+            traverseLogger.error("SchemaURI unsuccessful: %s", SchemaURI)
     return getSchemaDetailsLocal(SchemaAlias, SchemaURI, suffix)
    
 def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix=None):
@@ -181,9 +187,12 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix=None):
         FoundAlias = SchemaNamespace.split(".")[0]
         if FoundAlias == Alias:
             return True, soup, "local" + SchemaLocation + '/' + Alias + suffix
+    except FileNotFoundError as ex:
+        traverseLogger.error("File not found {}/{}: ".format(SchemaLocation, Alias + suffix))
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
     return False, None, None
+
 
 def getReferenceDetails(soup):
     """
@@ -208,6 +217,7 @@ def getReferenceDetails(soup):
     return refDict
 
 
+
 def getParentType(soup, refs, currentType, tagType='entitytype'):
     """
     Get parent type of given type.
@@ -218,6 +228,7 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
     param tagType: the type of tag for inheritance, default 'entitytype'
     return: success, associated soup, associated ref, new type
     """
+        
     propSchema = soup.find( 'schema', attrs={'namespace': getNamespace(currentType)})
     
     if propSchema is None:
@@ -251,7 +262,111 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
 
     return True, innerSoup, innerRefs, currentType 
 
-def getTypeDetails(soup, refs, SchemaAlias, tagType):
+class ResourceObj:
+    def __init__(self, name, uri, expectedType=None, expectedSchema=None, expectedJson=None, parent=None): 
+        self.initiated = False
+        self.parent = parent
+        self.uri, self.name = uri, name 
+
+        if expectedJson is None: 
+            success, self.jsondata, status = callResourceURI(self.uri) 
+            traverseLogger.debug('%s, %s, %s', success, self.jsondata, status) 
+            if not success: 
+                traverseLogger.error('%s:  URI could not be acquired: %s' % (self.uri, status)) 
+                return
+        else: 
+            self.jsondata = expectedJson 
+         
+        if expectedType is None: 
+            fullType = self.jsondata.get('@odata.type') 
+            if fullType is None: 
+                traverseLogger.error(str(self.uri) + ':  Json does not contain @odata.type',) 
+                return
+        else: 
+            fullType = self.jsondata.get('@odata.type', expectedType)  
+        
+        if expectedSchema is None: 
+            self.context = self.jsondata.get('@odata.context')
+        else: 
+            self.context = expectedSchema 
+            
+        success, typesoup, self.context = getSchemaDetails( fullType, SchemaURI=self.context) 
+
+        if not success: 
+            traverseLogger.error("validateURI: No schema XML for %s %s", 
+                            SchemaFullType, SchemaType) 
+            return
+ 
+        # Use string comprehension to get highest type 
+        if fullType is expectedType: 
+            typelist = list()
+            schlist = list()
+            for schema in typesoup.find_all('schema'): 
+                newNamespace = schema.get('namespace') 
+                typelist.append(newNamespace)
+                schlist.append(schema)
+            for item, schema in reversed(sorted(zip(typelist,schlist))):
+                traverseLogger.info(item + ' ' + str('') + ' ' + getType(fullType))
+                if schema.find('entitytype',attrs={'name': getType(fullType)}): 
+                    fullType = item + '.' + getType(fullType)
+                    break
+            traverseLogger.warn('No @odata.type present, assuming highest type %s', fullType) 
+        
+        typerefs = getReferenceDetails(typesoup) 
+        
+        self.initiated = True
+        self.typeobj = PropType(fullType, typesoup, typerefs, 'entitytype', topVersion=getNamespace(fullType))
+        successService, serviceSchemaSoup, SchemaServiceURI = getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
+        if successService:
+            serviceRefs = getReferenceDetails(serviceSchemaSoup)
+            successService, additionalProps = getAnnotations(serviceSchemaSoup, serviceRefs, self.jsondata)
+            for prop in additionalProps:
+                typeobj.propList += prop
+        self.links = OrderedDict()
+        node = self.typeobj
+        while node is not None:
+            self.links.update(getAllLinks(self.jsondata, node.propList, node.refs, context=self.context))
+            node = node.parent
+         
+class PropItem:
+    def __init__(self, soup, refs, name, tagType, topVersion):
+        try:
+            self.name = name
+            self.propDict = getPropertyDetails(soup, refs, name, tagType, topVersion)
+            self.attr = self.propDict['attrs']
+        except Exception as ex:
+            traverseLogger.exception("Something went wrong")
+            traverseLogger.error('%s:  Could not get details on this property' % (prop[2]))
+            self.propDict = None
+            return
+        pass
+
+class PropType:
+    def __init__(self, fulltype, soup, refs, tagType, topVersion=None):
+        self.initiated = False
+        self.fulltype = fulltype
+        self.soup, self.refs = soup, refs
+        self.snamespace, self.stype = getNamespace(self.fulltype), getType(self.fulltype)
+         
+        self.tagType = tagType
+        self.isNav = False
+        self.propList = []
+        self.parent = None
+
+        propertyList = self.propList
+        success, baseSoup, baseRefs, baseType = True, self.soup, self.refs, self.fulltype
+        try:
+            propertyList.extend(getTypeDetails(baseSoup, baseRefs, baseType, self.tagType, topVersion))
+            success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, self.tagType)
+            if success:
+                self.parent = PropType(baseType, baseSoup, baseRefs, self.tagType, topVersion=topVersion)
+            self.initiated = True
+        except Exception as ex:
+            traverseLogger.exception("Something went wrong")
+            traverseLogger.error(':  Getting type failed for ' + self.fulltype + " " + baseType)
+            return
+        
+def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     """
     Gets list of surface level properties for a given SchemaAlias,
     
@@ -283,22 +398,22 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
         
         usableProperties = element.find_all('property')
         usableNavProperties = element.find_all('navigationproperty')
-       
+    
         for innerelement in usableProperties + usableNavProperties:
             traverseLogger.debug(innerelement['name'])
             traverseLogger.debug(innerelement.get('type'))
             traverseLogger.debug(innerelement.attrs)
             newProp = innerelement['name']
+            traverseLogger.debug("ADDING :::: %s", newProp)
             if SchemaAlias:
                 newProp = SchemaAlias + ':' + newProp
-            traverseLogger.debug("ADDING :::: %s", newProp)
             if newProp not in PropertyList:
-                PropertyList.append((soup,refs,newProp,tagType))
+                PropertyList.append( PropItem(soup, refs, newProp, tagType=tagType, topVersion=topVersion) )
         
     return PropertyList 
 
 
-def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
+def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersion=None):
     """
     Get dictionary of tag attributes for properties given, including basetypes.
 
@@ -306,6 +421,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
     param arg2: references
     param arg3: a property string
     """
+    
     propEntry = dict()
 
     propOwner, propChild = PropertyItem.split(':')[0].replace('#',''), PropertyItem.split(':')[-1]
@@ -315,7 +431,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
 
     propSchema = soup.find('schema', attrs={'namespace': SchemaNamespace})
     if propSchema is None:
-        traverseLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+        traverseLogger.error("getPropertyDetails: Schema could not be acquired,  %s", SchemaNamespace)
         return None
     else:
         innerSoup = soup
@@ -370,10 +486,9 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             success, typeSoup = True, innerSoup
 
         if not success:
-            traverseLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+            traverseLogger.error("getPropertyDetails: InnerType could not be acquired,  %s", TypeNamespace)
             return propEntry
 
-        propEntry['soup'] = typeSoup
         
         # traverse tags to find the type
         typeRefs = getReferenceDetails(typeSoup)
@@ -403,14 +518,21 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             traverseLogger.debug("go deeper in type")
             propertyList = list()
             success, baseSoup, baseRefs, baseType = True, typeSoup, typeRefs, propType
-            while success:
-                propertyList.extend(getTypeDetails(
-                    baseSoup, baseRefs, baseType, 'complextype'))
-                success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, 'complextype')
-            propDict = {item[2]: getPropertyDetails( *item) for item in propertyList}
-            traverseLogger.debug(key for key in propDict)
+            if topVersion is not None and topVersion != SchemaNamespace:
+                traverseLogger.info(topVersion + ' ' + propType)
+                currentVersion = topVersion
+                currentSchema = baseSoup.find('schema', attrs={'namespace': currentVersion})
+                while currentSchema is not None:
+                    expectedType = currentVersion + '.' + getType(propType)
+                    currentType = currentSchema.find('complextype',attrs={'name':getType(propType)})
+                    if currentType is not None:
+                        baseType = expectedType          
+                        traverseLogger.info('new type: ' + baseType)
+                        break
+                    else:
+                        currentSchema = baseSoup.find('schema', attrs={'namespace': currentSchema.get('basetype')})
             propEntry['realtype'] = 'complex'
-            propEntry['typeprops'] = propDict
+            propEntry['typeprops'] = PropType(baseType, typeSoup, typeRefs, 'complextype')
             break
         elif typeEnumTag is not None:
             propEntry['realtype'] = 'enum'
@@ -431,7 +553,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
     return propEntry
 
 
-def getAllLinks(jsonData, propDict, refDict, prefix='', context=''):
+def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
     """
     Function that returns all links provided in a given JSON response.
     This result will include a link to itself.
@@ -448,39 +570,43 @@ def getAllLinks(jsonData, propDict, refDict, prefix='', context=''):
     #   otherwise, add everything IN Nav collection
     # if it is a Complex property, check that it exists
     #   if it is, recurse on collection or individual item
-    for key in propDict:
+    for propx in propList:
+        propDict = propx.propDict
+        key = propx.name
         item = getType(key).split(':')[-1]
-        if propDict[key]['isNav']:
+        if propDict['isNav']:
             insideItem = jsonData.get(item)
             if insideItem is not None:
-                cType = propDict[key].get('isCollection') 
-                autoExpand = propDict[key].get('OData.AutoExpand',None) is not None or\
-                    propDict[key].get('OData.AutoExpand'.lower(),None) is not None
+                cType = propDict.get('isCollection') 
+                autoExpand = propDict.get('OData.AutoExpand',None) is not None or\
+                    propDict.get('OData.AutoExpand'.lower(),None) is not None
                 if cType is not None:
                     cSchema = refDict.get(getNamespace(cType),(None,None))[1]
                     if cSchema is None:
                         cSchema = context 
                     for cnt, listItem in enumerate(insideItem):
-                        linkList[prefix+str(item)+'.'+getType(propDict[key]['isCollection']) +
+                        linkList[prefix+str(item)+'.'+getType(propDict['isCollection']) +
                                  '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
                 else:
-                    cType = propDict[key]['attrs'].get('type')
+                    cType = propDict['attrs'].get('type')
                     cSchema = refDict.get(getNamespace(cType),(None,None))[1]
                     if cSchema is None:
                         cSchema = context 
-                    linkList[prefix+str(item)+'.'+getType(propDict[key]['attrs']['name'])] = (\
+                    linkList[prefix+str(item)+'.'+getType(propDict['attrs']['name'])] = (\
                             insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
-    for key in propDict:
+    for propx in propList:
+        propDict = propx.propDict
+        key = propx.name
         item = getType(key).split(':')[-1]
-        if propDict[key]['realtype'] == 'complex':
+        if propDict['realtype'] == 'complex':
             if jsonData.get(item) is not None:
-                if propDict[key].get('isCollection') is not None:
+                if propDict.get('isCollection') is not None:
                     for listItem in jsonData[item]:
                         linkList.update(getAllLinks(
-                            listItem, propDict[key]['typeprops'], refDict, prefix+item+'.', context))
+                            listItem, propDict['typeprops'].propList, refDict, prefix+item+'.', context))
                 else:
                     linkList.update(getAllLinks(
-                        jsonData[item], propDict[key]['typeprops'], refDict, prefix+item+'.', context))
+                        jsonData[item], propDict['typeprops'].propList, refDict, prefix+item+'.', context))
     traverseLogger.debug(str(linkList))
     return linkList
 
@@ -495,91 +621,7 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         if success:
             realItem = realType + '.' + fullItem.split('.',1)[1]
             annotationRefs = getReferenceDetails(annotationSoup)
-            additionalProps.append( (annotationSoup, annotationRefs, realItem+':'+key, 'term') )
+            additionalProps.append( PropItem(annotationSoup, annotationRefs, realItem+':'+key, 'term', None) )
 
     return True, additionalProps 
-
-def checkPayloadCompliance(uri, decoded):
-    messages = dict()
-    success = True
-    for key in [k for k in decoded if '@odata' in k]:
-        itemType = key.split('.',1)[-1]
-        itemTarget = key.split('.',1)[0]
-        paramPass = False
-        if key == 'id':
-            paramPass = isinstance( decoded[key], str)
-            paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
-            pass
-        elif key == 'count':
-            paramPass = isinstance( decoded[key], int)
-            pass
-        elif key == 'context':
-            paramPass = isinstance( decoded[key], str)
-            paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
-            pass
-        elif key == 'type':
-            paramPass = isinstance( decoded[key], str)
-            paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
-            pass
-        else:
-            paramPass = True
-        if not paramPass:
-            traverseLogger.error(key + "@odata item not compliant: " + decoded[key])
-            success = False
-        messages[key] = (decoded[key], 'odata',
-                                         'Exists',
-                                         'PASS' if paramPass else 'FAIL')
-    return success, messages
-
-def validateURITree(URI, uriName, funcValidate, expectedType=None, expectedSchema=None, expectedJson=None, allLinks=None):
-    def executeLink(linkItem):
-        linkURI, autoExpand, linkType, linkSchema, innerJson = linkItem
-
-        if linkType is not None and autoExpand:
-            returnVal = validateURITree(
-                    linkURI, uriName + ' -> ' + linkName, funcValidate, linkType, linkSchema, innerJson, allLinks)
-        else:
-            returnVal = validateURITree(
-                    linkURI, uriName + ' -> ' + linkName, funcValidate, allLinks=allLinks)
-        traverseLogger.info('%s, %s', linkName, returnVal[1])
-        return returnVal
-
-    top = allLinks is None
-    if top:
-        allLinks = set()
-    allLinks.add(URI)
-    refLinks = OrderedDict()
-    
-    validateSuccess, counts, results, links = \
-            funcValidate(URI, uriName, expectedType, expectedSchema, expectedJson)
-    if validateSuccess:
-        for linkName in links:
-            if 'Links' in linkName.split('.',1)[0] or 'RelatedItem' in linkName.split('.',1)[0] or 'Redundancy' in linkName.split('.',1)[0]:
-                refLinks[linkName] = links[linkName]
-                continue
-            if links[linkName][0] in allLinks:
-                counts['repeat'] += 1
-                continue
-
-            success, linkCounts, linkResults, xlinks = executeLink(links[linkName])
-            refLinks.update(xlinks)
-            if not success:
-                counts['unvalidated'] += 1
-            results.update(linkResults)
-
-    if top:
-        for linkName in refLinks:
-            if refLinks[linkName][0] not in allLinks:
-                traverseLogger.info('%s, %s', linkName, refLinks[linkName])
-                counts['reflink'] += 1
-            else:
-                continue
-            
-            success, linkCounts, linkResults, xlinks = executeLink(refLinks[linkName])
-            if not success:
-                counts['unvalidatedRef'] += 1
-            results.update(linkResults)
-    
-    return validateSuccess, counts, results, refLinks
-
 
