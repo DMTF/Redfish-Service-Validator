@@ -187,6 +187,8 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix=None):
         FoundAlias = SchemaNamespace.split(".")[0]
         if FoundAlias == Alias:
             return True, soup, "local" + SchemaLocation + '/' + Alias + suffix
+    except FileNotFoundError as ex:
+        traverseLogger.error("File not found {}/{}: ".format(SchemaLocation, Alias + suffix))
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
     return False, None, None
@@ -297,16 +299,23 @@ class ResourceObj:
  
         # Use string comprehension to get highest type 
         if fullType is expectedType: 
+            typelist = list()
+            schlist = list()
             for schema in typesoup.find_all('schema'): 
                 newNamespace = schema.get('namespace') 
+                typelist.append(newNamespace)
+                schlist.append(schema)
+            for item, schema in reversed(sorted(zip(typelist,schlist))):
+                traverseLogger.info(item + ' ' + str('') + ' ' + getType(fullType))
                 if schema.find('entitytype',attrs={'name': getType(fullType)}): 
-                    fullType = newNamespace + '.' + getType(fullType)
+                    fullType = item + '.' + getType(fullType)
+                    break
             traverseLogger.warn('No @odata.type present, assuming highest type %s', fullType) 
         
         typerefs = getReferenceDetails(typesoup) 
         
         self.initiated = True
-        self.typeobj = PropType(fullType, typesoup, typerefs, 'entitytype') 
+        self.typeobj = PropType(fullType, typesoup, typerefs, 'entitytype', topVersion=getNamespace(fullType))
         successService, serviceSchemaSoup, SchemaServiceURI = getSchemaDetails('metadata','/redfish/v1/$metadata','.xml')
         if successService:
             serviceRefs = getReferenceDetails(serviceSchemaSoup)
@@ -320,10 +329,10 @@ class ResourceObj:
             node = node.parent
          
 class PropItem:
-    def __init__(self, soup, refs, name, tagType):
+    def __init__(self, soup, refs, name, tagType, topVersion):
         try:
             self.name = name
-            self.propDict = getPropertyDetails(soup, refs, name, tagType)
+            self.propDict = getPropertyDetails(soup, refs, name, tagType, topVersion)
             self.attr = self.propDict['attrs']
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
@@ -333,7 +342,7 @@ class PropItem:
         pass
 
 class PropType:
-    def __init__(self, fulltype, soup, refs, tagType):
+    def __init__(self, fulltype, soup, refs, tagType, topVersion=None):
         self.initiated = False
         self.fulltype = fulltype
         self.soup, self.refs = soup, refs
@@ -346,10 +355,10 @@ class PropType:
         propertyList = self.propList
         success, baseSoup, baseRefs, baseType = True, self.soup, self.refs, self.fulltype
         try:
-            propertyList.extend(getTypeDetails(baseSoup, baseRefs, baseType, self.tagType))
+            propertyList.extend(getTypeDetails(baseSoup, baseRefs, baseType, self.tagType, topVersion))
             success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, self.tagType)
             if success:
-                self.parent = PropType(baseType, baseSoup, baseRefs, self.tagType)
+                self.parent = PropType(baseType, baseSoup, baseRefs, self.tagType, topVersion=topVersion)
             else:
                 self.parent = None
             self.initiated = True
@@ -358,7 +367,7 @@ class PropType:
             traverseLogger.error(':  Getting type failed for ' + self.fulltype + " " + baseType)
             return
         
-def getTypeDetails(soup, refs, SchemaAlias, tagType):
+def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     """
     Gets list of surface level properties for a given SchemaAlias,
     
@@ -400,12 +409,12 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType):
             if SchemaAlias:
                 newProp = SchemaAlias + ':' + newProp
             if newProp not in PropertyList:
-                PropertyList.append( PropItem(soup, refs, newProp, tagType=tagType) )
+                PropertyList.append( PropItem(soup, refs, newProp, tagType=tagType, topVersion=topVersion) )
         
     return PropertyList 
 
 
-def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
+def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersion=None):
     """
     Get dictionary of tag attributes for properties given, including basetypes.
 
@@ -423,7 +432,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
 
     propSchema = soup.find('schema', attrs={'namespace': SchemaNamespace})
     if propSchema is None:
-        traverseLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+        traverseLogger.error("getPropertyDetails: Schema could not be acquired,  %s", SchemaNamespace)
         return None
     else:
         innerSoup = soup
@@ -478,7 +487,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             success, typeSoup = True, innerSoup
 
         if not success:
-            traverseLogger.error("innerSoup doesn't exist...? %s", SchemaNamespace)
+            traverseLogger.error("getPropertyDetails: InnerType could not be acquired,  %s", TypeNamespace)
             return propEntry
 
         
@@ -510,6 +519,19 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype'):
             traverseLogger.debug("go deeper in type")
             propertyList = list()
             success, baseSoup, baseRefs, baseType = True, typeSoup, typeRefs, propType
+            if topVersion is not None and topVersion != SchemaNamespace:
+                traverseLogger.info(topVersion + ' ' + propType)
+                currentVersion = topVersion
+                currentSchema = baseSoup.find('schema', attrs={'namespace': currentVersion})
+                while currentSchema is not None:
+                    expectedType = currentVersion + '.' + getType(propType)
+                    currentType = currentSchema.find('complextype',attrs={'term':expectedType})
+                    if currentType is not None:
+                        propType = expectedType          
+                        traverseLogger.info('new type: ' + propType)
+                        break
+                    else:
+                        currentSchema = baseSoup.find('schema', attrs={'namespace': currentSchema.get('basetype')})
             propEntry['realtype'] = 'complex'
             propEntry['typeprops'] = PropType(baseType, typeSoup, typeRefs, 'complextype')
             break
@@ -600,7 +622,7 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         if success:
             realItem = realType + '.' + fullItem.split('.',1)[1]
             annotationRefs = getReferenceDetails(annotationSoup)
-            additionalProps.append( PropItem(annotationSoup, annotationRefs, realItem+':'+key, 'term') )
+            additionalProps.append( PropItem(annotationSoup, annotationRefs, realItem+':'+key, 'term', None) )
 
     return True, additionalProps 
 
