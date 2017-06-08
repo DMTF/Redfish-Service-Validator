@@ -351,6 +351,7 @@ class PropType:
         self.tagType = tagType
         self.isNav = False
         self.propList = []
+        self.parent = None
 
         propertyList = self.propList
         success, baseSoup, baseRefs, baseType = True, self.soup, self.refs, self.fulltype
@@ -359,8 +360,6 @@ class PropType:
             success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, self.tagType)
             if success:
                 self.parent = PropType(baseType, baseSoup, baseRefs, self.tagType, topVersion=topVersion)
-            else:
-                self.parent = None
             self.initiated = True
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
@@ -525,10 +524,10 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
                 currentSchema = baseSoup.find('schema', attrs={'namespace': currentVersion})
                 while currentSchema is not None:
                     expectedType = currentVersion + '.' + getType(propType)
-                    currentType = currentSchema.find('complextype',attrs={'term':expectedType})
+                    currentType = currentSchema.find('complextype',attrs={'name':getType(propType)})
                     if currentType is not None:
-                        propType = expectedType          
-                        traverseLogger.info('new type: ' + propType)
+                        baseType = expectedType          
+                        traverseLogger.info('new type: ' + baseType)
                         break
                     else:
                         currentSchema = baseSoup.find('schema', attrs={'namespace': currentSchema.get('basetype')})
