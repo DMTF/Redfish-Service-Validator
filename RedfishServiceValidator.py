@@ -53,7 +53,7 @@ def validateActions(name, val, propTypeObj, complexMessages, counts, payloadType
                     'Exists' if actionDecoded != 'n/a'  else 'DNE',\
                     'PASS' if actPass else 'FAIL') 
         counts['pass'] += 1
-        return complexMessages, counts
+    return complexMessages, counts
 
 def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpand):
     # check if the entity is truly what it's supposed to be

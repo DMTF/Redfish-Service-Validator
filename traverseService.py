@@ -293,8 +293,7 @@ class ResourceObj:
         success, typesoup, self.context = getSchemaDetails( fullType, SchemaURI=self.context) 
 
         if not success: 
-            traverseLogger.error("validateURI: No schema XML for %s %s", 
-                            SchemaFullType, SchemaType) 
+            traverseLogger.error("validateURI: No schema XML for " + fullType)
             return
  
         # Use string comprehension to get highest type 
@@ -336,7 +335,7 @@ class PropItem:
             self.attr = self.propDict['attrs']
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
-            traverseLogger.error('%s:  Could not get details on this property' % (prop[2]))
+            traverseLogger.error('%s:  Could not get details on this property' % name)
             self.propDict = None
             return
         pass
@@ -519,7 +518,6 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
             propertyList = list()
             success, baseSoup, baseRefs, baseType = True, typeSoup, typeRefs, propType
             if topVersion is not None and topVersion != SchemaNamespace:
-                traverseLogger.info(topVersion + ' ' + propType)
                 currentVersion = topVersion
                 currentSchema = baseSoup.find('schema', attrs={'namespace': currentVersion})
                 while currentSchema is not None:
@@ -527,10 +525,13 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
                     currentType = currentSchema.find('complextype',attrs={'name':getType(propType)})
                     if currentType is not None:
                         baseType = expectedType          
-                        traverseLogger.info('new type: ' + baseType)
+                        traverseLogger.debug('new type: ' + baseType)
                         break
                     else:
-                        currentSchema = baseSoup.find('schema', attrs={'namespace': currentSchema.get('basetype')})
+                        nextEntity = currentSchema.find('entitytype',attrs={'name':SchemaType})
+                        nextType = nextEntity.get('basetype')
+                        currentVersion = getNamespace(nextType)
+                        currentSchema = baseSoup.find('schema', attrs={'namespace': currentVersion})
             propEntry['realtype'] = 'complex'
             propEntry['typeprops'] = PropType(baseType, typeSoup, typeRefs, 'complextype')
             break
