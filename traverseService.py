@@ -346,6 +346,7 @@ class PropType:
         self.fulltype = fulltype
         self.soup, self.refs = soup, refs
         self.snamespace, self.stype = getNamespace(self.fulltype), getType(self.fulltype)
+        self.additional = False
          
         self.tagType = tagType
         self.isNav = False
@@ -355,14 +356,17 @@ class PropType:
         propertyList = self.propList
         success, baseSoup, baseRefs, baseType = True, self.soup, self.refs, self.fulltype
         try:
-            propertyList.extend(getTypeDetails(baseSoup, baseRefs, baseType, self.tagType, topVersion))
+            self.additional, newList = getTypeDetails(baseSoup, baseRefs, baseType, self.tagType, topVersion)
+            propertyList.extend(newList)
             success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, self.tagType)
             if success:
                 self.parent = PropType(baseType, baseSoup, baseRefs, self.tagType, topVersion=topVersion)
+                if not self.additional:
+                    self.additional = self.parent.additional
             self.initiated = True
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
-            traverseLogger.error(':  Getting type failed for ' + self.fulltype + " " + baseType)
+            traverseLogger.error(':  Getting type failed for ' + str(self.fulltype) + " " + str(baseType))
             return
         
 def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
@@ -376,6 +380,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     return: list of (soup, ref, string PropertyName, tagType)
     """
     PropertyList = list()
+    additional = False
 
     SchemaNamespace, SchemaType = getNamespace(SchemaAlias), getType(SchemaAlias)
 
@@ -383,7 +388,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
                     SchemaType, SchemaNamespace)
 
     innerschema = soup.find('schema', attrs={'namespace': SchemaNamespace})
-
+    
     if innerschema is None:
         traverseLogger.error("Got XML, but schema still doesn't exist...? %s, %s" %
                             (getNamespace(SchemaAlias), SchemaAlias))
@@ -397,6 +402,11 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
         
         usableProperties = element.find_all('property')
         usableNavProperties = element.find_all('navigationproperty')
+        additionalElement = element.find('annotation', attrs={'term':'OData.AdditionalProperties'})
+        if additionalElement is not None:
+            additional = additionalElement.get('bool', False)
+        else:
+            additional = False
     
         for innerelement in usableProperties + usableNavProperties:
             traverseLogger.debug(innerelement['name'])
@@ -409,7 +419,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
             if newProp not in PropertyList:
                 PropertyList.append( PropItem(soup, refs, newProp, tagType=tagType, topVersion=topVersion) )
         
-    return PropertyList 
+    return additional, PropertyList 
 
 
 def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersion=None):

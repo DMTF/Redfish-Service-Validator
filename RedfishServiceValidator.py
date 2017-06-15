@@ -118,8 +118,11 @@ def validateComplex(name, val, propTypeObj, payloadType):
     if successService:
         serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
         successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
+        propSoup, propRefs = serviceSchemaSoup, serviceRefs
         for prop in additionalProps:
-            propTypeObj.propList.append( prop ) 
+            propMessages, propCounts = checkPropertyCompliance(propSoup, prop.name, prop.propDict, val, propRefs)
+            complexMessages.update(propMessages)
+            complexCounts.update(propCounts)
 
     node = propTypeObj
     while node is not None:
@@ -428,25 +431,25 @@ def checkPayloadCompliance(uri, decoded):
         itemType = key.split('.',1)[-1]
         itemTarget = key.split('.',1)[0]
         paramPass = False
-        if key == 'id':
+        if key == '@odata.id':
             paramPass = isinstance( decoded[key], str)
             paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
             pass
-        elif key == 'count':
+        elif key == '@odata.count':
             paramPass = isinstance( decoded[key], int)
             pass
-        elif key == 'context':
+        elif key == '@odata.context':
             paramPass = isinstance( decoded[key], str)
             paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
             pass
-        elif key == 'type':
+        elif key == '@odata.type':
             paramPass = isinstance( decoded[key], str)
             paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
             pass
         else:
             paramPass = True
         if not paramPass:
-            traverseLogger.error(key + "@odata item not compliant: " + decoded[key])
+            rsvLogger.error(key + "@odata item not compliant: " + decoded[key])
             success = False
         messages[key] = (decoded[key], 'odata',
                                          'Exists',
