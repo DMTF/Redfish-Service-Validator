@@ -28,6 +28,21 @@ def getLogger():
     return traverseLogger
 
 # Read config info from ini file placed in config folder of tool
+def setConfigNamespace(args):
+    global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly, SchemaSuffix, timeout
+    User = args.user
+    Passwd = args.passwd
+    sysDescription = args.desc
+    SchemaLocation = args.dir
+    timeout = args.timeout
+    chkCert = not args.nochkcert
+    useSSL = not args.nossl
+    ConfigURI = ('https' if useSSL else 'http') + '://' + \
+        args.ip 
+    localOnly = args.localonly
+    serviceOnly = args.service
+    SchemaSuffix = args.suffix
+    config['internal']['configSet'] = '1'
 
 def setConfig(filename):
     global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly, SchemaSuffix, timeout
