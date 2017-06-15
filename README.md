@@ -9,12 +9,12 @@ The Redfish Service Validator is an open source framework for checking conforman
 
 ## Pre-requisites
 The Redfish Service Validator is based on Python 3 and the client system is required to have the Python framework installed before the tool can be installed and executed on the system. Additionally, the following packages are required to be installed and accessible from the python environment:
-* beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4/4.1.3
+* beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4/4.5.3 (must be <= 4.5.3)
 * requests  - https://github.com/kennethreitz/requests (Documentation is available at http://docs.python-requests.org/)
 
 You may install the prerequisites by running:
 
-# pip3 install -r requirements.txt
+pip3 install -r requirements.txt
 
 There is no dependency based on Windows or Linux OS. The result logs are generated in HTML format and an appropriate browser (Chrome, Firefox, IE, etc.) is required to view the logs on the client system.
 
@@ -34,12 +34,20 @@ UseSSL = <<On / Off>>
 CertificateCheck = <<On / Off>>
 * 3.	Other  attributes under the “[Options]” section have schema specific implementations as described below
 LocalOnlyMode - Only test properties against Schema placed in the root of MetadataFilePath.
+ServiceMode - Only test properties against Resources/Schema that exist on the Service
 MetadataFilePath – This attribute points to the location of the DMTF schema file location, populated by xml files
 Session_UserName & Session_Password – These attributes are used to create a session in addition to the default UserName/Password combination available under [SystemInformation] section. Leave these attributes blank if only Administrator credentials are to be used for session specific tests.
 * 4.	Once the above details are updated for the system under test, the Redfish Service Validator can be triggered from a command prompt by typing the below command:
 
-# python3 RedfishServiceValidator.py
+python3 RedfishServiceValidator.py -c config/config.ini
 
+Alternatively, all of these options are available through the command line.  A configuration file overrides every option specified in the command line, such that -c should not be specified.  In order to review these options, please run the command:
+
+python3 RedfishServiceValidator.py -h
+
+In order to run without a configuration file, the option --ip must be specified.
+
+python3 RedfishServiceValidator.py --ip host:port [...]
 
 ## Execution flow
 * 1.	Redfish Service Validator starts with the Service root Resource Schema by querying the service with the service root URI and getting all the device information, the resources supported and their links. Once the response of the Service root query is verified against its schema, the tool traverses through all the collections and Navigation properties returned by the service.
@@ -72,5 +80,3 @@ The test result for each GET operation will be reported as follows:
 Redfish Service Validator covers all the GET execution on the service. Below are certain points which are not in this scope.
 * 1.	Patch/Post/Skip/Top/Head is not covered as part of Redfish Service Validator due to dependency on internal factor of the service.
 * 2.	Redfish Service Validator does not cover testing of multiple service at once. To execute this, we have to re-run the tool by running it separately.
-* 3.    Resource annotations are currently not checked automatically.
-* 4.    When running against the DMTF tool RedfishMockupServer, it will experience failures on URIs that contain pound signs, as it does not respond to ODATA expectations.

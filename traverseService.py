@@ -28,6 +28,21 @@ def getLogger():
     return traverseLogger
 
 # Read config info from ini file placed in config folder of tool
+def setConfigNamespace(args):
+    global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly, SchemaSuffix, timeout
+    User = args.user
+    Passwd = args.passwd
+    sysDescription = args.desc
+    SchemaLocation = args.dir
+    timeout = args.timeout
+    chkCert = not args.nochkcert
+    useSSL = not args.nossl
+    ConfigURI = ('https' if useSSL else 'http') + '://' + \
+        args.ip 
+    localOnly = args.localonly
+    serviceOnly = args.service
+    SchemaSuffix = args.suffix
+    config['internal']['configSet'] = '1'
 
 def setConfig(filename):
     global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly, SchemaSuffix, timeout
@@ -293,8 +308,7 @@ class ResourceObj:
         success, typesoup, self.context = getSchemaDetails( fullType, SchemaURI=self.context) 
 
         if not success: 
-            traverseLogger.error("validateURI: No schema XML for %s %s", 
-                            SchemaFullType, SchemaType) 
+            traverseLogger.error("validateURI: No schema XML for " + fullType)
             return
  
         # Use string comprehension to get highest type 
@@ -336,7 +350,7 @@ class PropItem:
             self.attr = self.propDict['attrs']
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
-            traverseLogger.error('%s:  Could not get details on this property' % (prop[2]))
+            traverseLogger.error('%s:  Could not get details on this property' % name)
             self.propDict = None
             return
         pass
@@ -347,6 +361,7 @@ class PropType:
         self.fulltype = fulltype
         self.soup, self.refs = soup, refs
         self.snamespace, self.stype = getNamespace(self.fulltype), getType(self.fulltype)
+        self.additional = False
          
         self.tagType = tagType
         self.isNav = False
@@ -356,14 +371,17 @@ class PropType:
         propertyList = self.propList
         success, baseSoup, baseRefs, baseType = True, self.soup, self.refs, self.fulltype
         try:
-            propertyList.extend(getTypeDetails(baseSoup, baseRefs, baseType, self.tagType, topVersion))
+            self.additional, newList = getTypeDetails(baseSoup, baseRefs, baseType, self.tagType, topVersion)
+            propertyList.extend(newList)
             success, baseSoup, baseRefs, baseType = getParentType(baseSoup, baseRefs, baseType, self.tagType)
             if success:
                 self.parent = PropType(baseType, baseSoup, baseRefs, self.tagType, topVersion=topVersion)
+                if not self.additional:
+                    self.additional = self.parent.additional
             self.initiated = True
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
-            traverseLogger.error(':  Getting type failed for ' + self.fulltype + " " + baseType)
+            traverseLogger.error(':  Getting type failed for ' + str(self.fulltype) + " " + str(baseType))
             return
         
 def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
@@ -377,6 +395,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     return: list of (soup, ref, string PropertyName, tagType)
     """
     PropertyList = list()
+    additional = False
 
     SchemaNamespace, SchemaType = getNamespace(SchemaAlias), getType(SchemaAlias)
 
@@ -384,7 +403,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
                     SchemaType, SchemaNamespace)
 
     innerschema = soup.find('schema', attrs={'namespace': SchemaNamespace})
-
+    
     if innerschema is None:
         traverseLogger.error("Got XML, but schema still doesn't exist...? %s, %s" %
                             (getNamespace(SchemaAlias), SchemaAlias))
@@ -398,6 +417,11 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
         
         usableProperties = element.find_all('property')
         usableNavProperties = element.find_all('navigationproperty')
+        additionalElement = element.find('annotation', attrs={'term':'OData.AdditionalProperties'})
+        if additionalElement is not None:
+            additional = additionalElement.get('bool', False)
+        else:
+            additional = False
     
         for innerelement in usableProperties + usableNavProperties:
             traverseLogger.debug(innerelement['name'])
@@ -410,7 +434,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
             if newProp not in PropertyList:
                 PropertyList.append( PropItem(soup, refs, newProp, tagType=tagType, topVersion=topVersion) )
         
-    return PropertyList 
+    return additional, PropertyList 
 
 
 def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersion=None):
@@ -519,7 +543,6 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
             propertyList = list()
             success, baseSoup, baseRefs, baseType = True, typeSoup, typeRefs, propType
             if topVersion is not None and topVersion != SchemaNamespace:
-                traverseLogger.info(topVersion + ' ' + propType)
                 currentVersion = topVersion
                 currentSchema = baseSoup.find('schema', attrs={'namespace': currentVersion})
                 while currentSchema is not None:
@@ -527,10 +550,13 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
                     currentType = currentSchema.find('complextype',attrs={'name':getType(propType)})
                     if currentType is not None:
                         baseType = expectedType          
-                        traverseLogger.info('new type: ' + baseType)
+                        traverseLogger.debug('new type: ' + baseType)
                         break
                     else:
-                        currentSchema = baseSoup.find('schema', attrs={'namespace': currentSchema.get('basetype')})
+                        nextEntity = currentSchema.find('entitytype',attrs={'name':SchemaType})
+                        nextType = nextEntity.get('basetype')
+                        currentVersion = getNamespace(nextType)
+                        currentSchema = baseSoup.find('schema', attrs={'namespace': currentVersion})
             propEntry['realtype'] = 'complex'
             propEntry['typeprops'] = PropType(baseType, typeSoup, typeRefs, 'complextype')
             break

@@ -4,8 +4,7 @@
 # https://github.com/DMTF/Redfish-Service-Validator/LICENSE.md
 
 from bs4 import BeautifulSoup
-import configparser
-import requests
+import argparse
 import io, os, sys, re
 from datetime import datetime
 from collections import Counter, OrderedDict
@@ -53,7 +52,7 @@ def validateActions(name, val, propTypeObj, complexMessages, counts, payloadType
                     'Exists' if actionDecoded != 'n/a'  else 'DNE',\
                     'PASS' if actPass else 'FAIL') 
         counts['pass'] += 1
-        return complexMessages, counts
+    return complexMessages, counts
 
 def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpand):
     # check if the entity is truly what it's supposed to be
@@ -118,8 +117,11 @@ def validateComplex(name, val, propTypeObj, payloadType):
     if successService:
         serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
         successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
+        propSoup, propRefs = serviceSchemaSoup, serviceRefs
         for prop in additionalProps:
-            propTypeObj.propList.append( prop ) 
+            propMessages, propCounts = checkPropertyCompliance(propSoup, prop.name, prop.propDict, val, propRefs)
+            complexMessages.update(propMessages)
+            complexCounts.update(propCounts)
 
     node = propTypeObj
     while node is not None:
@@ -428,25 +430,25 @@ def checkPayloadCompliance(uri, decoded):
         itemType = key.split('.',1)[-1]
         itemTarget = key.split('.',1)[0]
         paramPass = False
-        if key == 'id':
+        if key == '@odata.id':
             paramPass = isinstance( decoded[key], str)
             paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
             pass
-        elif key == 'count':
+        elif key == '@odata.count':
             paramPass = isinstance( decoded[key], int)
             pass
-        elif key == 'context':
+        elif key == '@odata.context':
             paramPass = isinstance( decoded[key], str)
             paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
             pass
-        elif key == 'type':
+        elif key == '@odata.type':
             paramPass = isinstance( decoded[key], str)
             paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
             pass
         else:
             paramPass = True
         if not paramPass:
-            traverseLogger.error(key + "@odata item not compliant: " + decoded[key])
+            rsvLogger.error(key + "@odata item not compliant: " + decoded[key])
             success = False
         messages[key] = (decoded[key], 'odata',
                                          'Exists',
@@ -603,12 +605,32 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
 ##########################################################################
 
 def main(argv):
-    # Set config
-    if (len(argv) == 1):
-        rst.setConfig('./config/config.ini')
+    argget = argparse.ArgumentParser(description='Usecase tool to check compliance to POST Boot action')
+    argget.add_argument('--ip', type=str, help='ip to test on [host:port]')
+    argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
+    argget.add_argument('-u', '--user', default=None, type=str, help='user for basic auth')
+    argget.add_argument('-p', '--passwd', default=None, type=str, help='pass for basic auth')
+    argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
+    argget.add_argument('--dir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
+    argget.add_argument('--timeout', type=int, default=30, help='requests timeout in seconds')
+    argget.add_argument('--nochkcert', action='store_true', help='ignore check for certificate')
+    argget.add_argument('--nossl', action='store_true', help='use http instead of https')
+    argget.add_argument('--localonly', action='store_true', help='only use local schema')
+    argget.add_argument('--service', action='store_true', help='only use uris within the service')
+    argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
+    
+    args = argget.parse_args()    
+    
+    if args.config is not None:
+        rst.setConfig(args.config)
+        rst.isConfigSet()
+    elif args.ip is not None:
+        rst.setConfigNamespace(args)
+        rst.isConfigSet()
     else:
-        rst.setConfig(argv[1])
-    rst.isConfigSet()
+        rsvLogger.info('No ip or config specified.')
+        argget.print_help()
+        return 1
 
     sysDescription, ConfigURI, chkCert, localOnly = (rst.sysDescription, rst.ConfigURI, rst.chkCert, rst.localOnly)
     User, SchemaLocation = rst.User, rst.SchemaLocation
@@ -659,7 +681,7 @@ def main(argv):
                 <tr><th>##### Redfish Compliance Test Report #####</th></tr>\
                 <tr><th>System: ' + ConfigURI + '</th></tr>\
                 <tr><th>Description: ' + sysDescription + '</th></tr>\
-                <tr><th>User: ' + User + ' ###  \
+                <tr><th>User: ' + str(User) + ' ###  \
                 SSL Cert Check: ' + str(chkCert) + ' ###  \n\
                 Local Only Schema:' + str(localOnly) + ' ###  Local Schema Location :' + SchemaLocation + '</th></tr>\
                 <tr><th>Start time: ' + (startTick).strftime('%x - %X') + '</th></tr>\

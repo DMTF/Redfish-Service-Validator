@@ -43,6 +43,8 @@ class ValidatorTest(TestCase):
         self.assertTrue(rsv.validateString(name, string, pattern),'This string/pattern has failed, {} {}'.format(string,pattern))
         name, string, pattern = "tst", "Test_String", "Test.String"
         self.assertTrue(rsv.validateString(name, string, pattern),'This string/pattern has failed, {} {}'.format(string,pattern))
+        name, string, pattern = "tst", "100.97.143.52", "^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"
+        self.assertTrue(rsv.validateString(name, string, pattern),'This string/pattern has failed, {} {}'.format(string,pattern))
     
     def test_validate_badstring(self):
         name, string, pattern = "tst", 1, None
