@@ -515,6 +515,15 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 counts['exceptionPropCompliance'] += 1
         node = node.parent
     
+    successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails(
+        'metadata', '/redfish/v1/$metadata', '.xml')
+    if successService:
+        serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
+        for prop in propResourceObj.additionalList:
+            propMessages, propCounts = checkPropertyCompliance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata.get(prop.name), serviceRefs)
+            messages.update(propMessages)
+            counts.update(propCounts)
+    
     uriName, SchemaFullType, jsonData = propResourceObj.name, propResourceObj.typeobj.fulltype, propResourceObj.jsondata
     SchemaNamespace, SchemaType = rst.getNamespace(SchemaFullType), rst.getType(SchemaFullType)
 
