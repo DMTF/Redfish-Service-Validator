@@ -19,9 +19,9 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 traverseLogger.addHandler(ch)
 config = configparser.ConfigParser()
-config['DEFAULT'] = {'SchemaSuffix': '_v1.xml', 'timeout': 30}
+config['DEFAULT'] = {'LogPath': './logs', 'SchemaSuffix': '_v1.xml', 'timeout': 30}
 config['internal'] = {'configSet': '0'}
-SchemaSuffix = useSSL = ConfigURI = User = Passwd = sysDescription = SchemaLocation = chkCert = localOnly = serviceOnly = timeout = None
+SchemaSuffix = useSSL = ConfigURI = User = Passwd = sysDescription = SchemaLocation = chkCert = localOnly = serviceOnly = timeout = LogPath = None
 
 # Make logging blocks for each SingleURI Validate
 
@@ -33,7 +33,7 @@ def getLogger():
 
 
 def setConfigNamespace(args):
-    global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly, SchemaSuffix, timeout
+    global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly, SchemaSuffix, timeout, LogPath
     User = args.user
     Passwd = args.passwd
     sysDescription = args.desc
@@ -41,6 +41,7 @@ def setConfigNamespace(args):
     timeout = args.timeout
     chkCert = not args.nochkcert
     useSSL = not args.nossl
+    LogPath = args.logdir
     ConfigURI = ('https' if useSSL else 'http') + '://' + \
         args.ip
     localOnly = args.localonly
@@ -50,7 +51,7 @@ def setConfigNamespace(args):
 
 
 def setConfig(filename):
-    global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly, SchemaSuffix, timeout
+    global useSSL, ConfigURI, User, Passwd, sysDescription, SchemaLocation, chkCert, localOnly, serviceOnly, SchemaSuffix, timeout, LogPath
     config.read(filename)
     useSSL = config.getboolean('Options', 'UseSSL')
 
@@ -61,6 +62,7 @@ def setConfig(filename):
     sysDescription = config.get('SystemInformation', 'SystemInfo')
 
     SchemaLocation = config.get('Options', 'MetadataFilePath')
+    LogPath = config.get('Options', 'LogPath')
     chkCert = config.getboolean('Options', 'CertificateCheck') and useSSL
     SchemaSuffix = config.get('Options', 'SchemaSuffix')
     timeout = config.getint('Options', 'timeout')

@@ -621,6 +621,7 @@ def main(argv):
     argget.add_argument('-p', '--passwd', default=None, type=str, help='pass for basic auth')
     argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
     argget.add_argument('--dir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
+    argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
     argget.add_argument('--timeout', type=int, default=30, help='requests timeout in seconds')
     argget.add_argument('--nochkcert', action='store_true', help='ignore check for certificate')
     argget.add_argument('--nossl', action='store_true', help='use http instead of https')
@@ -643,13 +644,14 @@ def main(argv):
 
     sysDescription, ConfigURI, chkCert, localOnly = (rst.sysDescription, rst.ConfigURI, rst.chkCert, rst.localOnly)
     User, SchemaLocation = rst.User, rst.SchemaLocation
+    logpath = rst.LogPath
 
     # Logging config
     startTick = datetime.now()
-    if not os.path.isdir('logs'):
-           os.makedirs('logs')
+    if not os.path.isdir(logpath):
+        os.makedirs(logpath)
     fmt = logging.Formatter('%(levelname)s - %(message)s')
-    fh = logging.FileHandler(datetime.strftime(startTick, "logs/ComplianceLog_%m_%d_%Y_%H%M%S.txt"))
+    fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ComplianceLog_%m_%d_%Y_%H%M%S.txt")))
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)
@@ -748,7 +750,7 @@ def main(argv):
 
     htmlPage = htmlStrTop + htmlStrBodyHeader + htmlStrTotal + htmlStr
 
-    with open(datetime.strftime(startTick, "logs/ComplianceHtmlLog_%m_%d_%Y_%H%M%S.html"), 'w') as f:
+    with open(datetime.strftime(startTick, os.path.join(logpath, "ComplianceHtmlLog_%m_%d_%Y_%H%M%S.html")), 'w') as f:
         f.write(htmlPage)
     
     fails = 0
