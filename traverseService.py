@@ -328,6 +328,7 @@ class ResourceObj:
 
         if expectedSchema is None:
             self.context = self.jsondata.get('@odata.context')
+            expectedSchema = self.context
         else:
             self.context = expectedSchema
 
@@ -355,7 +356,7 @@ class ResourceObj:
             traverseLogger.warn(
                 'No @odata.type present, assuming highest type %s', fullType)
         
-        self.additionalList = {} 
+        self.additionalList = []
         self.initiated = True
         idtag = (fullType, self.context)  # 🔫
 
@@ -376,12 +377,12 @@ class ResourceObj:
             successService, additionalProps = getAnnotations(
                 serviceSchemaSoup, serviceRefs, self.jsondata)
             for prop in additionalProps:
-                self.additionalList += prop
+                self.additionalList.append(prop)
         self.links = OrderedDict()
         node = self.typeobj
         while node is not None:
             self.links.update(getAllLinks(
-                self.jsondata, node.propList, node.refs, context=self.context))
+                self.jsondata, node.propList, node.refs, context=expectedSchema))
             node = node.parent
 
 

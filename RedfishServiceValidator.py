@@ -520,7 +520,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if successService:
         serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
         for prop in propResourceObj.additionalList:
-            propMessages, propCounts = checkPropertyCompliance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata.get(prop.name), serviceRefs)
+            propMessages, propCounts = checkPropertyCompliance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
             messages.update(propMessages)
             counts.update(propCounts)
     
