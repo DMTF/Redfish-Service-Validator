@@ -555,7 +555,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
         traverseLogger.debug('%s, %s', TypeNamespace, propType)
         # Type='Collection(Edm.String)'
         # If collection, check its inside type
-        if re.match('Collection(.*)', propType) is not None:
+        if re.match('Collection\(.*\)', propType) is not None:
             propType = propType.replace('Collection(', "").replace(')', "")
             propEntry['isCollection'] = propType
             continue
