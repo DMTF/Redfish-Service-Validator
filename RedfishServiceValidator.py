@@ -25,7 +25,7 @@ def validateActions(name, val, propTypeObj, payloadType):
     success, baseSoup, baseRefs, baseType = True, propTypeObj.soup, propTypeObj.refs, payloadType
     actionsDict = dict()
     while success:
-        SchemaNamespace = rst.getNamespace(baseType), rst.getType(baseType)
+        SchemaNamespace = rst.getNamespace(baseType)
         innerschema = baseSoup.find('schema', attrs={'namespace': SchemaNamespace})
         actions = innerschema.find_all('action')
         for act in actions:
@@ -385,14 +385,14 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                                     'Exists' if propExists else 'DNE',
                                     'failComplex')
                         continue
-                    counts.update(complexCounts)
-                    for complexKey in complexMessages:
-                        resultList[item + '.' + complexKey + appendStr] = complexMessages[complexKey]
-
                     resultList[item + appendStr] = (
                                     'ComplexDictionary' + appendStr, (propType, propRealType),
                                     'Exists' if propExists else 'DNE',
                                     'complex')
+
+                    counts.update(complexCounts)
+                    for complexKey in complexMessages:
+                        resultList[item + '.' + complexKey + appendStr] = complexMessages[complexKey]
 
                     for key in val:
                         if key not in complexMessages:

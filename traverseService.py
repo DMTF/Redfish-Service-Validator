@@ -219,7 +219,7 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI=None, suffix=None):
         child = parentTag.find('schema')
         SchemaNamespace = child['namespace']
         FoundAlias = SchemaNamespace.split(".")[0]
-        if FoundAlias == Alias:
+        if FoundAlias == Alias or SchemaAlias == 'metadata':
             return True, soup, "local" + SchemaLocation + '/' + Alias + suffix
     except FileNotFoundError as ex:
         traverseLogger.error(
