@@ -71,9 +71,9 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
     paramPass = False
     # if not autoexpand, we must grab the resource
     if not autoExpand:
-        success, data, status = rst.callResourceURI(uri)
+        success, data, status, delay = rst.callResourceURI(uri)
     else:
-        success, data, status = True, val, 200
+        success, data, status, delay = True, val, 200, 0
     rsvLogger.debug('%s, %s, %s', success, (propType, propCollectionType), data)
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
     if propCollectionType == 'Resource.Item' or propType == 'Resource.Item' and success:
@@ -125,7 +125,7 @@ def validateComplex(name, val, propTypeObj, payloadType):
     complexCounts = Counter()
     propList = list()
 
-    successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails('metadata', '/redfish/v1/$metadata', '.xml')
+    successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails('$metadata', '/redfish/v1/$metadata')
     if successService:
         serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
         successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
@@ -375,7 +375,6 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
 
             else:
                 if propRealType == 'complex':
-                    counts['complex'] += 1
                     innerPropType = PropertyItem['typeprops']
                     success, complexCounts, complexMessages = validateComplex(PropertyName, val, innerPropType, decoded.get('@odata.type'))
                     if not success:
@@ -424,7 +423,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
             counts['pass'] += 1
             rsvLogger.info("\tSuccess")
         else:
-            counts[propType] += 1
+            counts['err.' + propType] += 1
             if not paramPass:
                 if propMandatory:
                     rsvLogger.error("%s: Mandatory prop has failed to check" % PropertyName)
@@ -505,11 +504,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if not propResourceObj.initiated:
         counts['exceptionResource'] += 1
         success = False
-        results[uriName] = (URI, success, counts, messages, errorMessages, None, None)
+        results[uriName] = (URI + ' ({}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, None, None)
         rsvLogger.removeHandler(errh)
         return False, counts, results, None, None
     counts['passGet'] += 1
-    results[uriName] = (URI, success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
+    results[uriName] = (URI + ' ({}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
 
     successPayload, odataMessages = checkPayloadCompliance(URI, propResourceObj.jsondata)
     messages.update(odataMessages)
@@ -535,7 +534,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         node = node.parent
 
     successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails(
-        'metadata', '/redfish/v1/$metadata', '.xml')
+        '$metadata', '/redfish/v1/$metadata')
     if successService:
         serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
         for prop in propResourceObj.additionalList:
