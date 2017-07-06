@@ -205,10 +205,9 @@ def getSchemaDetails(SchemaAlias, SchemaURI):
                 refType, refLink = getReferenceDetails(
                     soup).get(getNamespace(frag), (None, None))
                 if refLink is not None:
-                    success, data, status, elapsed = callResourceURI(refLink)
+                    success, linksoup, newlink = getSchemaDetails(refType, refLink)
                     if success:
-                        soup = BeautifulSoup(data, "html.parser")
-                        return True, soup, refLink
+                        return True, linksoup, newlink
                     else:
                         traverseLogger.error(
                             "SchemaURI couldn't call reference link: %s %s", SchemaURI, frag)
@@ -220,7 +219,7 @@ def getSchemaDetails(SchemaAlias, SchemaURI):
         if isNonService(SchemaURI) and serviceOnly:
             traverseLogger.info("Nonservice URI skipped " + SchemaURI)
         else:
-            traverseLogger.error("SchemaURI unsuccessful: %s", SchemaURI)
+            traverseLogger.debug("SchemaURI unsuccessful: %s", SchemaURI)
     return getSchemaDetailsLocal(SchemaAlias, SchemaURI)
 
 
@@ -573,22 +572,24 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
 
     # check if this property is a nav property
     # Checks if this prop is an annotation
+    success, typeSoup, typeRefs, propType = getParentType(
+        innerSoup, innerRefs, SchemaType, tagType)
     if '@' not in propChild:
-        propEntry['isNav'] = propTag.name == 'navigationproperty'
+        propEntry['isTerm'] = False
         # start adding attrs and props together
         propAll = propTag.find_all()
         for tag in propAll:
             propEntry[tag['term']] = tag.attrs
+        propType = propTag.get('type')
     else:
-        propEntry['isNav'] = False
+        propEntry['isTerm'] = True
         propTag = propEntity
+        propType = propTag.get('type', propOwner)
 
+    propEntry['isNav'] = propTag.name == 'navigationproperty'
     propEntry['attrs'] = propTag.attrs
     traverseLogger.debug(propEntry)
 
-    success, typeSoup, typeRefs, propType = getParentType(
-        innerSoup, innerRefs, SchemaType, tagType)
-    propType = propTag.get('type')
     propEntry['realtype'] = 'none'
 
     # find the real type of this, by inheritance
@@ -780,9 +781,17 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         traverseLogger.debug('%s, %s, %s, %s, %s', str(
             success), key, splitKey, decoded[key], realType)
         if success:
-            realItem = realType + '.' + fullItem.split('.', 1)[1]
             annotationRefs = getReferenceDetails(annotationSoup)
+            if isinstance(decoded[key], dict) and decoded[key].get('@odata.type') is not None:
+                payloadType = decoded[key].get('@odata.type').replace('#', '')
+                realType, refLink = annotationRefs.get(getNamespace(payloadType).split('.')[0], (None, None))
+                success, annotationSoup, uri = getSchemaDetails(realType, refLink)
+                realItem = payloadType
+                tagtype = 'complextype'
+            else:
+                realItem = realType + '.' + fullItem.split('.', 1)[1]
+                tagtype = 'term'
             additionalProps.append(
-                PropItem(annotationSoup, annotationRefs, realItem + ':' + key, 'term', None))
+                PropItem(annotationSoup, annotationRefs, realItem + ':' + key, tagtype, None))
 
     return True, additionalProps
