@@ -259,17 +259,18 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
             return getSchemaDetailsLocal(SchemaAlias, SchemaAlias + SchemaSuffix)
         else:
             traverseLogger.error(
-                "File not found {}/{}: ".format(SchemaLocation, Alias))
+                "File not found in {} for {}: ".format(SchemaLocation, Alias))
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
     return False, None, None
 
 
-def getReferenceDetails(soup):
+def getReferenceDetails(soup, metadata_dict=None):
     """
     Create a reference dictionary from a soup file
 
     param arg1: soup
+    param metadata_dict: dictionary of service metadata, compare with
     return: dictionary
     """
     refDict = {}
@@ -289,6 +290,17 @@ def getReferenceDetails(soup):
                 refDict[item['namespace']] = (item['namespace'], ref['uri'])
                 refDict[item['namespace'].split('.')[0]] = (
                     item['namespace'], ref['uri'])
+
+    if metadata_dict is not None:
+        refDict.update(metadata_dict)
+        if len(refDict.keys()) > len(metadata_dict.keys()):
+            diff_keys = [key for key in refDict if key not in metadata_dict]
+            traverseLogger.log(
+                    logging.ERROR if serviceOnly else logging.WARN, 
+                    "Reference in a Schema not in metadata, this may not be compatible with ServiceMode")
+            traverseLogger.log(
+                    logging.ERROR if serviceOnly else logging.WARN, 
+                    "References missing in metadata: {}".format(str(diff_keys)))
     return refDict
 
 
@@ -330,7 +342,7 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
             *refs.get(SchemaNamespace, (None, None)))
         if not success:
             return False, None, None, None
-        innerRefs = getReferenceDetails(innerSoup)
+        innerRefs = getReferenceDetails(innerSoup, refs)
         propSchema = innerSoup.find(
             'schema', attrs={'namespace': SchemaNamespace})
         if propSchema is None:
@@ -407,15 +419,7 @@ class ResourceObj:
         self.initiated = True
         idtag = (fullType, self.context)  # 🔫
 
-        # if we've generated this type, use it, else generate type
-        if idtag in ResourceObj.robjcache:
-            self.typeobj = ResourceObj.robjcache[idtag]
-        else:
-            typerefs = getReferenceDetails(typesoup)
-            self.typeobj = PropType(
-                fullType, typesoup, typerefs, 'entitytype', topVersion=getNamespace(fullType))
-            ResourceObj.robjcache[idtag] = self.typeobj
-
+        serviceRefs = None
         successService, serviceSchemaSoup, SchemaServiceURI = getSchemaDetails(
             '$metadata', '/redfish/v1/$metadata')
         if successService:
@@ -424,6 +428,15 @@ class ResourceObj:
                 serviceSchemaSoup, serviceRefs, self.jsondata)
             for prop in additionalProps:
                 self.additionalList.append(prop)
+
+        # if we've generated this type, use it, else generate type
+        if idtag in ResourceObj.robjcache:
+            self.typeobj = ResourceObj.robjcache[idtag]
+        else:
+            typerefs = getReferenceDetails(typesoup, serviceRefs)
+            self.typeobj = PropType(
+                fullType, typesoup, typerefs, 'entitytype', topVersion=getNamespace(fullType))
+            ResourceObj.robjcache[idtag] = self.typeobj
 
         self.links = OrderedDict()
         node = self.typeobj
@@ -621,7 +634,7 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
             return propEntry
 
         # traverse tags to find the type
-        typeRefs = getReferenceDetails(typeSoup)
+        typeRefs = getReferenceDetails(typeSoup, refs)
         typeSchema = typeSoup.find(
             'schema', attrs={'namespace': TypeNamespace})
         typeTag = typeSchema.find(
@@ -781,7 +794,7 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         traverseLogger.debug('%s, %s, %s, %s, %s', str(
             success), key, splitKey, decoded[key], realType)
         if success:
-            annotationRefs = getReferenceDetails(annotationSoup)
+            annotationRefs = getReferenceDetails(annotationSoup, refs)
             if isinstance(decoded[key], dict) and decoded[key].get('@odata.type') is not None:
                 payloadType = decoded[key].get('@odata.type').replace('#', '')
                 realType, refLink = annotationRefs.get(getNamespace(payloadType).split('.')[0], (None, None))
