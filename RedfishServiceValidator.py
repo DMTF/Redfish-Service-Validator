@@ -45,6 +45,7 @@ def validateActions(name, val, propTypeObj, payloadType):
                 actPass = True
             elif target is None:
                 rsvLogger.warn(k + ': target for action is missing')
+                actPass = True
             else:
                 rsvLogger.error(k + ': target for action is malformed')
         else:
@@ -96,7 +97,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
         # Recurse through parent types, gather type hierarchy to check against
         if currentType is not None and success:
             currentType = currentType.replace('#', '')
-            baseRefs = rst.getReferenceDetails(baseSoup)
+            baseRefs = rst.getReferenceDetails(baseSoup, refs)
             allTypes = []
             while currentType not in allTypes and success:
                 allTypes.append(currentType)
@@ -394,7 +395,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
                         resultList[item + '.' + complexKey + appendStr] = complexMessages[complexKey]
 
                     for key in val:
-                        if key not in complexMessages:
+                        if key not in complexMessages and not innerPropType.additional:
                             rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', item + '.' + key + appendStr)
                             counts['failAdditional'] += 1
                             resultList[item + '.' + key + appendStr] = (
@@ -554,7 +555,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         item = jsonData[key]
         rsvLogger.info(fmt % (
             key, messages[key][3] if key in messages else 'Exists, no schema check'))
-        if key not in messages:
+        if key not in messages and not propResourceObj.typeobj.additional:
             # note: extra messages for "unchecked" properties
             rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)
             counts['failAdditional'] += 1
@@ -722,7 +723,7 @@ def main(argv):
         htmlStr += '<td class="title" style="width:40%"><div>{}</div>\
                 <div class="button warn" onClick="document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');">Show results</div>\
                 </td>'.format(item, cnt, cnt)
-        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>URI:</b> {}</div><div><b>XML:</b> {}</div><div><b>type:</b> {}</div></td>'.format(results[item][0],results[item][5],results[item][6])
+        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>URI:</b> {}</div><div><b>XML:</b> {}</div><div><b>type:</b> {}</div></td>'.format(results[item][0], results[item][5], results[item][6])
         htmlStr += '<td style="width:10%"' + \
             ('class="pass"> GET Success' if results[item]
              [1] else 'class="fail"> GET Failure') + '</td>'
@@ -731,6 +732,8 @@ def main(argv):
         innerCounts = results[item][2]
         finalCounts.update(innerCounts)
         for countType in sorted(innerCounts.keys()):
+            if 'fail' in countType or 'exception' in countType:
+                rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, results[item][0].split(' ')[0]))
             innerCounts[countType] += 0
             htmlStr += '<div {style}>{p}: {q}</div>'.format(
                     p=countType,
