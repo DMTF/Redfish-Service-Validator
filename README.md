@@ -22,22 +22,29 @@ There is no dependency based on Windows or Linux OS. The result logs are generat
 The RedfishServiceValidator.py into the desired tool root directory.  Create the following subdirectories in the tool root directory: "config", "logs", "SchemaFiles".  Place the example config.ini file in the "config" directory.  Place the CSDL Schema files to be used by the tool in the root of the schema directory, or the directory given in config.ini.
 
 ## Execution Steps
-The Redfish Service Validator is designed to execute as a purely command line interface tool with no intermediate inputs expected during tool execution. However, the tool requires various inputs regarding system details, DMTF schema files etc. which are consumed by the tool during execution to generate the conformance report logs. Below are the step by step instructions on setting up the tool for execution on any identified Redfish device for conformance test:
-* 1.	Modify the config\config.ini file to enter the system details under below section
+The Redfish Interop Validator is designed to execute as a purely command line interface tool with no intermediate inputs expected during tool execution. However, the tool requires various inputs regarding system details, DMTF schema files etc. which are consumed by the tool during execution to generate the conformance report logs. Below are the step by step instructions on setting up the tool for execution on any identified Redfish device for conformance test:
+
+Modify the config\config.ini file to enter the system details under below section
 [SystemInformation]
 TargetIP = <<IPv4 address of the system under test>>
 UserName = <<User ID of Administrator on the system>>
 Password = <<Password of the Administrator>>
-* 2.	The Tool has an option to ignore SSL certificate check if certificate is not installed on the client system. The certificate check can be switched on or off using the below parameter of the config.ini file. By default the parameter is set to ‘Off’.  UseSSL determines whether or not the https protocol is used.  If it is `Off`, it will also disable certification.
+
+The Tool has an option to ignore SSL certificate check if certificate is not installed on the client system. The certificate check can be switched on or off using the below parameter of the config.ini file. By default the parameter is set to ‘Off’.  UseSSL determines whether or not the https protocol is used.  If it is `Off`, it will also disable certification.
 [Options]
 UseSSL = <<On / Off>>
 CertificateCheck = <<On / Off>>
-* 3.	Other  attributes under the “[Options]” section have schema specific implementations as described below
-LocalOnlyMode - Only test properties against Schema placed in the root of MetadataFilePath.
-ServiceMode - Only test properties against Resources/Schema that exist on the Service
-MetadataFilePath – This attribute points to the location of the DMTF schema file location, populated by xml files
-Session_UserName & Session_Password – These attributes are used to create a session in addition to the default UserName/Password combination available under [SystemInformation] section. Leave these attributes blank if only Administrator credentials are to be used for session specific tests.
-* 4.	Once the above details are updated for the system under test, the Redfish Service Validator can be triggered from a command prompt by typing the below command:
+
+Other  attributes under the “[Options]” section have schema specific implementations as described below
+LocalOnlyMode - (boolean) Only test properties against Schema placed in the root of MetadataFilePath.
+ServiceMode - (boolean) Only test properties against Resources/Schema that exist on the Service
+MetadataFilePath – (string) This attribute points to the location of the DMTF schema file location, populated by xml files
+LogPath - (string) Path with which to generate logs in
+Timeout - (integer) Interval of time before timing out
+SchemaSuffix - (string) When searching for local hard drive schema, append this if unable to derive the expected xml from the service's metadata
+Session_UserName & Session_Password – These attributes are used to create a session in addition to the default UserName/Password combination available under [SystemInformation] section. Leave these attributes blank if only Administrator credentials are to be used for session specific tests. (This option is currently unimplemented)
+
+Once the above details are updated for the system under test, the Redfish Service Validator can be triggered from a command prompt by typing the below command:
 
 python3 RedfishServiceValidator.py -c config/config.ini
 
@@ -80,3 +87,4 @@ The test result for each GET operation will be reported as follows:
 Redfish Service Validator covers all the GET execution on the service. Below are certain points which are not in this scope.
 * 1.	Patch/Post/Skip/Top/Head is not covered as part of Redfish Service Validator due to dependency on internal factor of the service.
 * 2.	Redfish Service Validator does not cover testing of multiple service at once. To execute this, we have to re-run the tool by running it separately.
+* 3.    Tool doesn't support @odata.context which use complex $entity path

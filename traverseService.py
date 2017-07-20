@@ -225,8 +225,11 @@ def getSchemaDetails(SchemaAlias, SchemaURI):
 
 def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
     # Use local if no URI or LocalOnly
-    uriparse = SchemaURI.split('/')[-1].split('#')
-    xml = uriparse[0]
+    if SchemaURI is not None:
+        uriparse = SchemaURI.split('/')[-1].split('#')
+        xml = uriparse[0]
+    else:        
+        return getSchemaDetailsLocal(SchemaAlias, SchemaAlias + SchemaSuffix)
     Alias = getNamespace(SchemaAlias)
     traverseLogger.debug((SchemaAlias, SchemaURI, SchemaLocation + '/' + xml))
     try:
@@ -248,7 +251,7 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
                 if refLink is not None:
                     return getSchemaDetailsLocal(refType, refLink)
                 else:
-                    traverseLogger.error('Could not find item in $metadata')
+                    traverseLogger.error('Could not find item in $metadata {}'.format(frag))
                     return False, None, None
             else:
                 return True, soup, "local" + SchemaLocation + '/' + Alias
@@ -388,6 +391,10 @@ class ResourceObj:
         if expectedSchema is None:
             self.context = self.jsondata.get('@odata.context')
             expectedSchema = self.context
+            if expectedSchema is None:
+                traverseLogger.error(
+                    str(self.uri) + ':  Json does not contain @odata.context',)
+                return
         else:
             self.context = expectedSchema
 
