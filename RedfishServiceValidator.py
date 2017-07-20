@@ -67,6 +67,9 @@ def validateActions(name, val, propTypeObj, payloadType):
 
 
 def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpand):
+    """
+    Validates an entity based on its uri given
+    """
     # check if the entity is truly what it's supposed to be
     uri = val['@odata.id']
     paramPass = False
@@ -116,6 +119,9 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
 
 
 def validateComplex(name, val, propTypeObj, payloadType):
+    """
+    Validate a complex property
+    """
     rsvLogger.info('\t***going into Complex')
     if not isinstance(val, dict):
         rsvLogger.error(name + ' : Complex item not a dictionary')
@@ -146,6 +152,9 @@ def validateComplex(name, val, propTypeObj, payloadType):
         node = node.parent
     successPayload, odataMessages = checkPayloadCompliance('', val)
     complexMessages.update(odataMessages)
+    if not successPayload:
+        complexCounts['failPayloadError'] += 1
+        rsvLogger.error(str("In complex") + ':  payload error, @odata property noncompliant',)
     rsvLogger.info('\t***out of Complex')
     rsvLogger.info('complex %s', complexCounts)
     if ":Actions" in name:
@@ -501,25 +510,34 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # check @odata.context instead of local.  Realize that @odata is NOT a "property"
 
     # Attempt to get a list of properties
-    propResourceObj = rst.ResourceObj(uriName, URI, expectedType, expectedSchema, expectedJson, parent)
-    if not propResourceObj.initiated:
-        counts['exceptionResource'] += 1
-        success = False
-        results[uriName] = (URI + ' ({}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, None, None)
-        rsvLogger.removeHandler(errh)
-        return False, counts, results, None, None
-    counts['passGet'] += 1
-    results[uriName] = (URI + ' ({}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
-
-    successPayload, odataMessages = checkPayloadCompliance(URI, propResourceObj.jsondata)
+    successGet, jsondata, status, rtime = rst.callResourceURI(URI)
+    successPayload, odataMessages = checkPayloadCompliance(URI, jsondata if successGet else {})
     messages.update(odataMessages)
 
     if not successPayload:
         counts['failPayloadError'] += 1
         rsvLogger.error(str(URI) + ':  payload error, @odata property noncompliant',)
-        rsvLogger.removeHandler(errh)
-        return False, counts, results, None, propResourceObj
+        # rsvLogger.removeHandler(errh)
+        # return False, counts, results, None, propResourceObj
     # Generate dictionary of property info
+
+    try:
+        propResourceObj = rst.ResourceObj(
+            uriName, URI, expectedType, expectedSchema, expectedJson, parent)
+        if not propResourceObj.initiated:
+            counts['problemResource'] += 1
+            success = False
+            results[uriName] = (URI, success, counts, messages,
+                                errorMessages, None, None)
+            return False, counts, results, None, None
+    except Exception as e:
+        counts['exceptionResource'] += 1
+        success = False
+        results[uriName] = (URI, success, counts, messages,
+                            errorMessages, None, None)
+        return False, counts, results, None, None
+    counts['passGet'] += 1
+    results[uriName] = (str(URI) + ' ({}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
 
     node = propResourceObj.typeobj
     while node is not None:
@@ -732,7 +750,7 @@ def main(argv):
         innerCounts = results[item][2]
         finalCounts.update(innerCounts)
         for countType in sorted(innerCounts.keys()):
-            if 'fail' in countType or 'exception' in countType:
+            if 'problem' in countType or 'fail' in countType or 'exception' in countType:
                 rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, results[item][0].split(' ')[0]))
             innerCounts[countType] += 0
             htmlStr += '<div {style}>{p}: {q}</div>'.format(
@@ -774,7 +792,7 @@ def main(argv):
 
     fails = 0
     for key in finalCounts:
-        if 'fail' in key or 'exception' in key:
+        if 'problem' in key or 'fail' in key or 'exception' in key:
             fails += finalCounts[key]
 
     success = success and not (fails > 0)
