@@ -138,6 +138,7 @@ def callResourceURI(URILink):
     traverseLogger.debug('callingResourceURI: %s', URILink)
     try:
         response = requests.get(ConfigURI + URILink if not nonService else URILink,
+		                        headers={'OData-Version': '4.0'},
                                 auth=auth, verify=chkCert, timeout=timeout)
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
