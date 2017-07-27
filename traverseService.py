@@ -5,6 +5,7 @@
 # https://github.com/DMTF/Redfish-Service-Validator/LICENSE.md
 
 from bs4 import BeautifulSoup
+import bs4
 import configparser
 import requests
 import sys
@@ -12,6 +13,16 @@ import re
 from collections import OrderedDict
 from functools import lru_cache
 import logging
+from distutils.version import LooseVersion
+
+expectedVersion = '4.5.3'
+
+
+def versionCheck(actual, target):
+    if not LooseVersion(actual) <= LooseVersion(target):
+        raise RuntimeError("Your version of bs4 is not <= {}, please install the appropriate library".format(expectedVersion))
+    return True
+
 
 traverseLogger = logging.getLogger(__name__)
 traverseLogger.setLevel(logging.DEBUG)
@@ -51,6 +62,7 @@ def setConfigNamespace(args):
     localOnly = args.localonly
     serviceOnly = args.service
     SchemaSuffix = args.suffix
+    versionCheck(bs4.__version__, expectedVersion)
     config['internal']['configSet'] = '1'
 
 
@@ -78,6 +90,7 @@ def setConfig(filename):
     localOnly = config.getboolean('Options', 'LocalOnlyMode')
     serviceOnly = config.getboolean('Options', 'ServiceMode')
 
+    versionCheck(bs4.__version__, expectedVersion)
     config['internal']['configSet'] = '1'
 
 
@@ -88,7 +101,7 @@ def isConfigSet():
     if config['internal']['configSet'] == '1':
         return True
     else:
-        raise Exception("Configuration is not set")
+        raise RuntimeError("Configuration is not set")
 
 
 def isNonService(uri):
