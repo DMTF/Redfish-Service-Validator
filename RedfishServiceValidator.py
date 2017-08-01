@@ -659,7 +659,8 @@ def main(argv):
     argget.add_argument('--timeout', type=int, default=30, help='requests timeout in seconds')
     argget.add_argument('--nochkcert', action='store_true', help='ignore check for certificate')
     argget.add_argument('--nossl', action='store_true', help='use http instead of https')
-    argget.add_argument('--localonly', action='store_true', help='only use local schema')
+    argget.add_argument('--authtype', type=str, help='authorization type (None|Basic|Session)')
+    argget.add_argument('--localonly', action='store_true', help='only use locally stored schema on your harddrive')
     argget.add_argument('--service', action='store_true', help='only use uris within the service')
     argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
 
@@ -676,7 +677,7 @@ def main(argv):
         argget.print_help()
         return 1
 
-    sysDescription, ConfigURI, chkCert, localOnly = (rst.sysDescription, rst.ConfigURI, rst.chkCert, rst.localOnly)
+    sysDescription, ConfigURI, chkCert, localOnly = (rst.SysDescription, rst.ConfigURI, rst.ChkCert, rst.LocalOnly)
     User, SchemaLocation = rst.User, rst.SchemaLocation
     logpath = rst.LogPath
 

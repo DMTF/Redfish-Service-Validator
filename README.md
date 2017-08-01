@@ -29,6 +29,7 @@ Modify the config\config.ini file to enter the system details under below sectio
 TargetIP = <<IPv4 address of the system under test>>
 UserName = <<User ID of Administrator on the system>>
 Password = <<Password of the Administrator>>
+AuthType = <<Type of authorization for above credentials (None,Basic,Session)>>
 
 The Tool has an option to ignore SSL certificate check if certificate is not installed on the client system. The certificate check can be switched on or off using the below parameter of the config.ini file. By default the parameter is set to ‘Off’.  UseSSL determines whether or not the https protocol is used.  If it is `Off`, it will also disable certification.
 [Options]
