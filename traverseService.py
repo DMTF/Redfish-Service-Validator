@@ -15,13 +15,16 @@ from functools import lru_cache
 import logging
 from distutils.version import LooseVersion
 from datetime import datetime, timedelta
+from rfSession import rfSession
 
 expectedVersion = '4.5.3'
+
 
 def versionCheck(actual, target):
     if not LooseVersion(actual) <= LooseVersion(target):
         raise RuntimeError("Your version of bs4 is not <= {}, please install the appropriate library".format(expectedVersion))
     return True
+
 
 traverseLogger = logging.getLogger(__name__)
 traverseLogger.setLevel(logging.DEBUG)
@@ -34,78 +37,9 @@ config['internal'] = {'configSet': '0'}
 commonHeader = {'OData-Version': '4.0'}
 SchemaSuffix = UseSSL = ConfigURI = User = Passwd = SysDescription = SchemaLocation\
         = ChkCert = LocalOnly = AuthType = ServiceOnly = timeout = LogPath = None
-        
-class rfSession:
-    def __init__(self):
-        self.user, self.pwd = None, None
-        self.key, self.loc = None, None
-        self.timeout, self.tick = None, None
-        self.started = False
-
-    def startSession(self, user, password):
-        payload = {
-                "UserName": user,
-                "Password": password
-        }
-        success, serviceroot, code, elapsed = callResourceURI("/redfish/v1/")
-        if not success:
-            traverseLogger.error("Could not retrieve serviceroot to start Session")
-            return False, None
-        links = serviceroot.get('Links')
-        if links is not None:
-            sessionsObj = links.get('Sessions')
-            if sessionsObj is None:
-                sessionsURI = '/redfish/v1/SessionService/Sessions'
-                print('using default URI', sessionsURI)
-            else:
-                sessionsURI = sessionsObj.get('@odata.id', '/redfish/v1/SessionService/Sessions')
-        else:
-            traverseLogger.error("Could not retrieve serviceroot.links to start Session")
-            return False, None
-
-        response = requests.post(ConfigURI + sessionsURI, json=payload, verify=ChkCert, headers=commonHeader)
-        traverseLogger.debug(response.text)
-        traverseLogger.debug(response.headers)
-        statusCode = response.status_code
-        ourSessionKey = response.headers.get("X-Auth-Token")
-        ourSessionLocation = response.headers.get("Location")
-        success = statusCode in [200, 204] and ourSessionKey is not None
-
-        self.user, self.pwd = user, None
-        self.key, self.loc = ourSessionKey, ourSessionLocation
-        self.timeout, self.tick = timedelta(minutes=30), datetime.now()
-        self.started = True
-
-        return success, self
-
-    def isSessionOld(self):
-        return datetime.now() - self.tick > self.timeout
-    
-    def getSessionKey(self):
-        if not self.started:
-            traverseLogger.error("This session is not started")
-            raise Exception("ok")
-            return None
-        if self.isSessionOld():
-            traverseLogger.error("This session is old")
-        self.tick = datetime.now()
-        return self.key
-
-    def killSession(self):
-        if not self.started:
-            traverseLogger.error("This session is not started")
-            return None
-        if not self.isSessionOld():
-            headers = {"X-Auth-Token": self.getSessionKey()}
-            headers.update(commonHeader)
-            response = requests.delete(ConfigURI + self.loc, verify=ChkCert, headers=headers)
-            print(response.text)
-            print(response.status_code)
-            print(response.headers)
-        self.started = False
-        return True
 
 currentSession = rfSession()
+
 
 def getLogger():
     """
@@ -138,7 +72,7 @@ def setConfigNamespace(args):
     versionCheck(bs4.__version__, expectedVersion)
 
     if AuthType == 'Session':
-        currentSession.startSession(User, Passwd)
+        currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
 
     config['internal']['configSet'] = '1'
 
@@ -171,7 +105,7 @@ def setConfig(filename):
     versionCheck(bs4.__version__, expectedVersion)
 
     if AuthType == 'Session':
-        currentSession.startSession(User, Passwd)
+        currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
 
     config['internal']['configSet'] = '1'
 
