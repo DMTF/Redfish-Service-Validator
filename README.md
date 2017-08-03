@@ -43,7 +43,6 @@ MetadataFilePath – (string) This attribute points to the location of the DMTF 
 LogPath - (string) Path with which to generate logs in
 Timeout - (integer) Interval of time before timing out
 SchemaSuffix - (string) When searching for local hard drive schema, append this if unable to derive the expected xml from the service's metadata
-Session_UserName & Session_Password – These attributes are used to create a session in addition to the default UserName/Password combination available under [SystemInformation] section. Leave these attributes blank if only Administrator credentials are to be used for session specific tests. (This option is currently unimplemented)
 
 Once the above details are updated for the system under test, the Redfish Service Validator can be triggered from a command prompt by typing the below command:
 

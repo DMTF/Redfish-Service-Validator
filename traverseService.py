@@ -16,6 +16,7 @@ import logging
 from distutils.version import LooseVersion
 from datetime import datetime, timedelta
 from rfSession import rfSession
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 expectedVersion = '4.5.3'
 
@@ -39,6 +40,7 @@ SchemaSuffix = UseSSL = ConfigURI = User = Passwd = SysDescription = SchemaLocat
         = ChkCert = LocalOnly = AuthType = ServiceOnly = timeout = LogPath = None
 
 currentSession = rfSession()
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
 def getLogger():
@@ -71,11 +73,16 @@ def setConfigNamespace(args):
 
     versionCheck(bs4.__version__, expectedVersion)
 
+    if AuthType not in ['None', 'Basic', 'Session']:
+        AuthType = 'Basic'
+        traverseLogger.warn('AuthType invalid, defaulting to Basic')
+    
     if AuthType == 'Session':
-        currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
+        success = currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
+        if not success:
+            raise RuntimeError("Session could not start")
 
     config['internal']['configSet'] = '1'
-
 
 def setConfig(filename):
     """
@@ -104,8 +111,14 @@ def setConfig(filename):
 
     versionCheck(bs4.__version__, expectedVersion)
 
+    if AuthType not in ['None', 'Basic', 'Session']:
+        AuthType = 'Basic'
+        traverseLogger.warn('AuthType invalid, defaulting to Basic')
+
     if AuthType == 'Session':
-        currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
+        success = currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
+        if not success:
+            raise RuntimeError("Session could not start")
 
     config['internal']['configSet'] = '1'
 

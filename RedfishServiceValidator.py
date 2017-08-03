@@ -625,7 +625,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
                 counts['repeat'] += 1
                 continue
 
-            success, linkCounts, linkResults, xlinks = executeLink(links[linkName], thisobj)
+            success, linkCounts, linkResults, xlinks, xobj = executeLink(links[linkName], thisobj)
             refLinks.update(xlinks)
             if not success:
                 counts['unvalidated'] += 1
@@ -639,12 +639,12 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
             else:
                 continue
 
-            success, linkCounts, linkResults, xlinks = executeLink(refLinks[linkName], thisobj)
+            success, linkCounts, linkResults, xlinks, xobj = executeLink(refLinks[linkName], thisobj)
             if not success:
                 counts['unvalidatedRef'] += 1
             results.update(linkResults)
 
-    return validateSuccess, counts, results, refLinks
+    return validateSuccess, counts, results, refLinks, thisobj
 
 
 def main(argv):
@@ -659,22 +659,26 @@ def main(argv):
     argget.add_argument('--timeout', type=int, default=30, help='requests timeout in seconds')
     argget.add_argument('--nochkcert', action='store_true', help='ignore check for certificate')
     argget.add_argument('--nossl', action='store_true', help='use http instead of https')
-    argget.add_argument('--authtype', type=str, help='authorization type (None|Basic|Session)')
+    argget.add_argument('--authtype', type=str, default='Basic', help='authorization type (None|Basic|Session)')
     argget.add_argument('--localonly', action='store_true', help='only use locally stored schema on your harddrive')
     argget.add_argument('--service', action='store_true', help='only use uris within the service')
     argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
 
     args = argget.parse_args()
 
-    if args.config is not None:
-        rst.setConfig(args.config)
-        rst.isConfigSet()
-    elif args.ip is not None:
-        rst.setConfigNamespace(args)
-        rst.isConfigSet()
-    else:
-        rsvLogger.info('No ip or config specified.')
-        argget.print_help()
+    try:
+        if args.config is not None:
+            rst.setConfig(args.config)
+            rst.isConfigSet()
+        elif args.ip is not None:
+            rst.setConfigNamespace(args)
+            rst.isConfigSet()
+        else:
+            rsvLogger.info('No ip or config specified.')
+            argget.print_help()
+            return 1
+    except Exception as ex:
+        rsvLogger.exception("Something went wrong")
         return 1
 
     sysDescription, ConfigURI, chkCert, localOnly = (rst.SysDescription, rst.ConfigURI, rst.ChkCert, rst.LocalOnly)
@@ -691,16 +695,18 @@ def main(argv):
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)
     rsvLogger.info('System Info: ' + sysDescription)
-    rsvLogger.info("RedfishServiceValidator Config details: %s", str(
-        (ConfigURI, 'user:' + str(User), SchemaLocation, 'CheckCert' if chkCert else 'no CheckCert', 'localOnly' if localOnly else 'Attempt for Online Schema')))
+    rsvLogger.info("RedfishServiceValidator Config details: %s",
+        (ConfigURI, 'user:' + str(User), SchemaLocation, 'CheckCert' if chkCert else 'no CheckCert', 'localOnly or service' if localOnly or rst.ServiceOnly else 'Attempt for Online Schema'))
+
     rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))
 
     # Start main
     status_code = 1
-    success, counts, results, xlinks = validateURITree('/redfish/v1', 'ServiceRoot')
+    success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot')
     finalCounts = Counter()
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: ' + str(nowTick-startTick).rsplit('.', 1)[0])
+    rst.currentSession.killSession()
 
     # Render html
     htmlStrTop = '<html><head><title>Compliance Test Summary</title>\
