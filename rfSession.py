@@ -32,7 +32,7 @@ class rfSession:
     def __init__(self):
         self.user, self.pwd, self.server = None, None, None
         self.key, self.loc = None, None
-        self.timeout, self.tick = None, None
+        self.timeout, self.tick = 0, 0
         self.started, self.chkCert = False, False
 
     def startSession(self, user, password, server, chkCert=True):
@@ -88,7 +88,7 @@ class rfSession:
         return self.key
 
     def killSession(self):
-        if not self.isSessionOld() or self.started:
+        if self.started and not self.isSessionOld():
             headers = {"X-Auth-Token": self.getSessionKey()}
             headers.update(commonHeader)
             response = requests.delete(str(self.server) + str(self.loc), verify=self.chkCert, headers=headers)
