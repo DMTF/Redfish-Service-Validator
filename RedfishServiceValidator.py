@@ -706,7 +706,8 @@ def main(argv):
     finalCounts = Counter()
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: ' + str(nowTick-startTick).rsplit('.', 1)[0])
-    rst.currentSession.killSession()
+    if rst.currentSession.started:
+        rst.currentSession.killSession()
 
     # Render html
     htmlStrTop = '<html><head><title>Compliance Test Summary</title>\
