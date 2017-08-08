@@ -44,17 +44,17 @@ def validateActions(name, val, propTypeObj, payloadType):
             if target is not None and isinstance(target, str):
                 actPass = True
             elif target is None:
-                rsvLogger.warn(k + ': target for action is missing')
+                rsvLogger.warn('{}: target for action is missing'.format(k))
                 actPass = True
             else:
-                rsvLogger.error(k + ': target for action is malformed')
+                rsvLogger.error('{} : target for action is malformed, expected string got'.format(k, str(type(target))))
         else:
             # <Annotation Term="Redfish.Required"/>
             if actionsDict[k].find('annotation', {'term': 'Redfish.Required'}):
-                rsvLogger.error(k + ': action not Found, is mandatory')
+                rsvLogger.error('{}: action not Found, is mandatory'.format(k))
             else:
                 actPass = True
-                rsvLogger.warn(k + ': action not Found, is not mandatory')
+                rsvLogger.warn('{}: action not Found, is not mandatory'.format(k))
         actionMessages[k] = (
                     'Action', '-',
                     'Exists' if actionDecoded != 'n/a' else 'DNE',
@@ -99,6 +99,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
 
         # Recurse through parent types, gather type hierarchy to check against
         if currentType is not None and success:
+            
             currentType = currentType.replace('#', '')
             baseRefs = rst.getReferenceDetails(baseSoup, refs)
             allTypes = []
@@ -153,10 +154,10 @@ def validateComplex(name, val, propTypeObj, payloadType):
     successPayload, odataMessages = checkPayloadCompliance('', val)
     complexMessages.update(odataMessages)
     if not successPayload:
-        complexCounts['failPayloadError'] += 1
-        rsvLogger.error(str("In complex") + ':  payload error, @odata property noncompliant',)
+        complexCounts['failComplexPayloadError'] += 1
+        rsvLogger.error('In complex {}:  payload error, @odata property noncompliant'.format(str(name)))
     rsvLogger.info('\t***out of Complex')
-    rsvLogger.info('complex %s', complexCounts)
+    rsvLogger.info('complex {}'.format(str(complexCounts)))
     if ":Actions" in name:
         aMsgs, aCounts = validateActions(name, val, propTypeObj, payloadType)
         complexMessages.update(aMsgs)
@@ -165,21 +166,23 @@ def validateComplex(name, val, propTypeObj, payloadType):
 
 
 def validateDeprecatedEnum(name, val, listEnum):
+    """
+    Validates a DeprecatedEnum
+    """
     paramPass = True
     if isinstance(val, list):
         for enumItem in val:
             for k, v in enumItem.items():
-                rsvLogger.debug('%s, %s' % (k, v))
                 paramPass = paramPass and str(v) in listEnum
         if not paramPass:
-            rsvLogger.error("%s: Invalid DeprecatedEnum found (check casing?)" % name)
+            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}".format(str(name), str(listEnum)))
     elif isinstance(val, str):
         rsvLogger.debug('%s' % val)
         paramPass = str(val) in listEnum
         if not paramPass:
-            rsvLogger.error("%s: Invalid DeprecatedEnum found (check casing?)" % name)
+            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}".format(str(name), str(listEnum)))
     else:
-        rsvLogger.error("%s: Expected list/str value for DeprecatedEnum? " % name)
+        rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val))))
     return paramPass
 
 
@@ -188,62 +191,77 @@ def validateEnum(name, val, listEnum):
     if paramPass:
         paramPass = val in listEnum
         if not paramPass:
-            rsvLogger.error("%s: Invalid enum found (check casing?)" % name)
+            rsvLogger.error("{}: Invalid Enum value '{}' found, expected {}".format(str(name), str(listEnum)))
     else:
-        rsvLogger.error("%s: Expected string value for Enum" % name)
+        rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val))))
     return paramPass
 
 
 def validateString(name, val, pattern=None):
+    """
+    Validates a string, given a value and a pattern
+    """
     paramPass = isinstance(val, str)
     if paramPass:
         if pattern is not None:
             match = re.fullmatch(pattern, val)
             paramPass = match is not None
             if not paramPass:
-                rsvLogger.error("%s: Malformed String" % name)
+                rsvLogger.error("{}: String '{}' does not match pattern '{}'".format(name, str(val), str(pattern)))
         else:
             paramPass = True
     else:
-        rsvLogger.error("%s: Expected string value" % name)
+        rsvLogger.error("{}: Expected string value, got type {}".format(name, str(type(val))))
     return paramPass
 
 
 def validateDatetime(name, val):
+    """
+    Validates a Datetime, given a value (pattern predetermined)
+    """
     paramPass = validateString(name, val, '.*(Z|(\+|-)[0-9][0-9]:[0-9][0-9])')
     if not paramPass:
-        rsvLogger.error("\t%s: Malformed DateTimeOffset" % name)
+        rsvLogger.error("\t...: Malformed DateTimeOffset")
     return paramPass
 
 
 def validateGuid(name, val):
+    """
+    Validates a Guid, given a value (pattern predetermined)
+    """
     paramPass = validateString(name, val, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     if not paramPass:
-        rsvLogger.error("\t%s: Malformed Guid" % name)
+        rsvLogger.error("\t...: Malformed Guid")
     return paramPass
 
 
 def validateInt(name, val, minVal=None, maxVal=None):
+    """
+    Validates a Int, then passes info to validateNumber
+    """
     if not isinstance(val, int):
-        rsvLogger.error("%s: Expected int" % name)
+        rsvLogger.error("{}: Expected integer, got type {}".format(name, str(type(val))))
         return False
     else:
         return validateNumber(name, val, minVal, maxVal)
 
 
 def validateNumber(name, val, minVal=None, maxVal=None):
+    """
+    Validates a Number and its min/max values
+    """
     paramPass = isinstance(val, (int, float))
     if paramPass:
         if minVal is not None:
             paramPass = paramPass and minVal <= val
             if not paramPass:
-                rsvLogger.error("%s: Value out of assigned min range" % name)
+                rsvLogger.error("{}: Value out of assigned min range, {} < {}".format(name, str(val), str(minVal)))
         if maxVal is not None:
             paramPass = paramPass and maxVal >= val
             if not paramPass:
-                rsvLogger.error("%s: Value out of assigned max range" % name)
+                rsvLogger.error("{}: Value out of assigned max range, {} > {}".format(name, str(val), str(maxVal)))
     else:
-        rsvLogger.error("%s: Expected numeric type" % name)
+        rsvLogger.error("{}: Expected integer or float, got type {}".format(name, str(type(val))))
     return paramPass
 
 
@@ -460,18 +478,19 @@ def checkPayloadCompliance(uri, decoded):
         paramPass = False
         if key == '@odata.id':
             paramPass = isinstance(decoded[key], str)
-            paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
-            pass
+            if paramPass:
+                paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
         elif key == '@odata.count':
             paramPass = isinstance(decoded[key], int)
-            pass
         elif key == '@odata.context':
             paramPass = isinstance(decoded[key], str)
-            paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
-            pass
+            if paramPass:
+                paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None or\
+                    re.match('.*', decoded[key])  # replace with other type of context
         elif key == '@odata.type':
             paramPass = isinstance(decoded[key], str)
-            paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+            if paramPass:
+                paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
             pass
         else:
             paramPass = True
@@ -529,12 +548,15 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             success = False
             results[uriName] = (URI, success, counts, messages,
                                 errorMessages, None, None)
+            rsvLogger.removeHandler(errh)
             return False, counts, results, None, None
     except Exception as e:
+        rsvLogger.exception("")
         counts['exceptionResource'] += 1
         success = False
         results[uriName] = (URI, success, counts, messages,
                             errorMessages, None, None)
+        rsvLogger.removeHandler(errh)
         return False, counts, results, None, None
     counts['passGet'] += 1
     results[uriName] = (str(URI) + ' ({}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
@@ -573,13 +595,20 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         item = jsonData[key]
         rsvLogger.info(fmt % (
             key, messages[key][3] if key in messages else 'Exists, no schema check'))
-        if key not in messages and not propResourceObj.typeobj.additional:
+        if key not in messages: 
             # note: extra messages for "unchecked" properties
-            rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)
-            counts['failAdditional'] += 1
-            messages[key] = (item, '-',
-                             'Exists',
-                             '-')
+            if not propResourceObj.typeobj.additional:
+                rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)
+                counts['failAdditional'] += 1
+                messages[key] = (item, '-',
+                                 'Exists (add.)',
+                                 '-')
+            else:
+                counts['unverifiedAdditional'] += 1
+                messages[key] = (item, '-',
+                                 'Exists (add.ok)',
+                                 '-')
+
     for key in messages:
         if key not in jsonData:
             rsvLogger.info(fmt % (key, messages[key][3]))
@@ -759,7 +788,7 @@ def main(argv):
         finalCounts.update(innerCounts)
         for countType in sorted(innerCounts.keys()):
             if 'problem' in countType or 'fail' in countType or 'exception' in countType:
-                rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, results[item][0].split(' ')[0]))
+                rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, str(results[item][0]).split(' ')[0]))
             innerCounts[countType] += 0
             htmlStr += '<div {style}>{p}: {q}</div>'.format(
                     p=countType,

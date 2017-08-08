@@ -504,16 +504,17 @@ class ResourceObj:
 
 
 class PropItem:
-    def __init__(self, soup, refs, name, tagType, topVersion):
+    def __init__(self, soup, refs, propOwner, propChild, tagType, topVersion):
         try:
-            self.name = name
+            self.name = propOwner + ':' + propChild
+            self.propOwner, self.propChild = propOwner, propChild
             self.propDict = getPropertyDetails(
-                soup, refs, name, tagType, topVersion)
+                soup, refs, propOwner, propChild, tagType, topVersion)
             self.attr = self.propDict['attrs']
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
             traverseLogger.error(
-                '%s:  Could not get details on this property' % name)
+                    '{}:{} :  Could not get details on this property'.format(str(propOwner),str(propChild)))
             self.propDict = None
             return
         pass
@@ -592,6 +593,10 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
         'annotation', attrs={'term': 'OData.AdditionalProperties'})
     if additionalElement is not None:
         additional = additionalElement.get('bool', False)
+        if additional in ['false', 'False', False]:
+            additional = False
+        if additional in ['true', 'True']:
+            additional = True
     else:
         additional = False
 
@@ -599,18 +604,17 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
         traverseLogger.debug(innerelement['name'])
         traverseLogger.debug(innerelement.get('type'))
         traverseLogger.debug(innerelement.attrs)
+        newPropOwner = SchemaAlias if SchemaAlias is not None else 'SomeSchema'
         newProp = innerelement['name']
         traverseLogger.debug("ADDING :::: %s", newProp)
-        if SchemaAlias:
-            newProp = SchemaAlias + ':' + newProp
         if newProp not in PropertyList:
             PropertyList.append(
-                PropItem(soup, refs, newProp, tagType=tagType, topVersion=topVersion))
+                PropItem(soup, refs, newPropOwner, newProp, tagType=tagType, topVersion=topVersion))
 
     return additional, PropertyList
 
 
-def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersion=None):
+def getPropertyDetails(soup, refs, propOwner, propChild, tagType='entitytype', topVersion=None):
     """
     Get dictionary of tag attributes for properties given, including basetypes.
 
@@ -621,11 +625,9 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
 
     propEntry = dict()
 
-    propOwner, propChild = PropertyItem.split(
-        ':')[0].replace('#', ''), PropertyItem.split(':')[-1]
     SchemaNamespace, SchemaType = getNamespace(propOwner), getType(propOwner)
     traverseLogger.debug('___')
-    traverseLogger.debug('%s, %s', SchemaNamespace, PropertyItem)
+    traverseLogger.debug('{}, {}:{}'.format(SchemaNamespace, propOwner, propChild))
 
     propSchema = soup.find('schema', attrs={'namespace': SchemaNamespace})
     if propSchema is None:
@@ -862,6 +864,6 @@ def getAnnotations(soup, refs, decoded, prefix=''):
                 realItem = realType + '.' + fullItem.split('.', 1)[1]
                 tagtype = 'term'
             additionalProps.append(
-                PropItem(annotationSoup, annotationRefs, realItem + ':' + key, tagtype, None))
+                PropItem(annotationSoup, annotationRefs, realItem, key, tagtype, None))
 
     return True, additionalProps
