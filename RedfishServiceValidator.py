@@ -11,6 +11,7 @@ import re
 from datetime import datetime
 from collections import Counter, OrderedDict
 import logging
+import json
 import traverseService as rst
 
 rsvLogger = rst.getLogger()
@@ -527,7 +528,10 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # check @odata.context instead of local.  Realize that @odata is NOT a "property"
 
     # Attempt to get a list of properties
-    successGet, jsondata, status, rtime = rst.callResourceURI(URI)
+    if expectedJson is None:
+        successGet, jsondata, status, rtime = rst.callResourceURI(URI)
+    else:
+        successGet, jsondata = True, expectedJson
     successPayload, odataMessages = checkPayloadCompliance(URI, jsondata if successGet else {})
     messages.update(odataMessages)
 
@@ -677,6 +681,8 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
 def main(argv):
     argget = argparse.ArgumentParser(description='Usecase tool to check compliance to POST Boot action')
     argget.add_argument('--ip', type=str, help='ip to test on [host:port]')
+    argget.add_argument('--file', type=str, help='file to test')
+    argget.add_argument('--single', type=str, help='only test 1 resource')
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
     argget.add_argument('-u', '--user', default=None, type=str, help='user for basic auth')
     argget.add_argument('-p', '--passwd', default=None, type=str, help='pass for basic auth')
@@ -732,7 +738,17 @@ def main(argv):
 
     # Start main
     status_code = 1
-    success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot')
+    jsonData = None
+    if args.file is not None and os.path.isfile(args.file):
+        with open(args.file) as f:
+            jsonData = json.load(f)
+            f.close()
+    if jsonData is not None:
+        args.single = './'
+    if args.single is not None:
+        success, counts, results, xlinks, topobj = validateSingleURI(args.single, 'Target', expectedJson=jsonData)
+    else:
+        success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
     finalCounts = Counter()
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: ' + str(nowTick-startTick).rsplit('.', 1)[0])
