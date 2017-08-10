@@ -15,7 +15,6 @@ import traverseService as rst
 
 rsvLogger = rst.getLogger()
 
-
 def validateActions(name, val, propTypeObj, payloadType):
     """
     Validates an action dict (val)
@@ -177,7 +176,6 @@ def validateDeprecatedEnum(name, val, listEnum):
         if not paramPass:
             rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}".format(str(name), str(listEnum)))
     elif isinstance(val, str):
-        rsvLogger.debug('%s' % val)
         paramPass = str(val) in listEnum
         if not paramPass:
             rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}".format(str(name), str(listEnum)))
@@ -486,7 +484,7 @@ def checkPayloadCompliance(uri, decoded):
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None or\
-                    re.match('.*', decoded[key])  # replace with other type of context
+                    re.match('(\/.*)+#(\/.*)+[/]$entity', decoded[key]) is not None
         elif key == '@odata.type':
             paramPass = isinstance(decoded[key], str)
             if paramPass:

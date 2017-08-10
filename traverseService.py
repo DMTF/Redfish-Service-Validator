@@ -14,7 +14,6 @@ from collections import OrderedDict
 from functools import lru_cache
 import logging
 from distutils.version import LooseVersion
-from datetime import datetime, timedelta
 from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
@@ -76,13 +75,14 @@ def setConfigNamespace(args):
     if AuthType not in ['None', 'Basic', 'Session']:
         AuthType = 'Basic'
         traverseLogger.warn('AuthType invalid, defaulting to Basic')
-    
+
     if AuthType == 'Session':
         success = currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
         if not success:
             raise RuntimeError("Session could not start")
 
     config['internal']['configSet'] = '1'
+
 
 def setConfig(filename):
     """
@@ -210,8 +210,12 @@ def callResourceURI(URILink):
                     if not isinstance(decoded, dict):
                         traverseLogger.warn(
                             URILink + " decoded object no longer a dictionary")
-            else:
+            elif contenttype is not None and 'application/xml' in contenttype:
                 decoded = response.text
+            else:
+                traverseLogger.error(
+                        "This URI did NOT return XML or Json, this is not a Redfish resource (is this redirected?): {}".format(URILink))
+                return False, response.text, statusCode, elapsed
             return decoded is not None, decoded, statusCode, elapsed
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
@@ -243,25 +247,32 @@ def getSchemaDetails(SchemaAlias, SchemaURI):
     # rs-assertion: parse frags
     if SchemaURI is not None and not LocalOnly:
         # Get our expected Schema file here
+        frag = None
+        if '#' in SchemaURI:
+            SchemaURI, frag = tuple(SchemaURI.rsplit('#', 1))
         success, data, status, elapsed = callResourceURI(SchemaURI)
         # if success, generate Soup, then check for frags to parse
         #   start by parsing references, then check for the refLink
         if success:
             soup = BeautifulSoup(data, "html.parser")
-            if '#' in SchemaURI:
-                SchemaURI, frag = tuple(SchemaURI.rsplit('#', 1))
+            # if frag, look inside xml for real target
+            if frag is not None:
+                # prefer type over frag
+                frag = getNamespace(SchemaAlias)
+                frag = frag.split('.', 1)[0]
+                # using frag, check references
                 refType, refLink = getReferenceDetails(
-                    soup).get(getNamespace(frag), (None, None))
+                    soup).get(frag, (None, None))
                 if refLink is not None:
                     success, linksoup, newlink = getSchemaDetails(refType, refLink)
                     if success:
                         return True, linksoup, newlink
                     else:
                         traverseLogger.error(
-                            "SchemaURI couldn't call reference link: %s %s", SchemaURI, frag)
+                            "SchemaURI couldn't call reference link: {} {}".format(SchemaURI, frag))
                 else:
                     traverseLogger.error(
-                        "SchemaURI missing reference link: %s %s", SchemaURI, frag)
+                        "SchemaURI missing reference link: {} {}".format(SchemaURI, frag))
             else:
                 return True, soup, SchemaURI
         if isNonService(SchemaURI) and ServiceOnly:
@@ -273,10 +284,13 @@ def getSchemaDetails(SchemaAlias, SchemaURI):
 
 def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
     # Use local if no URI or LocalOnly
+    # What are we looking for?  Parse from URI
+    xml = None
+    # if we're not able to use URI to get suffix, work with option fallback
     if SchemaURI is not None:
         uriparse = SchemaURI.split('/')[-1].split('#')
         xml = uriparse[0]
-    else:        
+    else:
         return getSchemaDetailsLocal(SchemaAlias, SchemaAlias + SchemaSuffix)
     Alias = getNamespace(SchemaAlias)
     traverseLogger.debug((SchemaAlias, SchemaURI, SchemaLocation + '/' + xml))
@@ -291,6 +305,7 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
         SchemaNamespace = child['namespace']
         FoundAlias = SchemaNamespace.split(".")[0]
         traverseLogger.debug(FoundAlias)
+        pout = SchemaAlias + SchemaSuffix if xml is None else xml
         if '/redfish/v1/$metadata' in SchemaURI:
             if len(uriparse) > 1:
                 frag = uriparse[1]
@@ -302,15 +317,16 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
                     traverseLogger.error('Could not find item in $metadata {}'.format(frag))
                     return False, None, None
             else:
-                return True, soup, "local" + SchemaLocation + '/' + Alias
+                return True, soup, "local" + SchemaLocation + '/' + pout
         if FoundAlias in Alias:
-            return True, soup, "local" + SchemaLocation + '/' + Alias
+            return True, soup, "local" + SchemaLocation + '/' + pout
     except FileNotFoundError as ex:
+        # if we're looking for $metadata locally... ditch looking for it, go straight to file
         if '/redfish/v1/$metadata' in SchemaURI:
-            return getSchemaDetailsLocal(SchemaAlias, SchemaAlias + SchemaSuffix)
+            return getSchemaDetailsLocal(SchemaAlias, pout)
         else:
             traverseLogger.error(
-                "File not found in {} for {}: ".format(SchemaLocation, Alias))
+                "File not found in {} for {}: ".format(SchemaLocation, pout))
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
     return False, None, None
@@ -444,7 +460,6 @@ class ResourceObj:
             if expectedSchema is None:
                 traverseLogger.error(
                     str(self.uri) + ':  Json does not contain @odata.context',)
-                return
         else:
             self.context = expectedSchema
 
