@@ -10,6 +10,7 @@ import configparser
 import requests
 import sys
 import re
+import os
 from collections import OrderedDict
 from functools import lru_cache
 import logging
@@ -32,11 +33,11 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 traverseLogger.addHandler(ch)
 config = configparser.ConfigParser()
-config['DEFAULT'] = {'LogPath': './logs', 'SchemaSuffix': '_v1.xml', 'timeout': 30, 'AuthType': 'Basic'}
+config['DEFAULT'] = {'LogPath': './logs', 'SchemaSuffix': '_v1.xml', 'timeout': 30, 'AuthType': 'Basic', 'CertificateBundle': ""}
 config['internal'] = {'configSet': '0'}
 commonHeader = {'OData-Version': '4.0'}
-SchemaSuffix = UseSSL = ConfigURI = User = Passwd = SysDescription = SchemaLocation\
-        = ChkCert = LocalOnly = AuthType = ServiceOnly = timeout = LogPath = None
+SchemaSuffix = UseSSL = ConfigURI = User = Passwd = SysDescription = SchemaLocation = \
+        ChkCertBundle = ChkCert = LocalOnly = AuthType = ServiceOnly = timeout = LogPath = None
 
 currentSession = rfSession()
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -54,15 +55,22 @@ def setConfigNamespace(args):
     Provided a namespace, modify args based on it
     """
     global SchemaSuffix, UseSSL, ConfigURI, User, Passwd, SysDescription, SchemaLocation,\
-        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType
+        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType, ChkCertBundle
     User = args.user
     Passwd = args.passwd
     AuthType = args.authtype
     SysDescription = args.desc
     SchemaLocation = args.dir
     timeout = args.timeout
-    ChkCert = not args.nochkcert
     UseSSL = not args.nossl
+    ChkCert = not args.nochkcert and UseSSL
+    ChkCertBundle = args.ca_bundle
+    if ChkCertBundle not in [None, ""] and ChkCert:
+        if not os.path.isfile(ChkCertBundle):
+            ChkCertBundle = None
+            traverseLogger.error('ChkCertBundle is not found, defaulting to None')
+    else:
+        ChkCertBundle = None
     LogPath = args.logdir
     ConfigURI = ('https' if UseSSL else 'http') + '://' + \
         args.ip
@@ -74,10 +82,11 @@ def setConfigNamespace(args):
 
     if AuthType not in ['None', 'Basic', 'Session']:
         AuthType = 'Basic'
-        traverseLogger.warn('AuthType invalid, defaulting to Basic')
+        traverseLogger.error('AuthType invalid, defaulting to Basic')
 
     if AuthType == 'Session':
-        success = currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
+        certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
+        success = currentSession.startSession(User, Passwd, ConfigURI, certVal)
         if not success:
             raise RuntimeError("Session could not start")
 
@@ -89,7 +98,7 @@ def setConfig(filename):
     Set config based on config file read from location filename
     """
     global SchemaSuffix, UseSSL, ConfigURI, User, Passwd, SysDescription, SchemaLocation,\
-        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType
+        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType, ChkCertBundle
     config.read(filename)
     UseSSL = config.getboolean('Options', 'UseSSL')
 
@@ -104,6 +113,13 @@ def setConfig(filename):
     SchemaLocation = config.get('Options', 'MetadataFilePath')
     LogPath = config.get('Options', 'LogPath')
     ChkCert = config.getboolean('Options', 'CertificateCheck') and UseSSL
+    ChkCertBundle = config.get('Options', 'CertificateBundle')
+    if ChkCertBundle not in [None, ""] and ChkCert:
+        if not os.path.isfile(ChkCertBundle):
+            ChkCertBundle = None
+            traverseLogger.error('ChkCertBundle is not found, defaulting to None')
+    else:
+        ChkCertBundle = None
     SchemaSuffix = config.get('Options', 'SchemaSuffix')
     timeout = config.getint('Options', 'timeout')
     LocalOnly = config.getboolean('Options', 'LocalOnlyMode')
@@ -113,10 +129,11 @@ def setConfig(filename):
 
     if AuthType not in ['None', 'Basic', 'Session']:
         AuthType = 'Basic'
-        traverseLogger.warn('AuthType invalid, defaulting to Basic')
+        traverseLogger.error('AuthType invalid, defaulting to Basic')
 
     if AuthType == 'Session':
-        success = currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
+        certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
+        success = currentSession.startSession(User, Passwd, ConfigURI, certVal)
         if not success:
             raise RuntimeError("Session could not start")
 
@@ -182,11 +199,13 @@ def callResourceURI(URILink):
     else:
         headers = commonHeader
 
+    certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
+
     # rs-assertion: must have application/json or application/xml
     traverseLogger.debug('callingResourceURI: %s', URILink)
     try:
         response = requests.get(ConfigURI + URILink if not nonService else URILink,
-                                headers=headers, auth=auth, verify=ChkCert, timeout=timeout)
+                                headers=headers, auth=auth, verify=certVal, timeout=timeout)
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
         statusCode = response.status_code
