@@ -10,11 +10,11 @@ import configparser
 import requests
 import sys
 import re
+import os
 from collections import OrderedDict
 from functools import lru_cache
 import logging
 from distutils.version import LooseVersion
-from datetime import datetime, timedelta
 from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
@@ -33,11 +33,13 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 traverseLogger.addHandler(ch)
 config = configparser.ConfigParser()
-config['DEFAULT'] = {'LogPath': './logs', 'SchemaSuffix': '_v1.xml', 'timeout': 30, 'AuthType': 'Basic'}
+config['DEFAULT'] = {'LogPath': './logs', 'SchemaSuffix': '_v1.xml', 'timeout': 30, 'AuthType': 'Basic', 'CertificateBundle': "",
+                        'HttpProxy': "", 'HttpsProxy': ""}
 config['internal'] = {'configSet': '0'}
 commonHeader = {'OData-Version': '4.0'}
-SchemaSuffix = UseSSL = ConfigURI = User = Passwd = SysDescription = SchemaLocation\
-        = ChkCert = LocalOnly = AuthType = ServiceOnly = timeout = LogPath = None
+proxies = {}
+SchemaSuffix = UseSSL = ConfigURI = User = Passwd = SysDescription = SchemaLocation = \
+        ChkCertBundle = ChkCert = LocalOnly = AuthType = ServiceOnly = timeout = LogPath = None
 
 currentSession = rfSession()
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -55,41 +57,54 @@ def setConfigNamespace(args):
     Provided a namespace, modify args based on it
     """
     global SchemaSuffix, UseSSL, ConfigURI, User, Passwd, SysDescription, SchemaLocation,\
-        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType
+        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType, ChkCertBundle
     User = args.user
     Passwd = args.passwd
     AuthType = args.authtype
     SysDescription = args.desc
     SchemaLocation = args.dir
     timeout = args.timeout
-    ChkCert = not args.nochkcert
     UseSSL = not args.nossl
+    ChkCert = not args.nochkcert and UseSSL
+    ChkCertBundle = args.ca_bundle
+    if ChkCertBundle not in [None, ""] and ChkCert:
+        if not os.path.isfile(ChkCertBundle):
+            ChkCertBundle = None
+            traverseLogger.error('ChkCertBundle is not found, defaulting to None')
+    else:
+        ChkCertBundle = None
     LogPath = args.logdir
     ConfigURI = ('https' if UseSSL else 'http') + '://' + \
         args.ip
     LocalOnly = args.localonly
     ServiceOnly = args.service
     SchemaSuffix = args.suffix
+    httpprox = args.http_proxy
+    httpsprox = args.https_proxy
+    proxies['http'] = httpprox
+    proxies['https'] = httpsprox
 
     versionCheck(bs4.__version__, expectedVersion)
 
     if AuthType not in ['None', 'Basic', 'Session']:
         AuthType = 'Basic'
-        traverseLogger.warn('AuthType invalid, defaulting to Basic')
-    
+        traverseLogger.error('AuthType invalid, defaulting to Basic')
+
     if AuthType == 'Session':
-        success = currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
+        certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
+        success = currentSession.startSession(User, Passwd, ConfigURI, certVal, proxies)
         if not success:
             raise RuntimeError("Session could not start")
 
     config['internal']['configSet'] = '1'
+
 
 def setConfig(filename):
     """
     Set config based on config file read from location filename
     """
     global SchemaSuffix, UseSSL, ConfigURI, User, Passwd, SysDescription, SchemaLocation,\
-        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType
+        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType, ChkCertBundle
     config.read(filename)
     UseSSL = config.getboolean('Options', 'UseSSL')
 
@@ -104,19 +119,31 @@ def setConfig(filename):
     SchemaLocation = config.get('Options', 'MetadataFilePath')
     LogPath = config.get('Options', 'LogPath')
     ChkCert = config.getboolean('Options', 'CertificateCheck') and UseSSL
+    ChkCertBundle = config.get('Options', 'CertificateBundle')
+    if ChkCertBundle not in [None, ""] and ChkCert:
+        if not os.path.isfile(ChkCertBundle):
+            ChkCertBundle = None
+            traverseLogger.error('ChkCertBundle is not found, defaulting to None')
+    else:
+        ChkCertBundle = None
     SchemaSuffix = config.get('Options', 'SchemaSuffix')
     timeout = config.getint('Options', 'timeout')
     LocalOnly = config.getboolean('Options', 'LocalOnlyMode')
     ServiceOnly = config.getboolean('Options', 'ServiceMode')
+    httpprox = config.get('Options', 'HttpProxy')
+    httpsprox = config.get('Options', 'HttpsProxy')
+    proxies['http'] = httpprox if httpprox != "" else None
+    proxies['https'] = httpsprox if httpsprox != "" else None
 
     versionCheck(bs4.__version__, expectedVersion)
 
     if AuthType not in ['None', 'Basic', 'Session']:
         AuthType = 'Basic'
-        traverseLogger.warn('AuthType invalid, defaulting to Basic')
+        traverseLogger.error('AuthType invalid, defaulting to Basic')
 
     if AuthType == 'Session':
-        success = currentSession.startSession(User, Passwd, ConfigURI, ChkCert)
+        certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
+        success = currentSession.startSession(User, Passwd, ConfigURI, certVal, proxies)
         if not success:
             raise RuntimeError("Session could not start")
 
@@ -182,11 +209,13 @@ def callResourceURI(URILink):
     else:
         headers = commonHeader
 
+    certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
+
     # rs-assertion: must have application/json or application/xml
     traverseLogger.debug('callingResourceURI: %s', URILink)
     try:
         response = requests.get(ConfigURI + URILink if not nonService else URILink,
-                                headers=headers, auth=auth, verify=ChkCert, timeout=timeout)
+                                headers=headers, auth=auth, verify=certVal, timeout=timeout, proxies=proxies)
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
         statusCode = response.status_code
@@ -210,8 +239,12 @@ def callResourceURI(URILink):
                     if not isinstance(decoded, dict):
                         traverseLogger.warn(
                             URILink + " decoded object no longer a dictionary")
-            else:
+            elif contenttype is not None and 'application/xml' in contenttype:
                 decoded = response.text
+            else:
+                traverseLogger.error(
+                        "This URI did NOT return XML or Json, this is not a Redfish resource (is this redirected?): {}".format(URILink))
+                return False, response.text, statusCode, elapsed
             return decoded is not None, decoded, statusCode, elapsed
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
@@ -243,25 +276,32 @@ def getSchemaDetails(SchemaAlias, SchemaURI):
     # rs-assertion: parse frags
     if SchemaURI is not None and not LocalOnly:
         # Get our expected Schema file here
+        frag = None
+        if '#' in SchemaURI:
+            SchemaURI, frag = tuple(SchemaURI.rsplit('#', 1))
         success, data, status, elapsed = callResourceURI(SchemaURI)
         # if success, generate Soup, then check for frags to parse
         #   start by parsing references, then check for the refLink
         if success:
             soup = BeautifulSoup(data, "html.parser")
-            if '#' in SchemaURI:
-                SchemaURI, frag = tuple(SchemaURI.rsplit('#', 1))
+            # if frag, look inside xml for real target
+            if frag is not None:
+                # prefer type over frag
+                frag = getNamespace(SchemaAlias)
+                frag = frag.split('.', 1)[0]
+                # using frag, check references
                 refType, refLink = getReferenceDetails(
-                    soup).get(getNamespace(frag), (None, None))
+                    soup).get(frag, (None, None))
                 if refLink is not None:
                     success, linksoup, newlink = getSchemaDetails(refType, refLink)
                     if success:
                         return True, linksoup, newlink
                     else:
                         traverseLogger.error(
-                            "SchemaURI couldn't call reference link: %s %s", SchemaURI, frag)
+                            "SchemaURI couldn't call reference link: {} {}".format(SchemaURI, frag))
                 else:
                     traverseLogger.error(
-                        "SchemaURI missing reference link: %s %s", SchemaURI, frag)
+                        "SchemaURI missing reference link: {} {}".format(SchemaURI, frag))
             else:
                 return True, soup, SchemaURI
         if isNonService(SchemaURI) and ServiceOnly:
@@ -273,10 +313,13 @@ def getSchemaDetails(SchemaAlias, SchemaURI):
 
 def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
     # Use local if no URI or LocalOnly
+    # What are we looking for?  Parse from URI
+    xml = None
+    # if we're not able to use URI to get suffix, work with option fallback
     if SchemaURI is not None:
         uriparse = SchemaURI.split('/')[-1].split('#')
         xml = uriparse[0]
-    else:        
+    else:
         return getSchemaDetailsLocal(SchemaAlias, SchemaAlias + SchemaSuffix)
     Alias = getNamespace(SchemaAlias)
     traverseLogger.debug((SchemaAlias, SchemaURI, SchemaLocation + '/' + xml))
@@ -291,6 +334,7 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
         SchemaNamespace = child['namespace']
         FoundAlias = SchemaNamespace.split(".")[0]
         traverseLogger.debug(FoundAlias)
+        pout = SchemaAlias + SchemaSuffix if xml is None else xml
         if '/redfish/v1/$metadata' in SchemaURI:
             if len(uriparse) > 1:
                 frag = uriparse[1]
@@ -302,15 +346,16 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
                     traverseLogger.error('Could not find item in $metadata {}'.format(frag))
                     return False, None, None
             else:
-                return True, soup, "local" + SchemaLocation + '/' + Alias
+                return True, soup, "local" + SchemaLocation + '/' + pout
         if FoundAlias in Alias:
-            return True, soup, "local" + SchemaLocation + '/' + Alias
+            return True, soup, "local" + SchemaLocation + '/' + pout
     except FileNotFoundError as ex:
+        # if we're looking for $metadata locally... ditch looking for it, go straight to file
         if '/redfish/v1/$metadata' in SchemaURI:
-            return getSchemaDetailsLocal(SchemaAlias, SchemaAlias + SchemaSuffix)
+            return getSchemaDetailsLocal(SchemaAlias, pout)
         else:
             traverseLogger.error(
-                "File not found in {} for {}: ".format(SchemaLocation, Alias))
+                "File not found in {} for {}: ".format(SchemaLocation, pout))
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
     return False, None, None
@@ -444,7 +489,6 @@ class ResourceObj:
             if expectedSchema is None:
                 traverseLogger.error(
                     str(self.uri) + ':  Json does not contain @odata.context',)
-                return
         else:
             self.context = expectedSchema
 
@@ -504,16 +548,17 @@ class ResourceObj:
 
 
 class PropItem:
-    def __init__(self, soup, refs, name, tagType, topVersion):
+    def __init__(self, soup, refs, propOwner, propChild, tagType, topVersion):
         try:
-            self.name = name
+            self.name = propOwner + ':' + propChild
+            self.propOwner, self.propChild = propOwner, propChild
             self.propDict = getPropertyDetails(
-                soup, refs, name, tagType, topVersion)
+                soup, refs, propOwner, propChild, tagType, topVersion)
             self.attr = self.propDict['attrs']
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
             traverseLogger.error(
-                '%s:  Could not get details on this property' % name)
+                    '{}:{} :  Could not get details on this property'.format(str(propOwner),str(propChild)))
             self.propDict = None
             return
         pass
@@ -592,6 +637,10 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
         'annotation', attrs={'term': 'OData.AdditionalProperties'})
     if additionalElement is not None:
         additional = additionalElement.get('bool', False)
+        if additional in ['false', 'False', False]:
+            additional = False
+        if additional in ['true', 'True']:
+            additional = True
     else:
         additional = False
 
@@ -599,18 +648,17 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
         traverseLogger.debug(innerelement['name'])
         traverseLogger.debug(innerelement.get('type'))
         traverseLogger.debug(innerelement.attrs)
+        newPropOwner = SchemaAlias if SchemaAlias is not None else 'SomeSchema'
         newProp = innerelement['name']
         traverseLogger.debug("ADDING :::: %s", newProp)
-        if SchemaAlias:
-            newProp = SchemaAlias + ':' + newProp
         if newProp not in PropertyList:
             PropertyList.append(
-                PropItem(soup, refs, newProp, tagType=tagType, topVersion=topVersion))
+                PropItem(soup, refs, newPropOwner, newProp, tagType=tagType, topVersion=topVersion))
 
     return additional, PropertyList
 
 
-def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersion=None):
+def getPropertyDetails(soup, refs, propOwner, propChild, tagType='entitytype', topVersion=None):
     """
     Get dictionary of tag attributes for properties given, including basetypes.
 
@@ -621,11 +669,9 @@ def getPropertyDetails(soup, refs, PropertyItem, tagType='entitytype', topVersio
 
     propEntry = dict()
 
-    propOwner, propChild = PropertyItem.split(
-        ':')[0].replace('#', ''), PropertyItem.split(':')[-1]
     SchemaNamespace, SchemaType = getNamespace(propOwner), getType(propOwner)
     traverseLogger.debug('___')
-    traverseLogger.debug('%s, %s', SchemaNamespace, PropertyItem)
+    traverseLogger.debug('{}, {}:{}'.format(SchemaNamespace, propOwner, propChild))
 
     propSchema = soup.find('schema', attrs={'namespace': SchemaNamespace})
     if propSchema is None:
@@ -862,6 +908,6 @@ def getAnnotations(soup, refs, decoded, prefix=''):
                 realItem = realType + '.' + fullItem.split('.', 1)[1]
                 tagtype = 'term'
             additionalProps.append(
-                PropItem(annotationSoup, annotationRefs, realItem + ':' + key, tagtype, None))
+                PropItem(annotationSoup, annotationRefs, realItem, key, tagtype, None))
 
     return True, additionalProps
