@@ -33,9 +33,11 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 traverseLogger.addHandler(ch)
 config = configparser.ConfigParser()
-config['DEFAULT'] = {'LogPath': './logs', 'SchemaSuffix': '_v1.xml', 'timeout': 30, 'AuthType': 'Basic', 'CertificateBundle': ""}
+config['DEFAULT'] = {'LogPath': './logs', 'SchemaSuffix': '_v1.xml', 'timeout': 30, 'AuthType': 'Basic', 'CertificateBundle': "",
+                        'HttpProxy': "", 'HttpsProxy': ""}
 config['internal'] = {'configSet': '0'}
 commonHeader = {'OData-Version': '4.0'}
+proxies = {}
 SchemaSuffix = UseSSL = ConfigURI = User = Passwd = SysDescription = SchemaLocation = \
         ChkCertBundle = ChkCert = LocalOnly = AuthType = ServiceOnly = timeout = LogPath = None
 
@@ -77,6 +79,10 @@ def setConfigNamespace(args):
     LocalOnly = args.localonly
     ServiceOnly = args.service
     SchemaSuffix = args.suffix
+    httpprox = args.http_proxy
+    httpsprox = args.https_proxy
+    proxies['http'] = httpprox
+    proxies['https'] = httpsprox
 
     versionCheck(bs4.__version__, expectedVersion)
 
@@ -86,7 +92,7 @@ def setConfigNamespace(args):
 
     if AuthType == 'Session':
         certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
-        success = currentSession.startSession(User, Passwd, ConfigURI, certVal)
+        success = currentSession.startSession(User, Passwd, ConfigURI, certVal, proxies)
         if not success:
             raise RuntimeError("Session could not start")
 
@@ -124,6 +130,10 @@ def setConfig(filename):
     timeout = config.getint('Options', 'timeout')
     LocalOnly = config.getboolean('Options', 'LocalOnlyMode')
     ServiceOnly = config.getboolean('Options', 'ServiceMode')
+    httpprox = config.get('Options', 'HttpProxy')
+    httpsprox = config.get('Options', 'HttpsProxy')
+    proxies['http'] = httpprox if httpprox != "" else None
+    proxies['https'] = httpsprox if httpsprox != "" else None
 
     versionCheck(bs4.__version__, expectedVersion)
 
@@ -133,7 +143,7 @@ def setConfig(filename):
 
     if AuthType == 'Session':
         certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
-        success = currentSession.startSession(User, Passwd, ConfigURI, certVal)
+        success = currentSession.startSession(User, Passwd, ConfigURI, certVal, proxies)
         if not success:
             raise RuntimeError("Session could not start")
 
@@ -205,7 +215,7 @@ def callResourceURI(URILink):
     traverseLogger.debug('callingResourceURI: %s', URILink)
     try:
         response = requests.get(ConfigURI + URILink if not nonService else URILink,
-                                headers=headers, auth=auth, verify=certVal, timeout=timeout)
+                                headers=headers, auth=auth, verify=certVal, timeout=timeout, proxies=proxies)
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
         statusCode = response.status_code

@@ -691,8 +691,8 @@ def main(argv):
     argget.add_argument('--service', action='store_true', help='only use uris within the service')
     argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
     argget.add_argument('--ca_bundle', default="", type=str, help='path to Certificate Authority bundle file or directory')
-    argget.add_argument('--http-proxy', help='URL for the HTTP proxy')
-    argget.add_argument('--https-proxy', help='URL for the HTTPS proxy')
+    argget.add_argument('--http_proxy', type=str, default=None, help='URL for the HTTP proxy')
+    argget.add_argument('--https_proxy', type=str, default=None, help='URL for the HTTPS proxy')
 
     args = argget.parse_args()
 

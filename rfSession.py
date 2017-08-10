@@ -35,12 +35,14 @@ class rfSession:
         self.timeout, self.tick = 0, 0
         self.started, self.chkCert = False, False
 
-    def startSession(self, user, password, server, chkCert=True):
+    def startSession(self, user, password, server, chkCert=True, proxies=None):
         payload = {
                 "UserName": user,
                 "Password": password
         }
-        sr = requests.get(server + '/redfish/v1/', verify=chkCert, headers=commonHeader)
+        if proxies is None:
+            proxies = {}
+        sr = requests.get(server + '/redfish/v1/', verify=chkCert, headers=commonHeader, proxies=proxies)
         success = sr.status_code in [200, 204] and sr.json() is not None
         if not success:
             sessionLogger.error("Could not retrieve serviceroot to start Session")
@@ -57,7 +59,7 @@ class rfSession:
             sessionLogger.error("Could not retrieve serviceroot.links to start Session")
             return False
 
-        response = requests.post(server + sessionsURI, json=payload, verify=chkCert, headers=commonHeader)
+        response = requests.post(server + sessionsURI, json=payload, verify=chkCert, headers=commonHeader, proxies=proxies)
         statusCode = response.status_code
         ourSessionKey = response.headers.get("X-Auth-Token")
         ourSessionLocation = response.headers.get("Location", "/None")
@@ -67,6 +69,7 @@ class rfSession:
         self.key, self.loc = ourSessionKey, ourSessionLocation
         self.timeout, self.tick = timedelta(minutes=30), datetime.now()
         self.started, self.chkCert = success, chkCert
+        self.proxies = proxies
 
         if success:
             sessionLogger.info("Session successfully started")
@@ -91,6 +94,6 @@ class rfSession:
         if self.started and not self.isSessionOld():
             headers = {"X-Auth-Token": self.getSessionKey()}
             headers.update(commonHeader)
-            response = requests.delete(str(self.server) + str(self.loc), verify=self.chkCert, headers=headers)
+            response = requests.delete(str(self.server) + str(self.loc), verify=self.chkCert, headers=headers, proxies=self.proxies)
         self.started = False
         return True
