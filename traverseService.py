@@ -18,7 +18,7 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 
 traverseLogger = logging.getLogger(__name__)
-traverseLogger.setLevel(logging.DEBUG)  # Printout FORMAT
+traverseLogger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 traverseLogger.addHandler(ch)  # Printout FORMAT, consider allowing debug to be piped here
@@ -64,7 +64,7 @@ def setConfigNamespace(args):
     if ChkCertBundle not in [None, ""] and ChkCert:
         if not os.path.isfile(ChkCertBundle):
             ChkCertBundle = None
-            traverseLogger.error('ChkCertBundle is not found, defaulting to None')  # Printout FORMAT
+            traverseLogger.error('ChkCertBundle is not found, defaulting to None')
     else:
         ChkCertBundle = None
     LogPath = args.logdir
@@ -80,7 +80,7 @@ def setConfigNamespace(args):
 
     if AuthType not in ['None', 'Basic', 'Session']:
         AuthType = 'Basic'
-        traverseLogger.error('AuthType invalid, defaulting to Basic')  # Printout FORMAT
+        traverseLogger.error('AuthType invalid, defaulting to Basic') 
 
     if AuthType == 'Session':
         certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
@@ -89,7 +89,6 @@ def setConfigNamespace(args):
             raise RuntimeError("Session could not start")
 
     config['internal']['configSet'] = '1'
-    input(config['internal'])
 
 
 def setConfig(filename):
@@ -159,9 +158,6 @@ def isNonService(uri):
 
 @lru_cache(maxsize=64)
 def callResourceURI(URILink):
-    # critical code, gets URI
-    # debug: where are we going, is it on the service, is it blocked, what auth, 
-    # error: we should know if a something was ungettable, but should this be in this function?  Also if its not json/xml, and GENERAL requests errors
     """
     Makes a call to a given URI or URL
 
@@ -172,30 +168,34 @@ def callResourceURI(URILink):
     # rs-assertion: handle redirects?  and target permissions
     # rs-assertion: require no auth for serviceroot calls
     if URILink is None:
+        traverseLogger.debug("This URI is empty!")
         return False, None, -1, 0
     nonService = isNonService(URILink)
     statusCode = ''
     elapsed = 0
+
+    # determine if we need to Auth...
     if not nonService:
-        # feel free to make this into a regex
         noauthchk = \
             ('/redfish' in URILink and '/redfish/v1' not in URILink) or\
             URILink in ['/redfish/v1', '/redfish/v1/', '/redfish/v1/odata', 'redfish/v1/odata/'] or\
             '/redfish/v1/$metadata' in URILink
         if noauthchk:
-            traverseLogger.debug('dont chkauth')  # Printout FORMAT
+            traverseLogger.debug('dont chkauth')
             auth = None
         else:
             auth = (User, Passwd)
 
     if nonService and ServiceOnly:
-        traverseLogger.debug('Disallowed out of service URI')  # Printout FORMAT
+        traverseLogger.debug('Disallowed out of service URI')
         return False, None, -1, 0
 
     # rs-assertion: do not send auth over http
+    # remove UseSSL if necessary if you require unsecure auth
     if not UseSSL or nonService or AuthType != 'Basic':
         auth = None
 
+    # only send token when we're required to chkauth, during a Session, and on Service and Secure
     if UseSSL and not nonService and AuthType == 'Session' and not noauthchk:
         headers = {"X-Auth-Token": currentSession.getSessionKey()}
         headers.update(commonHeader)
@@ -205,19 +205,19 @@ def callResourceURI(URILink):
     certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
 
     # rs-assertion: must have application/json or application/xml
-    traverseLogger.debug('callingResourceURI: %s', URILink)  # Printout FORMAT
+    traverseLogger.debug('callingResourceURI with authtype {} and ssl {}: {}'.format(AuthType, UseSSL, URILink)) 
     try:
         response = requests.get(ConfigURI + URILink if not nonService else URILink,
                                 headers=headers, auth=auth, verify=certVal, timeout=timeout, proxies=proxies)
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
         statusCode = response.status_code
-        traverseLogger.debug('%s, %s, %s,\nTIME ELAPSED: %s', statusCode,  # Printout FORMAT
-                             expCode, response.headers, elapsed)
+        traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode,
+                             expCode, response.headers, elapsed))
         if statusCode in expCode:
             contenttype = response.headers.get('content-type')
             if contenttype is not None and 'application/json' in contenttype:
-                traverseLogger.debug("This is a JSON response")  # Printout FORMAT
+                traverseLogger.debug("This is a JSON response")
                 decoded = response.json(object_pairs_hook=OrderedDict)
                 # navigate fragment
                 if '#' in URILink:
@@ -230,21 +230,31 @@ def callResourceURI(URILink):
                             decoded = decoded[int(item)] if int(
                                 item) < len(decoded) else None
                     if not isinstance(decoded, dict):
-                        traverseLogger.warn(  # Printout FORMAT
-                            URILink + " decoded object no longer a dictionary")
+                        traverseLogger.warn(
+                            "Decoded object no longer a dictionary {}".format(URILink))
             elif contenttype is not None and 'application/xml' in contenttype:
                 decoded = response.text
             else:
-                traverseLogger.error(  # Printout FORMAT
+                traverseLogger.error(
                         "This URI did NOT return XML or Json, this is not a Redfish resource (is this redirected?): {}".format(URILink))
                 return False, response.text, statusCode, elapsed
             return decoded is not None, decoded, statusCode, elapsed
+
+    except requests.exceptions.ConnectionError as e:
+        traverseLogger.error("ConnectionError on {}".format(URILink))
+    except requests.exceptions.Timeout as e:
+        traverseLogger.error("Request has timed out ({}s) on resource {}".format(timeout, URILink))
+    except requests.exceptions.RequestException as e:
+        traverseLogger.error("Request has encounted a problem when getting resource {}".format(URILink))
+        traverseLogger.warn("output: ", exc_info=True)
     except Exception as ex:
-        traverseLogger.exception("Something went wrong")  # Printout FORMAT
+        traverseLogger.error("A problem when getting resource has occurred {}".format(URILink))
+        traverseLogger.warn("output: ", exc_info=True)
+
     return False, None, statusCode, elapsed
 
 
-# note: Use some sort of re expression to parse SchemaAlias
+# note: Use some sort of re expression to parse SchemaType
 # ex: #Power.1.1.1.Power , #Power.v1_0_0.Power
 def getNamespace(string):
     return string.replace('#', '').rsplit('.', 1)[0]
@@ -255,14 +265,7 @@ def getType(string):
 
 
 @lru_cache(maxsize=64)
-def getSchemaDetails(SchemaAlias, SchemaURI):
-    # a big mess of misinformation: intention is to find a schema xml and return its soup, local or service or online
-    #   however, does not warn adequately what its doing or why, such as references and the like, fragment usage or type usage
-    #   change: add a setting for specifically adding metadata, or have a glob so we can personally find it in a directory
-    #   info: a lot of under the hood, should not deliberate unless its necessary to know (fallbacks, service denial, $metadata usage)
-    #   warn: conflate above with a warn label instead of info
-    #   debug: what is under the hood, knowing when we get a schema, the name and destination, fragment + type
-    #   error: we couldn't find what we were looking for at ALL, however this always happens in finding local fallback
+def getSchemaDetails(SchemaType, SchemaURI):
     """
     Find Schema file for given Namespace.
 
@@ -270,80 +273,90 @@ def getSchemaDetails(SchemaAlias, SchemaURI):
     param SchemaURI: uri to grab schema, given LocalOnly is False
     return: (success boolean, a Soup object)
     """
-    if SchemaAlias is None:
+    traverseLogger.debug('getting Schema of {} {}'.format(SchemaType, SchemaURI))
+
+    if SchemaType is None:
         return False, None, None
 
-    # rs-assertion: parse frags
     if SchemaURI is not None and not LocalOnly:
         # Get our expected Schema file here
-        frag = None
-        if '#' in SchemaURI:
-            SchemaURI, frag = tuple(SchemaURI.rsplit('#', 1))
-        success, data, status, elapsed = callResourceURI(SchemaURI)
         # if success, generate Soup, then check for frags to parse
         #   start by parsing references, then check for the refLink
+        if '#' in SchemaURI:
+            SchemaURI, frag = tuple(SchemaURI.rsplit('#', 1))
+        else:
+            frag = None
+        success, data, status, elapsed = callResourceURI(SchemaURI)
         if success:
-            soup = BeautifulSoup(data, "html.parser")
-            # if frag, look inside xml for real target
+            soup = BeautifulSoup(data, "xml")
+            # if frag, look inside xml for real target as a reference
             if frag is not None:
-                # prefer type over frag
-                frag = getNamespace(SchemaAlias)
-                frag = frag.split('.', 1)[0]
+                # prefer type over frag, truncated down
                 # using frag, check references
+                frag = getNamespace(SchemaType)
+                frag = frag.split('.', 1)[0]
                 refType, refLink = getReferenceDetails(
-                    soup).get(frag, (None, None))
+                    soup, name=SchemaURI).get(frag, (None, None))
                 if refLink is not None:
                     success, linksoup, newlink = getSchemaDetails(refType, refLink)
                     if success:
                         return True, linksoup, newlink
                     else:
-                        traverseLogger.error(  # Printout FORMAT
-                            "SchemaURI couldn't call reference link: {} {}".format(SchemaURI, frag))
+                        traverseLogger.error(
+                            "SchemaURI couldn't call reference link {} inside {}".format(frag, SchemaURI))
                 else:
-                    traverseLogger.error(  # Printout FORMAT
-                        "SchemaURI missing reference link: {} {}".format(SchemaURI, frag))
+                    traverseLogger.error(
+                        "SchemaURI missing reference link {} inside {}".format(frag, SchemaURI))
             else:
                 return True, soup, SchemaURI
         if isNonService(SchemaURI) and ServiceOnly:
-            traverseLogger.info("Nonservice URI skipped " + SchemaURI)  # Printout FORMAT
+            traverseLogger.info("Nonservice URI skipped: {}".format(SchemaURI))
         else:
-            traverseLogger.debug("SchemaURI unsuccessful: %s", SchemaURI)  # Printout FORMAT
-    return getSchemaDetailsLocal(SchemaAlias, SchemaURI)
+            traverseLogger.debug("SchemaURI called unsuccessfully: {}".format(SchemaURI))
+    if LocalOnly:
+        traverseLogger.debug("This program is currently LOCAL ONLY")
+    if not LocalOnly:
+        traverseLogger.warn("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
+    return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
 
-def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
+def getSchemaDetailsLocal(SchemaType, SchemaURI):
     # Use local if no URI or LocalOnly
     # What are we looking for?  Parse from URI
-    xml = None
     # if we're not able to use URI to get suffix, work with option fallback
+    Alias = getNamespace(SchemaType).split('.')[0]
     if SchemaURI is not None:
         uriparse = SchemaURI.split('/')[-1].split('#')
         xml = uriparse[0]
     else:
-        return getSchemaDetailsLocal(SchemaAlias, SchemaAlias + SchemaSuffix)
-    Alias = getNamespace(SchemaAlias)
-    traverseLogger.debug((SchemaAlias, SchemaURI, SchemaLocation + '/' + xml))  # Printout FORM
+        traverseLogger.warn("SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
+        return getSchemaDetailsLocal(SchemaType, SchemaType + SchemaSuffix)
+    traverseLogger.debug((SchemaType, SchemaURI, SchemaLocation + '/' + xml))
+    pout = Alias + SchemaSuffix if xml is None else xml
     try:
+        # get file
         filehandle = open(SchemaLocation + '/' + xml, "r")
-        filedata = filehandle.read()
+        data = filehandle.read()
         filehandle.close()
-        soup = BeautifulSoup(filedata, "html.parser")
-        edmxTag = soup.find('edmx:edmx', recursive=False)  # BS4 line
-        parentTag = edmxTag.find('edmx:dataservices', recursive=False)  # BS4 line
-        child = parentTag.find('schema', recursive=False)  # BS4 line
-        SchemaNamespace = child['namespace']
+        # get tags
+        soup = BeautifulSoup(data, "xml")
+        edmxTag = soup.find('edmx:Edmx', recursive=False)
+        parentTag = edmxTag.find('edmx:DataServices', recursive=False)
+        child = parentTag.find('Schema', recursive=False)
+        SchemaNamespace = child['Namespace']
         FoundAlias = SchemaNamespace.split(".")[0]
         traverseLogger.debug(FoundAlias)
-        pout = SchemaAlias + SchemaSuffix if xml is None else xml
         if '/redfish/v1/$metadata' in SchemaURI:
             if len(uriparse) > 1:
-                frag = uriparse[1]
+                frag = getNamespace(SchemaType)
+                frag = frag.split('.', 1)[0]
                 refType, refLink = getReferenceDetails(
-                    soup).get(getNamespace(frag), (None, None))
+                    soup, name=SchemaLocation+'/'+pout).get(frag, (None, None))
                 if refLink is not None:
-                    return getSchemaDetailsLocal(refType, refLink)
+                    traverseLogger.debug('Entering {} inside {}, pulled from $metadata'.format(refType, refLink))
+                    return getSchemaDetails(refType, refLink)
                 else:
-                    traverseLogger.error('Could not find item in $metadata {}'.format(frag))  # Printout FORMAT
+                    traverseLogger.error('Could not find item in $metadata {}'.format(frag))
                     return False, None, None
             else:
                 return True, soup, "local" + SchemaLocation + '/' + pout
@@ -351,24 +364,22 @@ def getSchemaDetailsLocal(SchemaAlias, SchemaURI):
             return True, soup, "local" + SchemaLocation + '/' + pout
     except FileNotFoundError as ex:
         # if we're looking for $metadata locally... ditch looking for it, go straight to file
-        if '/redfish/v1/$metadata' in SchemaURI:
-            return getSchemaDetailsLocal(SchemaAlias, pout)
+        if '/redfish/v1/$metadata' in SchemaURI and Alias != '$metadata':
+            traverseLogger.error("Unable to find a harddrive stored $metadata at {}, defaulting to {}".format(SchemaLocation, Alias + SchemaSuffix))
+            return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix)
         else:
-            traverseLogger.error(  # Printout FORMAT
+            traverseLogger.error(
                 "File not found in {} for {}: ".format(SchemaLocation, pout))
+            if Alias == '$metadata':
+                traverseLogger.error(
+                    "If $metadata cannot be found, Annotations may be unverifiable")
     except Exception as ex:
-        traverseLogger.exception("Something went wrong")  # Printout FORMAT
+        traverseLogger.error("A problem when getting a local schema has occurred {}".format(SchemaURI))
+        traverseLogger.warn("output: ", exc_info=True)
     return False, None, None
 
 
-def getReferenceDetails(soup, metadata_dict=None):
-    # One of several info spitting functions, information here is critical for later functionality
-    #   intended to generate references with a given xml and previously calculated metadata dict
-    #   prone to a LOT of early issues if whatever this function is used on IS NOT correct
-    #   info: Tell us: what references did we generate when this was called, maybe have a name associated
-    #   debug: what total references did we get from this soup: problem is this function is called a LOT, cannot be cached reliably?
-    #   warn: it'd be best to have all refs on service if able
-    #   error: we must have all refs on service if able, or malformed references (this should not happen if we can verify xml before using it)
+def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     """
     Create a reference dictionary from a soup file
 
@@ -377,41 +388,38 @@ def getReferenceDetails(soup, metadata_dict=None):
     return: dictionary
     """
     refDict = {}
-    maintag = soup.find('edmx:edmx', recursive=False)  # BS4 line
-    refs = maintag.find_all('edmx:reference', recursive=False)  # BS4 line
-    for ref in refs:
-        includes = ref.find_all('edmx:include', recursive=False)  # BS4 line
-        for item in includes:
-            if item.get('namespace') is None or ref.get('uri') is None:
-                traverseLogger.error("Reference incorrect for: ", item)  # Printout FORMAT
-                continue
-            traverseLogger.debug("Reference {} as {}, {}".format(  # Printout FORMAT
-                item.get('namespace'), item.get('alias', 'itself'), ref.get('uri')))
-            if item.get('alias') is not None:
-                refDict[item['alias']] = (item['namespace'], ref['uri'])
-            else:
-                refDict[item['namespace']] = (item['namespace'], ref['uri'])
-                refDict[item['namespace'].split('.')[0]] = (
-                    item['namespace'], ref['uri'])
 
+    maintag = soup.find("edmx:Edmx", recursive=False)
+    refs = maintag.find_all('edmx:Reference', recursive=False)
+    for ref in refs:
+        includes = ref.find_all('edmx:Include', recursive=False)
+        for item in includes:
+            if item.get('Namespace') is None or ref.get('Uri') is None:
+                traverseLogger.error("Reference incorrect for: {}".format(item))
+                continue
+            if item.get('Alias') is not None:
+                refDict[item['Alias']] = (item['Namespace'], ref['Uri'])
+            else:
+                refDict[item['Namespace']] = (item['Namespace'], ref['Uri'])
+
+    cntref = len(refDict)
     if metadata_dict is not None:
         refDict.update(metadata_dict)
         if len(refDict.keys()) > len(metadata_dict.keys()):
-            propSchema = soup.find('schema')  # BS4 line
-            nameOfSchema = propSchema.get('namespace', '?')
             diff_keys = [key for key in refDict if key not in metadata_dict]
-            traverseLogger.log(  # Printout FORMAT
+            traverseLogger.log(
                     logging.ERROR if ServiceOnly else logging.WARN,
-                    "Reference in a Schema containing {} not in metadata, this may not be compatible with ServiceMode".format(nameOfSchema))
-            traverseLogger.log(  # Printout FORMAT
+                    "Reference in a Schema {} not in metadata, this may not be compatible with ServiceMode".format(name))
+            traverseLogger.log(
                     logging.ERROR if ServiceOnly else logging.WARN,
                     "References missing in metadata: {}".format(str(diff_keys)))
+    traverseLogger.debug(str(refDict))
+    traverseLogger.debug("References generated from {}: {}".format(name, cntref))
     return refDict
 
 
-def getParentType(soup, refs, currentType, tagType='entitytype'):
+def getParentType(soup, refs, currentType, tagType='EntityType'):
     # overhauling needed: deprecated function that should be realigned with the current type function
-    # info: none, works under the covers
     # debug: what are we working towards?  did we get it?  it's fine if we didn't
     # error: none, should lend that to whatever calls it
     """
@@ -420,23 +428,23 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
     param arg1: soup
     param arg2: refs
     param arg3: current type
-    param tagType: the type of tag for inheritance, default 'entitytype'
+    param tagType: the type of tag for inheritance, default 'EntityType'
     return: success, associated soup, associated ref, new type
     """
     pnamespace, ptype = getNamespace(currentType), getType(currentType)
 
     propSchema = soup.find(  # BS4 line
-        'schema', attrs={'namespace': pnamespace})
+        'Schema', attrs={'Namespace': pnamespace})
 
     if propSchema is None:
         return False, None, None, None
 
-    propEntity = propSchema.find(tagType, attrs={'name': ptype}, recursive=False)  # BS4 line
+    propEntity = propSchema.find(tagType, attrs={'Name': ptype}, recursive=False)  # BS4 line
 
     if propEntity is None:
         return False, None, None, None
 
-    currentType = propEntity.get('basetype')
+    currentType = propEntity.get('BaseType')
 
     if currentType is None:
         return False, None, None, None
@@ -444,16 +452,16 @@ def getParentType(soup, refs, currentType, tagType='entitytype'):
     currentType = currentType.replace('#', '')
     SchemaNamespace, SchemaType = getNamespace(
         currentType), getType(currentType)
-    propSchema = soup.find('schema', attrs={'namespace': SchemaNamespace})  # BS4 line
+    propSchema = soup.find('Schema', attrs={'Namespace': SchemaNamespace})  # BS4 line
 
     if propSchema is None:
         success, innerSoup, uri = getSchemaDetails(
             *refs.get(SchemaNamespace, (None, None)))
         if not success:
             return False, None, None, None
-        innerRefs = getReferenceDetails(innerSoup, refs)
+        innerRefs = getReferenceDetails(innerSoup, refs, )
         propSchema = innerSoup.find(  # BS4 line
-            'schema', attrs={'namespace': SchemaNamespace})
+            'Schema', attrs={'Namespace': SchemaNamespace})
         if propSchema is None:
             return False, None, None, None
     else:
@@ -475,10 +483,10 @@ class ResourceObj:
         # Check if we provide a json
         if expectedJson is None:
             success, self.jsondata, status, self.rtime = callResourceURI(self.uri)
-            traverseLogger.debug('%s, %s, %s', success, self.jsondata, status)  # Printout FORMAT
+            traverseLogger.debug('{}, {}, {}'.format(success, self.jsondata, status))
             if not success:
-                traverseLogger.error(  # Printout FORMAT
-                    '%s:  URI could not be acquired: %s' % (self.uri, status))
+                traverseLogger.error(
+                    '{}:  URI could not be acquired: {}'.format(self.uri, status))
                 return
         else:
             self.jsondata = expectedJson
@@ -514,14 +522,14 @@ class ResourceObj:
         if fullType is expectedType:
             typelist = list()
             schlist = list()
-            for schema in typesoup.find_all('schema'):  # BS4 line
-                newNamespace = schema.get('namespace')
+            for schema in typesoup.find_all('Schema'):  # BS4 line
+                newNamespace = schema.get('Namespace')
                 typelist.append(newNamespace)
                 schlist.append(schema)
             for item, schema in reversed(sorted(zip(typelist, schlist))):
                 traverseLogger.debug(  # Printout FORMAT
                     item + ' ' + str('') + ' ' + getType(fullType))
-                if schema.find('entitytype', attrs={'name': getType(fullType)}, recursive=False):  # BS4 line
+                if schema.find('EntityType', attrs={'Name': getType(fullType)}, recursive=False):  # BS4 line
                     fullType = item + '.' + getType(fullType)
                     break
             traverseLogger.warn(  # Printout FORMAT
@@ -535,7 +543,7 @@ class ResourceObj:
         successService, serviceSchemaSoup, SchemaServiceURI = getSchemaDetails(
             '$metadata', '/redfish/v1/$metadata')
         if successService:
-            serviceRefs = getReferenceDetails(serviceSchemaSoup)
+            serviceRefs = getReferenceDetails(serviceSchemaSoup, name=SchemaServiceURI)
             successService, additionalProps = getAnnotations(
                 serviceSchemaSoup, serviceRefs, self.jsondata)
             for prop in additionalProps:
@@ -547,7 +555,7 @@ class ResourceObj:
         else:
             typerefs = getReferenceDetails(typesoup, serviceRefs)
             self.typeobj = PropType(
-                fullType, typesoup, typerefs, 'entitytype', topVersion=getNamespace(fullType))
+                fullType, typesoup, typerefs, 'EntityType', topVersion=getNamespace(fullType))
             ResourceObj.robjcache[idtag] = self.typeobj
 
         self.links = OrderedDict()
@@ -618,7 +626,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     # error: if we're missing something, otherwise should be find getting all properties and letting them handle their own generation.
     #   if something can't be genned, let that particular property (PropItem) handle itself, no catches
     """
-    Gets list of surface level properties for a given SchemaAlias,
+    Gets list of surface level properties for a given SchemaType,
     """
     PropertyList = list()
     additional = False
@@ -626,28 +634,28 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     SchemaNamespace, SchemaType = getNamespace(
         SchemaAlias), getType(SchemaAlias)
 
-    traverseLogger.debug("Schema is %s, %s, %s", SchemaAlias,  # Printout FORMAT
+    traverseLogger.debug("Schema is %s, %s, %s", SchemaType,  # Printout FORMAT
                          SchemaType, SchemaNamespace)
 
-    innerschema = soup.find('schema', attrs={'namespace': SchemaNamespace})  # BS4 line
+    innerschema = soup.find('Schema', attrs={'Namespace': SchemaNamespace})  # BS4 line
 
     if innerschema is None:
         traverseLogger.error("Got XML, but schema still doesn't exist...? %s, %s" %  # Printout FORMAT
-                             (getNamespace(SchemaAlias), SchemaAlias))
+                             (getNamespace(SchemaType), SchemaType))
         raise Exception('exceptionType: Was not able to get type, is Schema in XML? ' +
-                        str(refs.get(getNamespace(SchemaAlias), (getNamespace(SchemaAlias), None))))
+                        str(refs.get(getNamespace(SchemaType), (getNamespace(SchemaType), None))))
 
-    element = innerschema.find(tagType, attrs={'name': SchemaType}, recursive=False)  # BS4 line
+    element = innerschema.find(tagType, attrs={'Name': SchemaType}, recursive=False)  # BS4 line
     traverseLogger.debug("___")  # Printout FORMAT
-    traverseLogger.debug(element['name'])  # Printout FORMAT
+    traverseLogger.debug(element['Name'])  # Printout FORMAT
     traverseLogger.debug(element.attrs)  # Printout FORMAT
-    traverseLogger.debug(element.get('basetype'))  # Printout FORMAT
+    traverseLogger.debug(element.get('BaseType'))  # Printout FORMAT
 
-    usableProperties = element.find_all(['navigationproperty', 'property'], recursive=False)  # BS4 line
+    usableProperties = element.find_all(['NavigationProperty', 'Property'], recursive=False)  # BS4 line
     additionalElement = element.find(  # BS4 line
-        'annotation', attrs={'term': 'OData.AdditionalProperties'})
+        'Annotation', attrs={'Term': 'OData.AdditionalProperties'})
     if additionalElement is not None:
-        additional = additionalElement.get('bool', False)
+        additional = additionalElement.get('Bool', False)
         if additional in ['false', 'False', False]:
             additional = False
         if additional in ['true', 'True']:
@@ -656,12 +664,12 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
         additional = False
 
     for innerelement in usableProperties:
-        traverseLogger.debug(innerelement['name'])  # Printout FORMAT
-        traverseLogger.debug(innerelement.get('type'))  # Printout FORMAT
+        traverseLogger.debug(innerelement['Name'])  # Printout FORMAT
+        traverseLogger.debug(innerelement.get('Type'))  # Printout FORMAT
         traverseLogger.debug(innerelement.attrs)  # Printout FORMAT
         newPropOwner = SchemaAlias if SchemaAlias is not None else 'SomeSchema'
-        newProp = innerelement['name']
-        traverseLogger.debug("ADDING :::: %s", newProp)  # Printout FORMAT
+        newProp = innerelement['Name']
+        traverseLogger.debug("ADDING :::: {}:{}".format(newPropOwner, newProp))  # Printout FORMAT
         if newProp not in PropertyList:
             PropertyList.append(
                 PropItem(soup, refs, newPropOwner, newProp, tagType=tagType, topVersion=topVersion))
@@ -669,7 +677,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     return additional, PropertyList
 
 
-def getPropertyDetails(soup, refs, propOwner, propChild, tagType='entitytype', topVersion=None):
+def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', topVersion=None):
     # gets an individual property's details, can be prone to problems if info does not exist in soup or is bad
     #   HOWEVER, this will rarely be the case: a property that does not exist in soup would never be expected to generate
     #   info: under the hood, too much info to be worth showing
@@ -689,39 +697,36 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='entitytype', t
     propEntry = dict()
 
     SchemaNamespace, SchemaType = getNamespace(propOwner), getType(propOwner)
-    traverseLogger.debug('___')  # Printout FORMAT
-    traverseLogger.debug('{}, {}:{}'.format(SchemaNamespace, propOwner, propChild))  # Printout FORMAT
+    traverseLogger.debug('___')  
+    traverseLogger.debug('{}, {}:{}, {}'.format(SchemaNamespace, propOwner, propChild, tagType))
 
-    propSchema = soup.find('schema', attrs={'namespace': SchemaNamespace})  # BS4 line
+    propSchema = soup.find('Schema', attrs={'Namespace': SchemaNamespace})
     if propSchema is None:
-        traverseLogger.error(  # Printout FORMAT
-            "getPropertyDetails: Schema could not be acquired,  %s", SchemaNamespace)
+        traverseLogger.error( 
+            "getPropertyDetails: Schema could not be acquired,  {}".format(SchemaNamespace))
         return None
-    else:
-        innerSoup = soup
-        innerRefs = refs
 
     # get type tag and tag of property in type
-    propEntity = propSchema.find(tagType, attrs={'name': SchemaType}, recursive=False)  # BS4 line
-    propTag = propEntity.find(['navigationproperty', 'property'], attrs={'name': propChild}, recursive=False)  # BS4 line
+    propEntity = propSchema.find(tagType, attrs={'Name': SchemaType}, recursive=False)  # BS4 line
+    propTag = propEntity.find(['NavigationProperty', 'Property'], attrs={'Name': propChild}, recursive=False)  # BS4 line
 
     # check if this property is a nav property
     # Checks if this prop is an annotation
     success, typeSoup, typeRefs, propType = getParentType(
-        innerSoup, innerRefs, SchemaType, tagType)
+        soup, refs, SchemaType, tagType)
     if '@' not in propChild:
         propEntry['isTerm'] = False
         # start adding attrs and props together
         propAll = propTag.find_all()  # BS4 line
         for tag in propAll:
-            propEntry[tag['term']] = tag.attrs
-        propType = propTag.get('type')
+            propEntry[tag['Term']] = tag.attrs
+        propType = propTag.get('Type')
     else:
         propEntry['isTerm'] = True
         propTag = propEntity
-        propType = propTag.get('type', propOwner)
+        propType = propTag.get('Type', propOwner)
 
-    propEntry['isNav'] = propTag.name == 'navigationproperty'
+    propEntry['isNav'] = propTag.name == 'NavigationProperty'
     propEntry['attrs'] = propTag.attrs
     traverseLogger.debug(propEntry)  # Printout FORMAT
 
@@ -748,7 +753,7 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='entitytype', t
             success, typeSoup, uri = getSchemaDetails(
                 *refs.get(TypeNamespace, (None, None)))
         else:
-            success, typeSoup = True, innerSoup
+            success, typeSoup = True, soup
 
         if not success:
             traverseLogger.error(  # Printout FORMAT
@@ -758,31 +763,31 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='entitytype', t
         # traverse tags to find the type
         typeRefs = getReferenceDetails(typeSoup, refs)
         typeSchema = typeSoup.find(  # BS4 line
-            'schema', attrs={'namespace': TypeNamespace})
+            'Schema', attrs={'Namespace': TypeNamespace})
         typeTag = typeSchema.find(  # BS4 line
-            ['enumtype', 'complextype', 'entitytype', 'typedefinition'], attrs={'name': TypeSpec}, recursive=False)
-
+            ['EnumType', 'ComplexType', 'EntityType', 'TypeDefinition'], attrs={'Name': TypeSpec}, recursive=False)
+        nameOfTag = typeTag.name if typeTag is not None else 'None'
         # perform more logic for each type
-        if typeTag.name == 'typedefinition':
-            propType = typeTag.get('underlyingtype')
+        if nameOfTag == 'TypeDefinition':
+            propType = typeTag.get('UnderlyingType')
             # This piece of code is rather simple UNLESS this is an "enumeration"
             #   this is a unique deprecated enum, labeled as Edm.String
             isEnum = typeTag.find(  # BS4 line
-                'annotation', attrs={'term': 'Redfish.Enumeration'}, recursive=False)
+                'Annotation', attrs={'Term': 'Redfish.Enumeration'}, recursive=False)
             if propType == 'Edm.String' and isEnum is not None:
                 propEntry['realtype'] = 'deprecatedEnum'
                 propEntry['typeprops'] = list()
                 memberList = isEnum.find(  # BS4 line
-                    'collection').find_all('propertyvalue')  # BS4 line
+                    'Collection').find_all('PropertyValue')  # BS4 line
 
                 for member in memberList:
-                    propEntry['typeprops'].append(member.get('string'))
-                traverseLogger.debug("%s", str(propEntry['typeprops']))  # Printout FORMAT
+                    propEntry['typeprops'].append(member.get('String'))
+                traverseLogger.debug("{}".format(propEntry['typeprops']))  # Printout FORMAT
                 break
             else:
                 continue
 
-        elif typeTag.name == 'complextype':
+        elif nameOfTag == 'ComplexType':
             traverseLogger.debug("go deeper in type")  # Printout FORMAT
             # We need to find the highest existence of this type vs topVersion schema
             # not ideal, but works for this solution
@@ -790,7 +795,7 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='entitytype', t
             if topVersion is not None and topVersion != SchemaNamespace:
                 currentVersion = topVersion
                 currentSchema = baseSoup.find(  # BS4 line
-                    'schema', attrs={'namespace': currentVersion})
+                    'schema', attrs={'Namespace': currentVersion})
                 # Working backwards from topVersion schematag,
                 #   created expectedType, check if currentTypeTag exists
                 #   if it does, use our new expectedType, else continue down parent types
@@ -798,37 +803,37 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='entitytype', t
                 while currentSchema is not None:
                     expectedType = currentVersion + '.' + getType(propType)
                     currentTypeTag = currentSchema.find(  # BS4 line
-                        'complextype', attrs={'name': getType(propType)})
+                        'ComplexType', attrs={'Name': getType(propType)})
                     if currentTypeTag is not None:
                         baseType = expectedType
                         traverseLogger.debug('new type: ' + baseType)  # Printout FORMAT
                         break
                     else:
                         nextEntity = currentSchema.find(  # BS4 line
-                            'entitytype', attrs={'name': SchemaType})
-                        nextType = nextEntity.get('basetype')
+                            'EntityType', attrs={'Name': SchemaType})
+                        nextType = nextEntity.get('BaseType')
                         currentVersion = getNamespace(nextType)
                         currentSchema = baseSoup.find(  # BS4 line
-                            'schema', attrs={'namespace': currentVersion})
+                            'schema', attrs={'Namespace': currentVersion})
                         continue
             propEntry['realtype'] = 'complex'
             propEntry['typeprops'] = PropType(
-                baseType, baseSoup, baseRefs, 'complextype')
+                baseType, baseSoup, baseRefs, 'ComplexType')
             break
 
-        elif typeTag.name == 'enumtype':
+        elif nameOfTag == 'EnumType':
             # If enum, get all members
             propEntry['realtype'] = 'enum'
             propEntry['typeprops'] = list()
-            for MemberName in typeTag.find_all('member'):  # BS4 line
-                propEntry['typeprops'].append(MemberName['name'])
+            for MemberName in typeTag.find_all('Member'):  # BS4 line
+                propEntry['typeprops'].append(MemberName['Name'])
             break
 
-        elif typeTag.name == 'entitytype':
+        elif nameOfTag == 'EntityType':
             # If entity, do nothing special (it's a reference link)
             propEntry['realtype'] = 'entity'
             propEntry['typeprops'] = dict()
-            traverseLogger.debug("typeEntityTag found %s", propTag['name'])  # Printout FORMAT
+            traverseLogger.debug("typeEntityTag found %s", propTag['Name'])  # Printout FORMAT
             break
 
         else:
@@ -882,11 +887,11 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
                         linkList[prefix + str(item) + '.' + getType(propDict['isCollection']) +
                                  '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
                 else:
-                    cType = propDict['attrs'].get('type')
+                    cType = propDict['attrs'].get('Type')
                     cSchema = refDict.get(getNamespace(cType), (None, None))[1]
                     if cSchema is None:
                         cSchema = context
-                    linkList[prefix + str(item) + '.' + getType(propDict['attrs']['name'])] = (
+                    linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
                         insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
     for propx in propList:
         propDict = propx.propDict
@@ -924,16 +929,16 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         traverseLogger.debug('%s, %s, %s, %s, %s', str(  # Printout FORMAT
             success), key, splitKey, decoded[key], realType)
         if success:
-            annotationRefs = getReferenceDetails(annotationSoup, refs)
+            annotationRefs = getReferenceDetails(annotationSoup, refs, uri)
             if isinstance(decoded[key], dict) and decoded[key].get('@odata.type') is not None:
                 payloadType = decoded[key].get('@odata.type').replace('#', '')
                 realType, refLink = annotationRefs.get(getNamespace(payloadType).split('.')[0], (None, None))
                 success, annotationSoup, uri = getSchemaDetails(realType, refLink)
                 realItem = payloadType
-                tagtype = 'complextype'
+                tagtype = 'ComplexType'
             else:
                 realItem = realType + '.' + fullItem.split('.', 1)[1]
-                tagtype = 'term'
+                tagtype = 'Term'
             additionalProps.append(
                 PropItem(annotationSoup, annotationRefs, realItem, key, tagtype, None))
 

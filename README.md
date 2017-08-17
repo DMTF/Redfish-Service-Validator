@@ -9,8 +9,9 @@ The Redfish Service Validator is an open source framework for checking conforman
 
 ## Pre-requisites
 The Redfish Service Validator is based on Python 3 and the client system is required to have the Python framework installed before the tool can be installed and executed on the system. Additionally, the following packages are required to be installed and accessible from the python environment:
-* beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4/4.5.3 (must be <= 4.5.3)
+* beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4
 * requests  - https://github.com/kennethreitz/requests (Documentation is available at http://docs.python-requests.org/)
+* lxml - https://pypi.python.org/pypi/lxml
 
 You may install the prerequisites by running:
 

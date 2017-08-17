@@ -30,12 +30,12 @@ def validateActions(name, val, propTypeObj, payloadType):
     actionsDict = dict()
     while success:
         SchemaNamespace = rst.getNamespace(baseType)
-        innerschema = baseSoup.find('schema', attrs={'namespace': SchemaNamespace})  # BS4 line
-        actions = innerschema.find_all('action')  # BS4 line
+        innerschema = baseSoup.find('Schema', attrs={'Namespace': SchemaNamespace})  # BS4 line
+        actions = innerschema.find_all('Action')  # BS4 line
         for act in actions:
-            keyname = '#%s.%s' % (SchemaNamespace, act['name'])
+            keyname = '#%s.%s' % (SchemaNamespace, act['Name'])
             actionsDict[keyname] = act
-        success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'entitytype')
+        success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'EntityType')
 
     # For each action found, check action dictionary for existence and compliance
     # No action is required unless specified, target is not required unless specified
@@ -48,15 +48,15 @@ def validateActions(name, val, propTypeObj, payloadType):
             if target is not None and isinstance(target, str):
                 actPass = True
             elif target is None:
-                rsvLogger.warn('{}: target for action is missing'.format(k))  # Printout FORMAT
+                rsvLogger.warn('{}: target for action is missing'.format(k))
                 actPass = True
             else:
-                rsvLogger.error('{} : target for action is malformed, expected string got'.format(k, str(type(target))))  # Printout FORMAT
+                rsvLogger.error('{} : target for action is malformed, expected string got'.format(k, str(type(target))))
         else:
             # <Annotation Term="Redfish.Required"/>
             if actionsDict[k].find('annotation', {'term': 'Redfish.Required'}):  # BS4 line
 
-                rsvLogger.error('{}: action not Found, is mandatory'.format(k))  # Printout FORMAT
+                rsvLogger.error('{}: action not Found, is mandatory'.format(k))
             else:
                 actPass = True
                 rsvLogger.warn('{}: action not Found, is not mandatory'.format(k))  # Printout FORMAT
@@ -98,7 +98,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
         if currentType is None:
             currentType = propType
         baseLink = refs.get(rst.getNamespace(propCollectionType if propCollectionType is not None else propType))
-        if soup.find('schema', attrs={'namespace': rst.getNamespace(currentType)}) is not None:  # BS4 line
+        if soup.find('Schema', attrs={'Namespace': rst.getNamespace(currentType)}) is not None:  # BS4 line
 
             success, baseSoup = True, soup
         elif baseLink is not None:
@@ -111,11 +111,11 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
         if currentType is not None and success:
             
             currentType = currentType.replace('#', '')
-            baseRefs = rst.getReferenceDetails(baseSoup, refs)
+            baseRefs = rst.getReferenceDetails(baseSoup, refs, uri)
             allTypes = []
             while currentType not in allTypes and success:
                 allTypes.append(currentType)
-                success, baseSoup, baseRefs, currentType = rst.getParentType(baseSoup, baseRefs, currentType, 'entitytype')
+                success, baseSoup, baseRefs, currentType = rst.getParentType(baseSoup, baseRefs, currentType, 'EntityType')
                 rsvLogger.debug('success: %s %s', success, currentType)  # Printout FORMAT
 
             rsvLogger.debug('%s, %s, %s', propType, propCollectionType, allTypes)  # Printout FORMAT
@@ -191,11 +191,11 @@ def validateDeprecatedEnum(name, val, listEnum):
             for k, v in enumItem.items():
                 paramPass = paramPass and str(v) in listEnum
         if not paramPass:
-            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}".format(str(name), str(listEnum)))  # Printout FORMAT
+            rsvLogger.error("{}: Invalid DeprecatedEnum, expected {}".format(str(name), str(listEnum)))  # Printout FORMAT
     elif isinstance(val, str):
         paramPass = str(val) in listEnum
         if not paramPass:
-            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}".format(str(name), str(listEnum)))  # Printout FORMAT
+            rsvLogger.error("{}: Invalid DeprecatedEnum, expected {}".format(str(name), str(listEnum)))  # Printout FORMAT
     else:
         rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val))))  # Printout FORMAT
     return paramPass
@@ -206,7 +206,7 @@ def validateEnum(name, val, listEnum):
     if paramPass:
         paramPass = val in listEnum
         if not paramPass:
-            rsvLogger.error("{}: Invalid Enum value '{}' found, expected {}".format(str(name), str(listEnum)))  # Printout FORMAT
+            rsvLogger.error("{}: Invalid Enum value '{}' found, expected {}".format(str(name), val, str(listEnum)))  # Printout FORMAT
     else:
         rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val))))  # Printout FORMAT
     return paramPass
@@ -308,7 +308,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     propNotNull = propExists and propValue is not None and propValue is not 'None'
 
     if PropertyItem is None:
-        if propExists:
+        if not propExists:
             rsvLogger.info('\tItem is skipped, no schema')  # Printout FORMAT
             counts['skipNoSchema'] += 1
             return {item: ('-', '-',
@@ -321,7 +321,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
 
     propAttr = PropertyItem['attrs']
 
-    propType = propAttr.get('type')
+    propType = propAttr.get('Type')
     propRealType = PropertyItem.get('realtype')
     rsvLogger.info("\thas Type: %s %s", propType, propRealType)  # Printout FORMAT
 
@@ -362,7 +362,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     # rs-assertion: Check for permission change
     propPermissions = propAttr.get('Odata.Permissions')
     if propPermissions is not None:
-        propPermissionsValue = propPermissions['enummember']
+        propPermissionsValue = propPermissions['EnumMember']
         rsvLogger.info("\tpermission %s", propPermissionsValue)  # Printout FORMAT
 
     autoExpand = PropertyItem.get('OData.AutoExpand', None) is not None or\
@@ -373,9 +373,9 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     validMinAttr = PropertyItem.get('Validation.Minimum')
     validMaxAttr = PropertyItem.get('Validation.Maximum')
 
-    validMin, validMax = int(validMinAttr['int']) if validMinAttr is not None else None, \
-        int(validMaxAttr['int']) if validMaxAttr is not None else None
-    validPattern = validPatternAttr.get('string', '') if validPatternAttr is not None else None
+    validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
+        int(validMaxAttr['Int']) if validMaxAttr is not None else None
+    validPattern = validPatternAttr.get('String', '') if validPatternAttr is not None else None
     paramPass = True
 
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
@@ -615,7 +615,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails(
         '$metadata', '/redfish/v1/$metadata')
     if successService:
-        serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
+        serviceRefs = rst.getReferenceDetails(serviceSchemaSoup, name="$metadata")
         for prop in propResourceObj.additionalList:
             propMessages, propCounts = checkPropertyCompliance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
             messages.update(propMessages)
