@@ -9,8 +9,9 @@ The Redfish Service Validator is an open source framework for checking conforman
 
 ## Pre-requisites
 The Redfish Service Validator is based on Python 3 and the client system is required to have the Python framework installed before the tool can be installed and executed on the system. Additionally, the following packages are required to be installed and accessible from the python environment:
-* beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4/4.5.3 (must be <= 4.5.3)
+* beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4
 * requests  - https://github.com/kennethreitz/requests (Documentation is available at http://docs.python-requests.org/)
+* lxml - https://pypi.python.org/pypi/lxml
 
 You may install the prerequisites by running:
 
@@ -27,6 +28,7 @@ The Redfish Interop Validator is designed to execute as a purely command line in
 Modify the config\config.ini file to enter the system details under below section
 [SystemInformation]
 TargetIP = <<IPv4 address of the system under test>>
+SystemInfo = <<Describes the system>>
 UserName = <<User ID of Administrator on the system>>
 Password = <<Password of the Administrator>>
 AuthType = <<Type of authorization for above credentials (None,Basic,Session)>>
@@ -35,6 +37,7 @@ The Tool has an option to ignore SSL certificate check if certificate is not ins
 [Options]
 UseSSL = <<On / Off>>
 CertificateCheck = <<On / Off>>
+CertificateBundle = 
 
 Other  attributes under the “[Options]” section have schema specific implementations as described below
 LocalOnlyMode - (boolean) Only test properties against Schema placed in the root of MetadataFilePath.
@@ -43,14 +46,22 @@ MetadataFilePath – (string) This attribute points to the location of the DMTF 
 LogPath - (string) Path with which to generate logs in
 Timeout - (integer) Interval of time before timing out
 SchemaSuffix - (string) When searching for local hard drive schema, append this if unable to derive the expected xml from the service's metadata
+HttpProxy - Proxy for http gets (untested)
+HttpsProxy - Proxy for https gets (untested)
 
-Once the above details are updated for the system under test, the Redfish Service Validator can be triggered from a command prompt by typing the below command:
+Additional options are available for cached files and 
+CacheMode = [Off, Prefer, Fallback] -- Options for using a cache, which will allow a user to override or fallback to a file on disk during a resource call on a service
+CacheFilePath = Path to cache directory
+PayloadMode = [Default, Tree, Single, TreeFile, SingleFile] -- Options for the target of validation, allowing to specify a file or specific URI and traversal behavior
+PayloadFilePath = Path to URI/File
 
-python3 RedfishServiceValidator.py -c config/config.ini
+Once the above details are updated for the system under test, the Redfish Service Validator can be triggered from a command prompt by typing the below command, with the option of verbosity:
+
+python3 RedfishServiceValidator.py -c config/config.ini (-v)
 
 Alternatively, all of these options are available through the command line.  A configuration file overrides every option specified in the command line, such that -c should not be specified.  In order to review these options, please run the command:
 
-python3 RedfishServiceValidator.py -h
+python3 RedfishServiceValidator.py -h (-v)
 
 In order to run without a configuration file, the option --ip must be specified.
 
@@ -80,7 +91,7 @@ Additionally, there is a verbose log file that may be referenced to diagnose too
 ## The Test Status
 The test result for each GET operation will be reported as follows:
 * PASS: If the operation is successful and returns a success code (E.g. 200, 204)
-* FAIL: If the operation failed for reasons mentioned in GET and PATCH method execution.
+* FAIL: If the operation failed for reasons mentioned in GET method execution, or some configuration.
 * SKIP: If the property or method being checked is not mandatory is not supported by the service.
 
 ## Limitations
