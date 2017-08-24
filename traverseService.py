@@ -114,7 +114,7 @@ def setConfig(filename, cdict=None):
     proxies['https'] = httpsprox if httpsprox != "" else None
 
     if config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
-        config['cachemode'] = 'Default'
+        config['cachemode'] = 'Off'
         traverseLogger.error('CacheMode or path invalid, defaulting to Off')
 
     AuthType = config['authtype']
@@ -932,11 +932,11 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
                             linkList[prefix + str(item) + '.' + getType(propDict['isCollection']) +
                                      '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
                     else:
-                        cType = propDict['attrs'].get('type')
+                        cType = propDict['attrs'].get('Type')
                         cSchema = refDict.get(getNamespace(cType), (None, None))[1]
                         if cSchema is None:
                             cSchema = context
-                        linkList[prefix + str(item) + '.' + getType(propDict['attrs']['name'])] = (
+                        linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
                             insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
         for propx in propList:
             propDict = propx.propDict
