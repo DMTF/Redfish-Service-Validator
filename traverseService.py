@@ -10,6 +10,8 @@ import requests
 import sys
 import re
 import os
+import glob
+import json
 from collections import OrderedDict
 from functools import lru_cache
 import logging
@@ -22,14 +24,16 @@ traverseLogger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 traverseLogger.addHandler(ch)  # Printout FORMAT, consider allowing debug to be piped here
-config = configparser.ConfigParser()
-config['DEFAULT'] = {'LogPath': './logs', 'SchemaSuffix': '_v1.xml', 'timeout': 30, 'AuthType': 'Basic', 'CertificateBundle': "",
-                        'HttpProxy': "", 'HttpsProxy': ""}
-config['internal'] = {'configSet': '0'}
+argparse2configparser = {
+        'file': 'singlefile', 'single': 'singleuri', 'user': 'username', 'nochkcert': '!certificatecheck', 'ca_bundle': 'certificatebundle',
+        'suffix': 'schemasuffix', 'dir': 'metadatafilepath', 'nossl': '!usessl', 'timeout': 'timeout', 'service': 'servicemode',
+        'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
+        'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype'}
+configpsr = configparser.ConfigParser()
+config = {'logpath': './logs', 'schemasuffix': '_v1.xml', 'timeout': 30, 'authtype': 'basic', 'certificatebundle': "",
+          'httpproxy': "", 'httpsproxy': "", 'configset': '0'}
 commonHeader = {'OData-Version': '4.0'}
-proxies = {}
-SchemaSuffix = UseSSL = ConfigURI = User = Passwd = SysDescription = SchemaLocation = \
-        ChkCertBundle = ChkCert = LocalOnly = AuthType = ServiceOnly = timeout = LogPath = None
+proxies = {'http': None, 'https': None}
 
 currentSession = rfSession()
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -50,100 +54,81 @@ def setConfigNamespace(args):
     """
     Provided a namespace, modify args based on it
     """
-    global SchemaSuffix, UseSSL, ConfigURI, User, Passwd, SysDescription, SchemaLocation,\
-        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType, ChkCertBundle
-    User = args.user
-    Passwd = args.passwd
-    AuthType = args.authtype
-    SysDescription = args.desc
-    SchemaLocation = args.dir
-    timeout = args.timeout
-    UseSSL = not args.nossl
-    ChkCert = not args.nochkcert and UseSSL
-    ChkCertBundle = args.ca_bundle
-    if ChkCertBundle not in [None, ""] and ChkCert:
-        if not os.path.isfile(ChkCertBundle):
-            ChkCertBundle = None
-            traverseLogger.error('ChkCertBundle is not found, defaulting to None')
-    else:
-        ChkCertBundle = None
-    LogPath = args.logdir
-    ConfigURI = ('https' if UseSSL else 'http') + '://' + \
-        args.ip
-    LocalOnly = args.localonly
-    ServiceOnly = args.service
-    SchemaSuffix = args.suffix
-    httpprox = args.http_proxy
-    httpsprox = args.https_proxy
-    proxies['http'] = httpprox
-    proxies['https'] = httpsprox
+    innerconfig = dict()
+    for param in args.__dict__:
+        if param in argparse2configparser:
+            innerconfig[argparse2configparser[param]] = args.__dict__[param]
+    setConfig('', innerconfig) 
 
-    if AuthType not in ['None', 'Basic', 'Session']:
-        AuthType = 'Basic'
-        traverseLogger.error('AuthType invalid, defaulting to Basic') 
-
-    if AuthType == 'Session':
-        certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
-        success = currentSession.startSession(User, Passwd, ConfigURI, certVal, proxies)
-        if not success:
-            raise RuntimeError("Session could not start")
-
-    config['internal']['configSet'] = '1'
-
-
-def setConfig(filename):
+def setConfig(filename, cdict=None):
     """
     Set config based on config file read from location filename
     """
-    global SchemaSuffix, UseSSL, ConfigURI, User, Passwd, SysDescription, SchemaLocation,\
-        ChkCert, LocalOnly, ServiceOnly, timeout, LogPath, AuthType, ChkCertBundle
-    config.read(filename)
-    UseSSL = config.getboolean('Options', 'UseSSL')
+    midconfig = dict()
+    if cdict is None:
+        configpsr.read(filename)
+        for x in configpsr:
+            for y in configpsr[x]:
+                val = configpsr[x][y]
+                midconfig[y] = val
+    else:
+        midconfig.update(cdict)
+    for item in midconfig:
+        val = midconfig.get(item)
+        if val is None:
+            pass
+        elif item == 'timeout':
+            val = int(val)
+        elif str(val).lower() in ['on', 'true', 'yes']:
+            val = True
+        elif str(val).lower() in ['off', 'false', 'no']:
+            val = False
+        if '!' in item:
+            item = item.replace('!', '')
+            val = not val
+        config[item] = val
+    
+    User, Passwd, Ip, ChkCert, UseSSL = config['username'], config['password'], config['targetip'], config['certificatecheck'], config['usessl'] 
+    
+    config['configuri'] = ('https' if UseSSL else 'http') + '://' + Ip
 
-    ConfigURI = ('https' if UseSSL else 'http') + '://' + \
-        config.get('SystemInformation', 'TargetIP')
+    config['certificatecheck'] = ChkCert and UseSSL
 
-    User = config.get('SystemInformation', 'UserName')
-    Passwd = config.get('SystemInformation', 'Password')
-    SysDescription = config.get('SystemInformation', 'SystemInfo')
-    AuthType = config.get('SystemInformation', 'AuthType')
-
-    SchemaLocation = config.get('Options', 'MetadataFilePath')
-    LogPath = config.get('Options', 'LogPath')
-    ChkCert = config.getboolean('Options', 'CertificateCheck') and UseSSL
-    ChkCertBundle = config.get('Options', 'CertificateBundle')
-    if ChkCertBundle not in [None, ""] and ChkCert:
-        if not os.path.isfile(ChkCertBundle):
-            ChkCertBundle = None
+    chkcertbundle = config['certificatebundle']
+    if chkcertbundle not in [None, ""] and config['certificatecheck']:
+        if not os.path.isfile(chkcertbundle):
+            chkcertbundle = None
             traverseLogger.error('ChkCertBundle is not found, defaulting to None')  # Printout FORMAT
     else:
-        ChkCertBundle = None
-    SchemaSuffix = config.get('Options', 'SchemaSuffix')
-    timeout = config.getint('Options', 'timeout')
-    LocalOnly = config.getboolean('Options', 'LocalOnlyMode')
-    ServiceOnly = config.getboolean('Options', 'ServiceMode')
-    httpprox = config.get('Options', 'HttpProxy')
-    httpsprox = config.get('Options', 'HttpsProxy')
+        config['certificatebundle'] = None
+
+    httpprox = config['httpproxy']
+    httpsprox = config['httpsproxy']
     proxies['http'] = httpprox if httpprox != "" else None
     proxies['https'] = httpsprox if httpsprox != "" else None
 
+    AuthType = config['authtype']
     if AuthType not in ['None', 'Basic', 'Session']:
-        AuthType = 'Basic'
+        config['authtype'] = 'Basic'
         traverseLogger.error('AuthType invalid, defaulting to Basic')  # Printout FORMAT
 
     if AuthType == 'Session':
-        certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
-        success = currentSession.startSession(User, Passwd, ConfigURI, certVal, proxies)
+        certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
+        success = currentSession.startSession(User, Passwd, config['configuri'], certVal, proxies)
         if not success:
             raise RuntimeError("Session could not start")
+    if 'description' in config:
+        del config['description']
+    if 'updated' in config:
+        del config['updated']
+    config['configset'] = '1'
 
-    config['internal']['configSet'] = '1'
 
 def isConfigSet():
     """
     Check if the library is configured
     """
-    if config['internal']['configSet'] == '1':
+    if config['configset'] == '1':
         return True
     else:
         raise RuntimeError("Configuration is not set")
@@ -167,6 +152,9 @@ def callResourceURI(URILink):
     # rs-assertions: 6.4.1, including accept, content-type and odata-versions
     # rs-assertion: handle redirects?  and target permissions
     # rs-assertion: require no auth for serviceroot calls
+    ConfigURI, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout = config['configuri'], config['usessl'], config['authtype'], \
+            config['certificatecheck'], config['certificatebundle'], config['timeout']
+
     if URILink is None:
         traverseLogger.debug("This URI is empty!")
         return False, None, -1, 0
@@ -184,9 +172,9 @@ def callResourceURI(URILink):
             traverseLogger.debug('dont chkauth')
             auth = None
         else:
-            auth = (User, Passwd)
+            auth = (config['username'], config['password'])
 
-    if nonService and ServiceOnly:
+    if nonService and config['servicemode']:
         traverseLogger.debug('Disallowed out of service URI')
         return False, None, -1, 0
 
@@ -205,7 +193,8 @@ def callResourceURI(URILink):
     certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
 
     # rs-assertion: must have application/json or application/xml
-    traverseLogger.debug('callingResourceURI with authtype {} and ssl {}: {}'.format(AuthType, UseSSL, URILink)) 
+    traverseLogger.debug('callingResourceURI{}with authtype {} and ssl {}: {}'.format(
+        ' out of service ' if nonService else ' ', AuthType, UseSSL, URILink))
     try:
         response = requests.get(ConfigURI + URILink if not nonService else URILink,
                                 headers=headers, auth=auth, verify=certVal, timeout=timeout, proxies=proxies)
@@ -278,6 +267,8 @@ def getSchemaDetails(SchemaType, SchemaURI):
     if SchemaType is None:
         return False, None, None
 
+    LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
+
     if SchemaURI is not None and not LocalOnly:
         # Get our expected Schema file here
         # if success, generate Soup, then check for frags to parse
@@ -315,7 +306,9 @@ def getSchemaDetails(SchemaType, SchemaURI):
             traverseLogger.debug("SchemaURI called unsuccessfully: {}".format(SchemaURI))
     if LocalOnly:
         traverseLogger.debug("This program is currently LOCAL ONLY")
-    if not LocalOnly:
+    if ServiceOnly:
+        traverseLogger.debug("This program is currently SERVICE ONLY")
+    if not LocalOnly and not ServiceOnly and isNonService(SchemaURI):
         traverseLogger.warn("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
     return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
@@ -325,6 +318,7 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
     # What are we looking for?  Parse from URI
     # if we're not able to use URI to get suffix, work with option fallback
     Alias = getNamespace(SchemaType).split('.')[0]
+    SchemaLocation, SchemaSuffix = config['metadatafilepath'], config['schemasuffix']
     if SchemaURI is not None:
         uriparse = SchemaURI.split('/')[-1].split('#')
         xml = uriparse[0]
@@ -388,6 +382,7 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     return: dictionary
     """
     refDict = {}
+    ServiceOnly = config['servicemode']
 
     maintag = soup.find("edmx:Edmx", recursive=False)
     refs = maintag.find_all('edmx:Reference', recursive=False)
@@ -413,8 +408,7 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
             traverseLogger.log(
                     logging.ERROR if ServiceOnly else logging.WARN,
                     "References missing in metadata: {}".format(str(diff_keys)))
-    traverseLogger.debug(str(refDict))
-    traverseLogger.debug("References generated from {}: {}".format(name, cntref))
+    traverseLogger.debug("References generated from {}: {} out of {}".format(name, cntref, len(refDict)))
     return refDict
 
 
@@ -490,6 +484,8 @@ class ResourceObj:
                 return
         else:
             self.jsondata = expectedJson
+        
+        traverseLogger.debug("payload: {}".format(json.dumps(self.jsondata, indent=4, sort_keys=True)))
 
         # Check if we provide a type besides json's
         if expectedType is None:

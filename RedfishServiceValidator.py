@@ -1,3 +1,4 @@
+
 # Copyright Notice:
 # Copyright 2016 Distributed Management Task Force, Inc. All rights reserved.
 # License: BSD 3-Clause License. For full text see link:
@@ -72,7 +73,6 @@ def validateActions(name, val, propTypeObj, payloadType):
 
 
 def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpand):
-    # A mess, needs to be reworked
     # info: what are we looking for (the type), what are we getting (the uri), does the uri make sense based on type (does not do this yet)
     # error: this type is bad, could not get resource, could not find the type, no reference, cannot construct type (doesn't do this yet)
     # debug: what types do we have, what reference did we get back
@@ -729,7 +729,7 @@ def main(argv):
     # error: config is not good (catch, success), traverse is not good (should never happen)
     # warn: what's missing that we can work around (local files?)
     # debug:    
-    argget = argparse.ArgumentParser(description='Usecase tool to check compliance to POST Boot action')
+    argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
     argget.add_argument('--ip', type=str, help='ip to test on [host:port]')
     argget.add_argument('--file', type=str, help='file to test')
     argget.add_argument('--single', type=str, help='only test 1 resource')
@@ -749,8 +749,13 @@ def main(argv):
     argget.add_argument('--ca_bundle', default="", type=str, help='path to Certificate Authority bundle file or directory')
     argget.add_argument('--http_proxy', type=str, default=None, help='URL for the HTTP proxy')
     argget.add_argument('--https_proxy', type=str, default=None, help='URL for the HTTPS proxy')
+    argget.add_argument('-v', action='store_true', help='verbose log output to stdout')
+
 
     args = argget.parse_args()
+
+    if args.v:
+        rst.ch.setLevel(logging.DEBUG)
 
     try:
         if args.config is not None:
@@ -767,9 +772,14 @@ def main(argv):
         rsvLogger.exception("Something went wrong")  # Printout FORMAT
         return 1
 
-    sysDescription, ConfigURI, chkCert, localOnly = (rst.SysDescription, rst.ConfigURI, rst.ChkCert, rst.LocalOnly)
-    User, SchemaLocation = rst.User, rst.SchemaLocation
-    logpath = rst.LogPath
+    config_str = ""
+    for cnt, item in enumerate(sorted(list(rst.config.keys() - set(['systeminfo', 'configuri', 'targetip', 'configset', 'password']))), 1):
+        config_str += "{}: {},  ".format(str(item), str(rst.config[item] if rst.config[item] != '' else 'None'))
+        if cnt % 6 == 0:
+            config_str += '\n'
+
+    sysDescription, ConfigURI = (rst.config['systeminfo'], rst.config['configuri'])
+    logpath = rst.config['logpath']
 
     # Logging config
     startTick = datetime.now()
@@ -780,10 +790,9 @@ def main(argv):
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)  # Printout FORMAT
+    rsvLogger.info('ConfigURI: ' + ConfigURI)
     rsvLogger.info('System Info: ' + sysDescription)  # Printout FORMAT
-    rsvLogger.info("RedfishServiceValidator Config details: %s",  # Printout FORMAT
-        (ConfigURI, 'user:' + str(User), SchemaLocation, 'CheckCert' if chkCert else 'no CheckCert', 'localOnly or service' if localOnly or rst.ServiceOnly else 'Attempt for Online Schema'))
-
+    rsvLogger.info(config_str)
     rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))  # Printout FORMAT
 
     # Start main
@@ -826,13 +835,13 @@ def main(argv):
             .titletable {width:100%}\
             </style>\
             </head>'
+            
+
     htmlStrBodyHeader = '<body><table>\
                 <tr><th>##### Redfish Compliance Test Report #####</th></tr>\
                 <tr><th>System: ' + ConfigURI + '</th></tr>\
                 <tr><th>Description: ' + sysDescription + '</th></tr>\
-                <tr><th>User: ' + str(User) + ' ###  \
-                SSL Cert Check: ' + str(chkCert) + ' ###  \n\
-                Local Only Schema:' + str(localOnly) + ' ###  Local Schema Location :' + SchemaLocation + '</th></tr>\
+                <tr><th>' + str(config_str.replace('\n', '</br>')) + '</th></tr>\
                 <tr><th>Start time: ' + (startTick).strftime('%x - %X') + '</th></tr>\
                 <tr><th>Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + '</th></tr>\
                 <tr><th></th></tr>'
