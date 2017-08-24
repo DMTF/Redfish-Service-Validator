@@ -104,7 +104,7 @@ def setConfig(filename, cdict=None):
     if chkcertbundle not in [None, ""] and config['certificatecheck']:
         if not os.path.isfile(chkcertbundle):
             chkcertbundle = None
-            traverseLogger.error('ChkCertBundle is not found, defaulting to None')  # Printout FORMAT
+            traverseLogger.error('ChkCertBundle is not found, defaulting to None')
     else:
         config['certificatebundle'] = None
 
@@ -115,12 +115,12 @@ def setConfig(filename, cdict=None):
 
     if config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
         config['cachemode'] = 'Default'
-        traverseLogger.error('CacheMode or path invalid, defaulting to Off')  # Printout FORMAT
+        traverseLogger.error('CacheMode or path invalid, defaulting to Off')
 
     AuthType = config['authtype']
     if AuthType not in ['None', 'Basic', 'Session']:
         config['authtype'] = 'Basic'
-        traverseLogger.error('AuthType invalid, defaulting to Basic')  # Printout FORMAT
+        traverseLogger.error('AuthType invalid, defaulting to Basic')
 
     if AuthType == 'Session':
         certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
@@ -692,6 +692,8 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     usableProperties = element.find_all(['NavigationProperty', 'Property'], recursive=False)
     additionalElement = element.find(
         'Annotation', attrs={'Term': 'OData.AdditionalProperties'})
+    additionalElementOther = element.find(
+        'Annotation', attrs={'Term': 'Redfish.DynamicPropertyPatterns'})
     if additionalElement is not None:
         additional = additionalElement.get('Bool', False)
         if additional in ['false', 'False', False]:
@@ -700,6 +702,8 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
             additional = True
     else:
         additional = False
+    if additionalElementOther is not None:
+        additional = True
 
     for innerelement in usableProperties:
         traverseLogger.debug(innerelement['Name'])
@@ -766,7 +770,7 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
 
     propEntry['isNav'] = propTag.name == 'NavigationProperty'
     propEntry['attrs'] = propTag.attrs
-    traverseLogger.debug(propEntry)  # Printout FORMAT
+    traverseLogger.debug(propEntry)
 
     propEntry['realtype'] = 'none'
 
@@ -820,13 +824,13 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
 
                 for member in memberList:
                     propEntry['typeprops'].append(member.get('String'))
-                traverseLogger.debug("{}".format(propEntry['typeprops']))  # Printout FORMAT
+                traverseLogger.debug("{}".format(propEntry['typeprops']))
                 break
             else:
                 continue
 
         elif nameOfTag == 'ComplexType':
-            traverseLogger.debug("go deeper in type")  # Printout FORMAT
+            traverseLogger.debug("go deeper in type")
             # We need to find the highest existence of this type vs topVersion schema
             # not ideal, but works for this solution
             success, baseSoup, baseRefs, baseType = True, typeSoup, typeRefs, propType
@@ -871,11 +875,11 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
             # If entity, do nothing special (it's a reference link)
             propEntry['realtype'] = 'entity'
             propEntry['typeprops'] = dict()
-            traverseLogger.debug("typeEntityTag found {}".format(propTag['Name']))  # Printout FORMAT
+            traverseLogger.debug("typeEntityTag found {}".format(propTag['Name']))
             break
 
         else:
-            traverseLogger.error("type doesn't exist? {}".format(propType))  # Printout FORMAT
+            traverseLogger.error("type doesn't exist? {}".format(propType))
             raise Exception(
                 "getPropertyDetails: problem grabbing type: " + propType)
             break
@@ -946,7 +950,7 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
                 else:
                     linkList.update(getAllLinks(
                         jsonData[item], propDict['typeprops'].propList, refDict, prefix + item + '.', context))
-    traverseLogger.debug(str(linkList))  # Printout FORMAT
+    traverseLogger.debug(str(linkList))
     return linkList
 
 

@@ -55,13 +55,13 @@ CacheFilePath = Path to cache directory
 PayloadMode = [Default, Tree, Single, TreeFile, SingleFile] -- Options for the target of validation, allowing to specify a file or specific URI and traversal behavior
 PayloadFilePath = Path to URI/File
 
-Once the above details are updated for the system under test, the Redfish Service Validator can be triggered from a command prompt by typing the below command:
+Once the above details are updated for the system under test, the Redfish Service Validator can be triggered from a command prompt by typing the below command, with the option of verbosity:
 
-python3 RedfishServiceValidator.py -c config/config.ini
+python3 RedfishServiceValidator.py -c config/config.ini (-v)
 
 Alternatively, all of these options are available through the command line.  A configuration file overrides every option specified in the command line, such that -c should not be specified.  In order to review these options, please run the command:
 
-python3 RedfishServiceValidator.py -h
+python3 RedfishServiceValidator.py -h (-v)
 
 In order to run without a configuration file, the option --ip must be specified.
 
