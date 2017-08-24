@@ -913,44 +913,47 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
     #   if it is, recurse on collection or individual item
     if not isinstance(jsonData, dict):
         traverseLogger.error("Generating links requires a dict")
-    for propx in propList:
-        propDict = propx.propDict
-        key = propx.name
-        item = getType(key).split(':')[-1]
-        if propDict['isNav']:
-            insideItem = jsonData.get(item)
-            if insideItem is not None:
-                cType = propDict.get('isCollection')
-                autoExpand = propDict.get('OData.AutoExpand', None) is not None or\
-                    propDict.get('OData.AutoExpand'.lower(), None) is not None
-                if cType is not None:
-                    cSchema = refDict.get(getNamespace(cType), (None, None))[1]
-                    if cSchema is None:
-                        cSchema = context
-                    for cnt, listItem in enumerate(insideItem):
-                        linkList[prefix + str(item) + '.' + getType(propDict['isCollection']) +
-                                 '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
-                else:
-                    cType = propDict['attrs'].get('Type')
-                    cSchema = refDict.get(getNamespace(cType), (None, None))[1]
-                    if cSchema is None:
-                        cSchema = context
-                    linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
-                        insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
-    for propx in propList:
-        propDict = propx.propDict
-        key = propx.name
-        item = getType(key).split(':')[-1]
-        if propDict['realtype'] == 'complex':
-            if jsonData.get(item) is not None:
-                if propDict.get('isCollection') is not None:
-                    for listItem in jsonData[item]:
+    try:
+        for propx in propList:
+            propDict = propx.propDict
+            key = propx.name
+            item = getType(key).split(':')[-1]
+            if propDict['isNav']:
+                insideItem = jsonData.get(item)
+                if insideItem is not None:
+                    cType = propDict.get('isCollection')
+                    autoExpand = propDict.get('OData.AutoExpand', None) is not None or\
+                        propDict.get('OData.AutoExpand'.lower(), None) is not None
+                    if cType is not None:
+                        cSchema = refDict.get(getNamespace(cType), (None, None))[1]
+                        if cSchema is None:
+                            cSchema = context
+                        for cnt, listItem in enumerate(insideItem):
+                            linkList[prefix + str(item) + '.' + getType(propDict['isCollection']) +
+                                     '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
+                    else:
+                        cType = propDict['attrs'].get('type')
+                        cSchema = refDict.get(getNamespace(cType), (None, None))[1]
+                        if cSchema is None:
+                            cSchema = context
+                        linkList[prefix + str(item) + '.' + getType(propDict['attrs']['name'])] = (
+                            insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
+        for propx in propList:
+            propDict = propx.propDict
+            key = propx.name
+            item = getType(key).split(':')[-1]
+            if propDict['realtype'] == 'complex':
+                if jsonData.get(item) is not None:
+                    if propDict.get('isCollection') is not None:
+                        for listItem in jsonData[item]:
+                            linkList.update(getAllLinks(
+                                listItem, propDict['typeprops'].propList, refDict, prefix + item + '.', context))
+                    else:
                         linkList.update(getAllLinks(
-                            listItem, propDict['typeprops'].propList, refDict, prefix + item + '.', context))
-                else:
-                    linkList.update(getAllLinks(
-                        jsonData[item], propDict['typeprops'].propList, refDict, prefix + item + '.', context))
-    traverseLogger.debug(str(linkList))
+                            jsonData[item], propDict['typeprops'].propList, refDict, prefix + item + '.', context))
+        traverseLogger.debug(str(linkList))
+    except Exception as ex:
+        traverseLogger.exception("Something went wrong")
     return linkList
 
 
