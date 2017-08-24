@@ -31,10 +31,10 @@ def validateActions(name, val, propTypeObj, payloadType):
     actionsDict = dict()
     while success:
         SchemaNamespace = rst.getNamespace(baseType)
-        innerschema = baseSoup.find('Schema', attrs={'Namespace': SchemaNamespace})  # BS4 line
-        actions = innerschema.find_all('Action')  # BS4 line
+        innerschema = baseSoup.find('Schema', attrs={'Namespace': SchemaNamespace})
+        actions = innerschema.find_all('Action')
         for act in actions:
-            keyname = '#%s.%s' % (SchemaNamespace, act['Name'])
+            keyname = '#{}.{}'.format(SchemaNamespace, act['Name'])
             actionsDict[keyname] = act
         success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'EntityType')
 
@@ -55,12 +55,12 @@ def validateActions(name, val, propTypeObj, payloadType):
                 rsvLogger.error('{} : target for action is malformed, expected string got'.format(k, str(type(target))))
         else:
             # <Annotation Term="Redfish.Required"/>
-            if actionsDict[k].find('annotation', {'term': 'Redfish.Required'}):  # BS4 line
+            if actionsDict[k].find('annotation', {'term': 'Redfish.Required'}):
 
                 rsvLogger.error('{}: action not Found, is mandatory'.format(k))
             else:
                 actPass = True
-                rsvLogger.warn('{}: action not Found, is not mandatory'.format(k))  # Printout FORMAT
+                rsvLogger.warn('{}: action not Found, is not mandatory'.format(k))
         actionMessages[k] = (
                     'Action', '-',
                     'Exists' if actionDecoded != 'n/a' else 'DNE',
@@ -87,7 +87,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
         success, data, status, delay = rst.callResourceURI(uri)
     else:
         success, data, status, delay = True, val, 200, 0
-    rsvLogger.debug('%s, %s, %s', success, (propType, propCollectionType), data)  # Printout FORMAT
+    rsvLogger.debug('{}, {}, {}'.format(success, (propType, propCollectionType), data))  # Printout FORMAT
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
     if propCollectionType == 'Resource.Item' or propType in ['Resource.ResourceCollection', 'Resource.Item'] and success:
         paramPass = success
@@ -98,14 +98,14 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
         if currentType is None:
             currentType = propType
         baseLink = refs.get(rst.getNamespace(propCollectionType if propCollectionType is not None else propType))
-        if soup.find('Schema', attrs={'Namespace': rst.getNamespace(currentType)}) is not None:  # BS4 line
+        if soup.find('Schema', attrs={'Namespace': rst.getNamespace(currentType)}) is not None:
 
             success, baseSoup = True, soup
         elif baseLink is not None:
             success, baseSoup, uri = rst.getSchemaDetails(*baseLink)
         else:
             success = False
-        rsvLogger.debug('success: %s %s %s', success, currentType, baseLink)  # Printout FORMAT
+        rsvLogger.debug('success: {} {} {}'.format(success, currentType, baseLink))  # Printout FORMAT
 
         # Recurse through parent types, gather type hierarchy to check against
         if currentType is not None and success:
@@ -116,16 +116,16 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
             while currentType not in allTypes and success:
                 allTypes.append(currentType)
                 success, baseSoup, baseRefs, currentType = rst.getParentType(baseSoup, baseRefs, currentType, 'EntityType')
-                rsvLogger.debug('success: %s %s', success, currentType)  # Printout FORMAT
+                rsvLogger.debug('success: {} {}'.format(success, currentType))  # Printout FORMAT
 
-            rsvLogger.debug('%s, %s, %s', propType, propCollectionType, allTypes)  # Printout FORMAT
+            rsvLogger.debug('{}, {}, {}'.format(propType, propCollectionType, allTypes))  # Printout FORMAT
             paramPass = propType in allTypes or propCollectionType in allTypes
             if not paramPass:
-                rsvLogger.error("%s: Expected Entity type %s, but not found in type inheritance %s" % (name, (propType, propCollectionType), allTypes))  # Printout FORMAT
+                rsvLogger.error("{}: Expected Entity type {}, but not found in type inheritance {}".format((name, (propType, propCollectionType), allTypes)))  # Printout FORMAT
         else:
-            rsvLogger.error("%s: Could not get schema file for Entity check" % name)  # Printout FORMAT
+            rsvLogger.error("{}: Could not get schema file for Entity check".format(name))  # Printout FORMAT
     else:
-        rsvLogger.error("%s: Could not get resource for Entity check" % name)  # Printout FORMAT
+        rsvLogger.error("{}: Could not get resource for Entity check".format(name))  # Printout FORMAT
     return paramPass
 
 
@@ -302,7 +302,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     item = PropertyName.split(':')[-1]
 
     propValue = decoded.get(item, 'n/a')
-    rsvLogger.info("\tvalue: %s %s", propValue, type(propValue))  # Printout FORMAT
+    rsvLogger.info("\tvalue: {} {}".format(propValue, type(propValue)))  # Printout FORMAT
 
     propExists = not (propValue == 'n/a')
     propNotNull = propExists and propValue is not None and propValue is not 'None'
@@ -323,7 +323,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
 
     propType = propAttr.get('Type')
     propRealType = PropertyItem.get('realtype')
-    rsvLogger.info("\thas Type: %s %s", propType, propRealType)  # Printout FORMAT
+    rsvLogger.info("\thas Type: {} {}".format(propType, propRealType))  # Printout FORMAT
 
     # why not actually check oem
     # rs-assertion: 7.4.7.2
@@ -338,8 +338,8 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     if 'Redfish.Required' in PropertyItem:
         propMandatory = True
         propMandatoryPass = True if propExists else False
-        rsvLogger.info("\tMandatory Test: %s",  # Printout FORMAT
-                       'OK' if propMandatoryPass else 'FAIL')
+        rsvLogger.info("\tMandatory Test: {}".format(  # Printout FORMAT
+                       'OK' if propMandatoryPass else 'FAIL'))
     else:
         rsvLogger.info("\tis Optional")  # Printout FORMAT
         if not propExists:
@@ -355,15 +355,15 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     if propNullable is not None:
         propNullablePass = (
             propNullable == 'true') or not propExists or propNotNull
-        rsvLogger.info("\tis Nullable: %s %s", propNullable, propNotNull)  # Printout FORMAT
-        rsvLogger.info("\tNullability test: %s",  # Printout FORMAT
-                       'OK' if propNullablePass else 'FAIL')
+        rsvLogger.info("\tis Nullable: {} {}".format(propNullable, propNotNull))  # Printout FORMAT
+        rsvLogger.info("\tNullability test: {}".format(  # Printout FORMAT
+                       'OK' if propNullablePass else 'FAIL'))
 
     # rs-assertion: Check for permission change
     propPermissions = propAttr.get('Odata.Permissions')
     if propPermissions is not None:
         propPermissionsValue = propPermissions['EnumMember']
-        rsvLogger.info("\tpermission %s", propPermissionsValue)  # Printout FORMAT
+        rsvLogger.info("\tpermission {}".format(propPermissionsValue))  # Printout FORMAT
 
     autoExpand = PropertyItem.get('OData.AutoExpand', None) is not None or\
         PropertyItem.get('OData.AutoExpand'.lower(), None) is not None
@@ -403,7 +403,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
             if propRealType == 'Edm.Boolean':
                 paramPass = isinstance(val, bool)
                 if not paramPass:
-                    rsvLogger.error("%s: Not a boolean" % PropertyName)  # Printout FORMAT
+                    rsvLogger.error("{}: Not a boolean".format(PropertyName))  # Printout FORMAT
 
             elif propRealType == 'Edm.DateTimeOffset':
                 paramPass = validateDatetime(PropertyName, val)
@@ -731,8 +731,8 @@ def main(argv):
     # debug:    
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
     argget.add_argument('--ip', type=str, help='ip to test on [host:port]')
-    argget.add_argument('--file', type=str, help='file to test')
-    argget.add_argument('--single', type=str, help='only test 1 resource')
+    argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
+    argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
     argget.add_argument('-u', '--user', default=None, type=str, help='user for basic auth')
     argget.add_argument('-p', '--passwd', default=None, type=str, help='pass for basic auth')
@@ -798,14 +798,21 @@ def main(argv):
     # Start main
     status_code = 1
     jsonData = None
-    if args.file is not None and os.path.isfile(args.file):
-        with open(args.file) as f:
-            jsonData = json.load(f)
-            f.close()
-    if jsonData is not None:
-        args.single = './'
-    if args.single is not None:
-        success, counts, results, xlinks, topobj = validateSingleURI(args.single, 'Target', expectedJson=jsonData)
+    if rst.config.get('payloadmode') not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
+        rst.config['payloadmode'] = 'Default'
+        rsvLogger.error('PayloadMode or path invalid, using Default behavior')
+    if 'File' in rst.config.get('payloadmode'):
+        if rst.config.get('payloadfilepath') is not None and os.path.isfile(rst.config.get('payloadfilepath')):
+            with open(rst.config.get('payloadfilepath')) as f:
+                jsonData = json.load(f)
+                f.close()
+        else:
+            rsvLogger.error('File not found {}'.format(rst.config.get('payloadfilepath')))
+            return 1
+    if 'Single' in rst.config.get('payloadmode'):
+        success, counts, results, xlinks, topobj = validateSingleURI(rst.config.get('payloadfilepath'), 'Target', expectedJson=jsonData)
+    elif 'Tree' in rst.config.get('payloadmode'):
+        success, counts, results, xlinks, topobj = validateURITree(rst.config.get('payloadfilepath'), 'Target', expectedJson=jsonData)
     else:
         success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
     finalCounts = Counter()
