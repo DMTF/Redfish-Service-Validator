@@ -605,7 +605,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         rsvLogger.removeHandler(errh)  # Printout FORMAT
         return False, counts, results, None, None
     counts['passGet'] += 1
-    results[uriName] = (str(URI) + ' ({}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
+    results[uriName] = (str(URI) + ' (response time: {}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
 
     node = propResourceObj.typeobj
     while node is not None:
@@ -868,8 +868,8 @@ def main(argv):
         htmlStr += '<tr><td class="titlerow"><table class="titletable"><tr>'
         htmlStr += '<td class="title" style="width:40%"><div>{}</div>\
                 <div class="button warn" onClick="document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');">Show results</div>\
-                </td>'.format(item, cnt, cnt)
-        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>URI:</b> {}</div><div><b>XML:</b> {}</div><div><b>type:</b> {}</div></td>'.format(results[item][0], results[item][5], results[item][6])
+                </td>'.format(results[item][0], cnt, cnt)
+        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>ResourcePath:</b> {}</div><div><b>XML:</b> {}</div><div><b>type:</b> {}</div></td>'.format(item, results[item][5], results[item][6])
         htmlStr += '<td style="width:10%"' + \
             ('class="pass"> GET Success' if results[item]
              [1] else 'class="fail"> GET Failure') + '</td>'
