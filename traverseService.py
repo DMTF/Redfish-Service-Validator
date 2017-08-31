@@ -62,7 +62,7 @@ def setConfigNamespace(args):
             if isinstance(args.__dict__[param], list):
                 for cnt, item in enumerate(argparse2configparser[param].split('+')):
                     innerconfig[item] = args.__dict__[param][cnt]
-            else:
+            elif '+' not in argparse2configparser[param]:
                 innerconfig[argparse2configparser[param]] = args.__dict__[param]
     setConfig('', innerconfig)
 
