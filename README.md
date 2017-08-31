@@ -17,6 +17,10 @@ You may install the prerequisites by running:
 
 pip3 install -r requirements.txt
 
+If you have a previous beautifulsoup4 installation, please use the following command:
+
+pip3 install beautifulsoup4 --upgrade
+
 There is no dependency based on Windows or Linux OS. The result logs are generated in HTML format and an appropriate browser (Chrome, Firefox, IE, etc.) is required to view the logs on the client system.
 
 ## Installation
@@ -59,7 +63,7 @@ Once the above details are updated for the system under test, the Redfish Servic
 
 python3 RedfishServiceValidator.py -c config/config.ini (-v)
 
-Alternatively, all of these options are available through the command line.  A configuration file overrides every option specified in the command line, such that -c should not be specified.  In order to review these options, please run the command:
+Alternatively, all of these options are available through the command line. __A configuration file overrides every option specified in the command line, such that -c should not be specified.__  In order to review these options, please run the command:
 
 python3 RedfishServiceValidator.py -h (-v)
 
@@ -70,19 +74,24 @@ python3 RedfishServiceValidator.py --ip host:port [...]
 ## Execution flow
 * 1.	Redfish Service Validator starts with the Service root Resource Schema by querying the service with the service root URI and getting all the device information, the resources supported and their links. Once the response of the Service root query is verified against its schema, the tool traverses through all the collections and Navigation properties returned by the service.
 * 2.	For each navigation property/Collection of resource returned, it does following operations:
-** i.	Reads all the Navigation/collection of resources from the respective resource collection schema file.
-** ii.	Reads the schema file related to the particular resource, collects all the information about individual properties from the resource schema file and stores them into a dictionary
-** iii.	Queries the service with the individual resource uri and validates all the properties returned against the properties collected from the schema file using a GET method making sure all the Mandatory properties are supported
+  * i.	Reads all the Navigation/collection of resources from the respective resource collection schema file.
+  * ii.	Reads the schema file related to the particular resource, collects all the information about individual properties from the resource schema file and stores them into a dictionary
+  * iii.	Queries the service with the individual resource uri and validates all the properties returned against the properties collected from the schema file using a GET method making sure all the Mandatory properties are supported
 * 3.	Step 2 repeats till all the URIs and resources are covered.
- 
-## GET method execution
-For every property from service URI, the Redfish Service Validator performs the below operations:
-* 1.	If resource schema specifies a property as required (Mandatory), the tool expects the property to be supported and returned by the service. Else, conformance check fails for that property. 
-* 2.	If resource schema specifies a property as Nullable=false, the Redfish Service Validator expects the property to be retuned with some value and fails the conformance check if the service returns a NULL value 
-* 3.	The Tool checks for the conformance of data type for every property against resource schema file. For ex. If property data type is “edm.Boolean” in resource schema file, and the service returns a string, conformance check will fail for that property.
-* 4.	If a property is an optional one and it is not supported by the service, the conformance check skips the property. The same will be reported as a ‘SKIP’ in the conformance report
-* 5.	The GET method will Pass the test if the status code returned is 200 or 204
 
+Upon validation of a resource, the following types of tests may occur:
+* Upon reaching any resource, validate its @odata entries inside of its payload with regex.  If it fails, return a "failPayloadError".
+* Attempt to initiate a Resource object, which requires an @odata.type and Schema of a valid JSON payload, otherwise return a "problemResource" or "exceptionResource" and terminate, otherwise "passGet"
+* With the Resource initiated, begin to validate each Property available based on its Schema definition (sans annotations, additional props, is Case-Sensitive):
+  * Check whether a Property is at first able to be nulled or is mandatory, and pass based on its Requirement or Nullability
+  * For collections, validate each property inside of itself, and expects a list rather than a single Property, otherwise validate normally:
+    * For basic types such as Int, Bool, DateTime, GUID, String, etc, check appropriate types, regex and ranges.
+    * For Complex types, validate each property inside of the Complex, including annotations and additional properties
+    * For Enum types, check and see if the given value exists in Schema's defined EnumType (Case-Sensitive)
+    * For Entity types, check if the link given by @odata.id sends the client to an appropriate resource by the correct type, by performing a GET
+* After reaching completion, perform the same routine with all Annotations available in the payload.
+* If any unvalidated entries exist in the payload, determine whether or not additional properties are legitimate for this resource, otherwise throw a "failAdditional" error. 
+ 
 ## Conformance Logs – Summary and Detailed Conformance Report
 The Redfish Service Validator generates an html report under the “logs” folder, named as <ComplianceHtmlLog_MM_DD_YYYY_HHMMSS.html> The report gives the detailed view of the individual properties checked, with the Pass/Fail/Skip/Warning status for each resource checked for conformance.
 

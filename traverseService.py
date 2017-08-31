@@ -62,7 +62,7 @@ def setConfigNamespace(args):
             if isinstance(args.__dict__[param], list):
                 for cnt, item in enumerate(argparse2configparser[param].split('+')):
                     innerconfig[item] = args.__dict__[param][cnt]
-            else:
+            elif '+' not in argparse2configparser[param]:
                 innerconfig[argparse2configparser[param]] = args.__dict__[param]
     setConfig('', innerconfig)
 
@@ -837,7 +837,7 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
             if topVersion is not None and topVersion != SchemaNamespace:
                 currentVersion = topVersion
                 currentSchema = baseSoup.find(  # BS4 line
-                    'schema', attrs={'Namespace': currentVersion})
+                    'Schema', attrs={'Namespace': currentVersion})
                 # Working backwards from topVersion schematag,
                 #   created expectedType, check if currentTypeTag exists
                 #   if it does, use our new expectedType, else continue down parent types
@@ -856,7 +856,7 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
                         nextType = nextEntity.get('BaseType')
                         currentVersion = getNamespace(nextType)
                         currentSchema = baseSoup.find(  # BS4 line
-                            'schema', attrs={'Namespace': currentVersion})
+                            'Schema', attrs={'Namespace': currentVersion})
                         continue
             propEntry['realtype'] = 'complex'
             propEntry['typeprops'] = PropType(

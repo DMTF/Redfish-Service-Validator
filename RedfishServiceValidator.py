@@ -759,7 +759,6 @@ def main(argv):
     argget.add_argument('--https_proxy', type=str, default=None, help='URL for the HTTPS proxy')
     argget.add_argument('-v', action='store_true', help='verbose log output to stdout')
 
-
     args = argget.parse_args()
 
     if args.v:
@@ -825,7 +824,7 @@ def main(argv):
         success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
     finalCounts = Counter()
     nowTick = datetime.now()
-    rsvLogger.info('Elapsed time: ' + str(nowTick-startTick).rsplit('.', 1)[0])  # Printout FORMAT
+    rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))  # Printout FORMAT
     if rst.currentSession.started:
         rst.currentSession.killSession()
 
@@ -863,7 +862,7 @@ def main(argv):
 
     htmlStr = ''
 
-    rsvLogger.info(len(results))  # Printout FORMAT
+    rsvLogger.info(len(results))
     for cnt, item in enumerate(results):
         htmlStr += '<tr><td class="titlerow"><table class="titletable"><tr>'
         htmlStr += '<td class="title" style="width:40%"><div>{}</div>\
@@ -907,6 +906,7 @@ def main(argv):
             htmlStr += '<tr><td class="fail log">' + str(results[item][4].getvalue()).replace('\n', '<br />') + '</td></tr>'
             results[item][4].close()
         htmlStr += '<tr><td>---</td></tr></table></td></tr>'
+
     htmlStr += '</table></body></html>'
 
     htmlStrTotal = '<tr><td><div>Final counts: '
@@ -926,12 +926,12 @@ def main(argv):
             fails += finalCounts[key]
 
     success = success and not (fails > 0)
-    rsvLogger.info(finalCounts)  # Printout FORMAT
+    rsvLogger.info(finalCounts)
 
     if not success:
-        rsvLogger.info("Validation has failed: %d problems found", fails)  # Printout FORMAT
+        rsvLogger.info("Validation has failed: {} problems found".format(fails))
     else:
-        rsvLogger.info("Validation has succeeded.")  # Printout FORMAT
+        rsvLogger.info("Validation has succeeded.")
         status_code = 0
 
     return status_code
