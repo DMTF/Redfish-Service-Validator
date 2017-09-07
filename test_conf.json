@@ -1,0 +1,5 @@
+{
+  "test": {
+    "command": "$interpreter RedfishServiceValidator.py --ip $target_system $nochkcert -u $username -p $password --logdir $output_subdir"
+  }
+}
