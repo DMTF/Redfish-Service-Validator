@@ -121,7 +121,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
             rsvLogger.debug('{}, {}, {}'.format(propType, propCollectionType, allTypes))
             paramPass = propType in allTypes or propCollectionType in allTypes
             if not paramPass:
-                rsvLogger.error("{}: Expected Entity type {}, but not found in type inheritance {}".format((name, (propType, propCollectionType), allTypes)))
+                rsvLogger.error("{}: Expected Entity type {}, but not found in type inheritance {}".format(name, (propType, propCollectionType), allTypes))
         else:
             rsvLogger.error("{}: Could not get schema file for Entity check".format(name))
     else:
@@ -134,7 +134,7 @@ def validateComplex(name, val, propTypeObj, payloadType):
     # info: treat this like an individual payload, where is it, what is going on, perhaps reuse same code by moving it to helper
     # warn: lacks an odata type, defaulted to highest type (this would happen during type gen)
     # error: this isn't a dict, these properties aren't good/missing/etc, just like a payload
-    # debug: what are the properties we are looking for, what vals, etc (this is genned during checkPropertyCheck)
+    # debug: what are the properties we are looking for, what vals, etc (this is genned during checkPropertyConformance)
 
     """
     Validate a complex property
@@ -155,7 +155,7 @@ def validateComplex(name, val, propTypeObj, payloadType):
         successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
         propSoup, propRefs = serviceSchemaSoup, serviceRefs
         for prop in additionalProps:
-            propMessages, propCounts = checkPropertyCheck(propSoup, prop.name, prop.propDict, val, propRefs)
+            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs)
             complexMessages.update(propMessages)
             complexCounts.update(propCounts)
     
@@ -165,11 +165,11 @@ def validateComplex(name, val, propTypeObj, payloadType):
     while node is not None:
         propList, propSoup, propRefs = node.propList, node.soup, node.refs
         for prop in propList:
-            propMessages, propCounts = checkPropertyCheck(propSoup, prop.name, prop.propDict, val, propRefs)
+            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs)
             complexMessages.update(propMessages)
             complexCounts.update(propCounts)
         node = node.parent
-    successPayload, odataMessages = checkPayloadCheck('', val)
+    successPayload, odataMessages = checkPayloadConformance('', val)
     complexMessages.update(odataMessages)
     if not successPayload:
         complexCounts['failComplexPayloadError'] += 1
@@ -282,7 +282,7 @@ def validateNumber(name, val, minVal=None, maxVal=None):
     return paramPass
 
 
-def checkPropertyCheck(soup, PropertyName, PropertyItem, decoded, refs):
+def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
     # The biggest piece of code, but also mostly collabs info for other functions
     #   this part of the program should maybe do ALL setup for functions above, do not let them do requests?
     # info: what about this property is important (read/write, name, val, nullability, mandatory), 
@@ -497,7 +497,7 @@ def checkPropertyCheck(soup, PropertyName, PropertyItem, decoded, refs):
     return resultList, counts
 
 
-def checkPayloadCheck(uri, decoded):
+def checkPayloadConformance(uri, decoded):
     # Checks for @odata, generates "messages"
     #   largely not a lot of error potential
     # info: what did we get?  did it pass?
@@ -576,7 +576,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         successGet, jsondata, status, rtime = rst.callResourceURI(URI)
     else:
         successGet, jsondata = True, expectedJson
-    successPayload, odataMessages = checkPayloadCheck(URI, jsondata if successGet else {})
+    successPayload, odataMessages = checkPayloadConformance(URI, jsondata if successGet else {})
     messages.update(odataMessages)
 
     if not successPayload:
@@ -611,7 +611,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     while node is not None:
         for prop in node.propList:
             try:
-                propMessages, propCounts = checkPropertyCheck(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs)
+                propMessages, propCounts = checkPropertyConformance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs)
                 messages.update(propMessages)
                 counts.update(propCounts)
             except Exception as ex:
@@ -625,7 +625,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if successService:
         serviceRefs = rst.getReferenceDetails(serviceSchemaSoup, name="$metadata")
         for prop in propResourceObj.additionalList:
-            propMessages, propCounts = checkPropertyCheck(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
+            propMessages, propCounts = checkPropertyConformance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
             messages.update(propMessages)
             counts.update(propCounts)
 
