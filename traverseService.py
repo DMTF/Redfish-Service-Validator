@@ -28,7 +28,7 @@ argparse2configparser = {
         'suffix': 'schemasuffix', 'dir': 'metadatafilepath', 'nossl': '!usessl', 'timeout': 'timeout', 'service': 'servicemode',
         'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
         'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
-        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath'}
+        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token'}
 configpsr = configparser.ConfigParser()
 config = {
         'logpath': './logs', 'schemasuffix': '_v1.xml', 'timeout': 30, 'authtype': 'basic', 'certificatebundle': "",
@@ -94,7 +94,7 @@ def setConfig(filename, cdict=None):
             val = not val
         config[item] = val
     
-    User, Passwd, Ip, ChkCert, UseSSL = config['username'], config['password'], config['targetip'], config['certificatecheck'], config['usessl'] 
+    User, Passwd, Ip, ChkCert, UseSSL = config['username'], config['password'], config['targetip'], config['certificatecheck'], config['usessl']
     
     config['configuri'] = ('https' if UseSSL else 'http') + '://' + Ip
 
@@ -118,7 +118,7 @@ def setConfig(filename, cdict=None):
         traverseLogger.error('CacheMode or path invalid, defaulting to Off')
 
     AuthType = config['authtype']
-    if AuthType not in ['None', 'Basic', 'Session']:
+    if AuthType not in ['None', 'Basic', 'Session', 'Token']:
         config['authtype'] = 'Basic'
         traverseLogger.error('AuthType invalid, defaulting to Basic')
 
@@ -180,8 +180,8 @@ def callResourceURI(URILink):
     # rs-assertions: 6.4.1, including accept, content-type and odata-versions
     # rs-assertion: handle redirects?  and target permissions
     # rs-assertion: require no auth for serviceroot calls
-    ConfigURI, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout = config['configuri'], config['usessl'], config['authtype'], \
-            config['certificatecheck'], config['certificatebundle'], config['timeout']
+    ConfigURI, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['configuri'], config['usessl'], config['authtype'], \
+            config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
     CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
 
     if URILink is None:
@@ -227,6 +227,9 @@ def callResourceURI(URILink):
     # only send token when we're required to chkauth, during a Session, and on Service and Secure
     if UseSSL and not nonService and AuthType == 'Session' and not noauthchk:
         headers = {"X-Auth-Token": currentSession.getSessionKey()}
+        headers.update(commonHeader)
+    elif UseSSL and not nonService and AuthType == 'Token' and not noauthchk:
+        headers = {"Authorization": "Bearer "+Token}
         headers.update(commonHeader)
     else:
         headers = commonHeader
