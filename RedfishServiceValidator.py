@@ -121,7 +121,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
             rsvLogger.debug('{}, {}, {}'.format(propType, propCollectionType, allTypes))
             paramPass = propType in allTypes or propCollectionType in allTypes
             if not paramPass:
-                rsvLogger.error("{}: Expected Entity type {}, but not found in type inheritance {}".format((name, (propType, propCollectionType), allTypes)))
+                rsvLogger.error("{}: Expected Entity type {}, but not found in type inheritance {}".format(name, (propType, propCollectionType), allTypes))
         else:
             rsvLogger.error("{}: Could not get schema file for Entity check".format(name))
     else:
@@ -134,7 +134,7 @@ def validateComplex(name, val, propTypeObj, payloadType):
     # info: treat this like an individual payload, where is it, what is going on, perhaps reuse same code by moving it to helper
     # warn: lacks an odata type, defaulted to highest type (this would happen during type gen)
     # error: this isn't a dict, these properties aren't good/missing/etc, just like a payload
-    # debug: what are the properties we are looking for, what vals, etc (this is genned during checkPropertyCompliance)
+    # debug: what are the properties we are looking for, what vals, etc (this is genned during checkPropertyConformance)
 
     """
     Validate a complex property
@@ -155,7 +155,7 @@ def validateComplex(name, val, propTypeObj, payloadType):
         successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
         propSoup, propRefs = serviceSchemaSoup, serviceRefs
         for prop in additionalProps:
-            propMessages, propCounts = checkPropertyCompliance(propSoup, prop.name, prop.propDict, val, propRefs)
+            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs)
             complexMessages.update(propMessages)
             complexCounts.update(propCounts)
     
@@ -165,11 +165,11 @@ def validateComplex(name, val, propTypeObj, payloadType):
     while node is not None:
         propList, propSoup, propRefs = node.propList, node.soup, node.refs
         for prop in propList:
-            propMessages, propCounts = checkPropertyCompliance(propSoup, prop.name, prop.propDict, val, propRefs)
+            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs)
             complexMessages.update(propMessages)
             complexCounts.update(propCounts)
         node = node.parent
-    successPayload, odataMessages = checkPayloadCompliance('', val)
+    successPayload, odataMessages = checkPayloadConformance('', val)
     complexMessages.update(odataMessages)
     if not successPayload:
         complexCounts['failComplexPayloadError'] += 1
@@ -282,7 +282,7 @@ def validateNumber(name, val, minVal=None, maxVal=None):
     return paramPass
 
 
-def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
+def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
     # The biggest piece of code, but also mostly collabs info for other functions
     #   this part of the program should maybe do ALL setup for functions above, do not let them do requests?
     # info: what about this property is important (read/write, name, val, nullability, mandatory), 
@@ -497,7 +497,7 @@ def checkPropertyCompliance(soup, PropertyName, PropertyItem, decoded, refs):
     return resultList, counts
 
 
-def checkPayloadCompliance(uri, decoded):
+def checkPayloadConformance(uri, decoded):
     # Checks for @odata, generates "messages"
     #   largely not a lot of error potential
     # info: what did we get?  did it pass?
@@ -576,7 +576,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         successGet, jsondata, status, rtime = rst.callResourceURI(URI)
     else:
         successGet, jsondata = True, expectedJson
-    successPayload, odataMessages = checkPayloadCompliance(URI, jsondata if successGet else {})
+    successPayload, odataMessages = checkPayloadConformance(URI, jsondata if successGet else {})
     messages.update(odataMessages)
 
     if not successPayload:
@@ -611,13 +611,13 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     while node is not None:
         for prop in node.propList:
             try:
-                propMessages, propCounts = checkPropertyCompliance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs)
+                propMessages, propCounts = checkPropertyConformance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs)
                 messages.update(propMessages)
                 counts.update(propCounts)
             except Exception as ex:
                 rsvLogger.exception("Something went wrong")  # Printout FORMAT
-                rsvLogger.error('%s:  Could not finish compliance check on this property' % (prop.name))  # Printout FORMAT
-                counts['exceptionPropCompliance'] += 1
+                rsvLogger.error('%s:  Could not finish check on this property' % (prop.name))  # Printout FORMAT
+                counts['exceptionPropCheck'] += 1
         node = node.parent
 
     successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails(
@@ -625,7 +625,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if successService:
         serviceRefs = rst.getReferenceDetails(serviceSchemaSoup, name="$metadata")
         for prop in propResourceObj.additionalList:
-            propMessages, propCounts = checkPropertyCompliance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
+            propMessages, propCounts = checkPropertyConformance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
             messages.update(propMessages)
             counts.update(propCounts)
 
@@ -793,7 +793,7 @@ def main(argv):
     if not os.path.isdir(logpath):
         os.makedirs(logpath)
     fmt = logging.Formatter('%(levelname)s - %(message)s')
-    fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ComplianceLog_%m_%d_%Y_%H%M%S.txt")))
+    fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)  # Printout FORMAT
@@ -829,7 +829,7 @@ def main(argv):
         rst.currentSession.killSession()
 
     # Render html
-    htmlStrTop = '<html><head><title>Compliance Test Summary</title>\
+    htmlStrTop = '<html><head><title>Conformance Test Summary</title>\
             <style>\
             .pass {background-color:#99EE99}\
             .fail {background-color:#EE9999}\
@@ -852,7 +852,7 @@ def main(argv):
             
 
     htmlStrBodyHeader = '<body><table>\
-                <tr><th>##### Redfish Compliance Test Report #####</th></tr>\
+                <tr><th>##### Redfish Conformance Test Report #####</th></tr>\
                 <tr><th>System: ' + ConfigURI + '</th></tr>\
                 <tr><th>Description: ' + sysDescription + '</th></tr>\
                 <tr><th>' + str(config_str.replace('\n', '</br>')) + '</th></tr>\
@@ -917,7 +917,7 @@ def main(argv):
 
     htmlPage = htmlStrTop + htmlStrBodyHeader + htmlStrTotal + htmlStr
 
-    with open(datetime.strftime(startTick, os.path.join(logpath, "ComplianceHtmlLog_%m_%d_%Y_%H%M%S.html")), 'w') as f:
+    with open(datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html")), 'w') as f:
         f.write(htmlPage)
 
     fails = 0

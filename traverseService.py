@@ -799,7 +799,7 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
 
         if not success:
             traverseLogger.error(
-                "getPropertyDetails: InnerType could not be acquired,  {}".format(uri))
+                "getPropertyDetails: InnerType could not be acquired, {} {} {}".format(propOwner, propChild ,uri))
             return propEntry
 
         # traverse tags to find the type
