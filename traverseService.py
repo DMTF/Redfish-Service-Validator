@@ -41,7 +41,7 @@ configset = {
         "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type("")
         }
 config = {
-        'authtype': 'basic', 'username': None, 'password': None, 'token': '',
+        'authtype': 'basic', 'username': "", 'password': "", 'token': '',
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
         'localonlymode': False, 'servicemode': False }

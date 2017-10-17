@@ -751,9 +751,9 @@ def main(argv=None):
 
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
-    argget.add_argument('-ip', '--ip', type=str, help='ip to test on [host:port]')
-    argget.add_argument('-u', '--user', default=None, type=str, help='user for basic auth')
-    argget.add_argument('-p', '--passwd', default=None, type=str, help='pass for basic auth')
+    argget.add_argument('-i', '--ip', type=str, help='ip to test on [host:port]')
+    argget.add_argument('-u', '--user', default='', type=str, help='user for basic auth')
+    argget.add_argument('-p', '--passwd', default='', type=str, help='pass for basic auth')
     argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
     argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
     argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
@@ -766,8 +766,8 @@ def main(argv=None):
     argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
     argget.add_argument('--ca_bundle', default="", type=str, help='path to Certificate Authority bundle file or directory')
     argget.add_argument('--token', default="", type=str, help='bearer token for authtype Token')
-    argget.add_argument('--http_proxy', type=str, default=None, help='URL for the HTTP proxy')
-    argget.add_argument('--https_proxy', type=str, default=None, help='URL for the HTTPS proxy')
+    argget.add_argument('--http_proxy', type=str, default='', help='URL for the HTTP proxy')
+    argget.add_argument('--https_proxy', type=str, default='', help='URL for the HTTPS proxy')
     argget.add_argument('-v', action='store_true', help='verbose log output to stdout')
     argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
@@ -844,6 +844,25 @@ def main(argv=None):
     # Start main
     status_code = 1
     jsonData = None
+    pmode, ppath = cdict.get('payloadmode'), cdict.get('payloadfilepath')
+    if pmode not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
+        pmode = 'Default'
+        rsvLogger.error('PayloadMode or path invalid, using Default behavior')
+    if 'File' in pmode:
+        if ppath is not None and os.path.isfile(ppath):
+            with open(cdict.get(ppath)) as f:
+                jsonData = json.load(f)
+                f.close()
+        else:
+            rsvLogger.error('File not found {}'.format(ppath))
+            return 1
+    if 'Single' in pmode:
+        success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
+    elif 'Tree' in pmode:
+       success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
+    else:
+        success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
+
     if rst.config.get('payloadmode') not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
         rst.config['payloadmode'] = 'Default'
         rsvLogger.error('PayloadMode or path invalid, using Default behavior')
