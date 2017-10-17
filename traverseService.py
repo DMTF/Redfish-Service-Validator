@@ -5,7 +5,6 @@
 # https://github.com/DMTF/Redfish-Service-Validator/LICENSE.md
 
 from bs4 import BeautifulSoup
-import configparser
 import requests
 import sys
 import re
@@ -22,77 +21,42 @@ traverseLogger = logging.getLogger(__name__)
 traverseLogger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
-traverseLogger.addHandler(ch)  # Printout FORMAT, consider allowing debug to be piped here
-argparse2configparser = {
-        'user': 'username', 'nochkcert': '!certificatecheck', 'ca_bundle': 'certificatebundle', 'schemamode': 'schemamode',
-        'suffix': 'schemasuffix', 'dir': 'metadatafilepath', 'nossl': '!usessl', 'timeout': 'timeout', 'service': 'servicemode',
-        'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
-        'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
-        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token'}
-configpsr = configparser.ConfigParser()
-config = {
-        'logpath': './logs', 'schemasuffix': '_v1.xml', 'timeout': 30, 'authtype': 'basic', 'certificatebundle': "",
-        'httpproxy': "", 'httpsproxy': "", 'configset': '0', 'cachemode': 'Off', 'payloadmode': 'Default',
-        'cachefilepath': None, 'payloadfilepath': None}
+traverseLogger.addHandler(ch)
 commonHeader = {'OData-Version': '4.0'}
 proxies = {'http': None, 'https': None}
 
 currentSession = rfSession()
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
-
+ 
 def getLogger():
     """
     Grab logger for tools that might use this lib
     """
     return traverseLogger
 
+# default config
+configset = {
+        "targetip": type(""), "username": type(""), "password": type(""), "authtype": type(""), "usessl": type(True), "certificatecheck": type(True), "certificatebundle": type(""),
+        "metadatafilepath": type(""), "cachemode": (type(False),type("")), "cachefilepath": type(""), "schemasuffix": type(""), "timeout": type(0), "httpproxy": type(""), "httpsproxy": type(""),
+        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type("")
+        }
+config = {
+        'authtype': 'basic', 'username': "", 'password': "", 'token': '',
+        'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
+        'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
+        'localonlymode': False, 'servicemode': False }
 
-def setConfigNamespace(args):
-    # both config functions should conflate no extra info to log, unless it errors out or defaultsi
-    #   any printouts should go to RSV, it's responsible for most logging initiative to file
-    #   consider this: traverse has its own logging, rsv has its own logging
-    # info: xxx
+def setConfig(cdict):
     """
-    Provided a namespace, modify args based on it
+    Set config based on configurable dictionary
     """
-    innerconfig = dict()
-    for param in args.__dict__:
-        if param in argparse2configparser:
-            if isinstance(args.__dict__[param], list):
-                for cnt, item in enumerate(argparse2configparser[param].split('+')):
-                    innerconfig[item] = args.__dict__[param][cnt]
-            elif '+' not in argparse2configparser[param]:
-                innerconfig[argparse2configparser[param]] = args.__dict__[param]
-    setConfig('', innerconfig)
+    for item in cdict:
+        if item not in configset:
+            traverseLogger.error('Unsupported {}'.format(item))
+        elif not isinstance(cdict[item], configset[item]):
+            traverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
 
-def setConfig(filename, cdict=None):
-    """
-    Set config based on config file read from location filename
-    """
-    midconfig = dict()
-    if cdict is None:
-        configpsr.read(filename)
-        for x in configpsr:
-            for y in configpsr[x]:
-                val = configpsr[x][y]
-                midconfig[y] = val
-    else:
-        midconfig.update(cdict)
-    for item in midconfig:
-        val = midconfig.get(item)
-        if val is None:
-            pass
-        elif item == 'timeout':
-            val = int(val)
-        elif str(val).lower() in ['on', 'true', 'yes']:
-            val = True
-        elif str(val).lower() in ['off', 'false', 'no']:
-            val = False
-        if '!' in item:
-            item = item.replace('!', '')
-            val = not val
-        config[item] = val
+    config.update(cdict)
     
     User, Passwd, Ip, ChkCert, UseSSL = config['username'], config['password'], config['targetip'], config['certificatecheck'], config['usessl']
     
@@ -114,8 +78,9 @@ def setConfig(filename, cdict=None):
     proxies['https'] = httpsprox if httpsprox != "" else None
 
     if config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
+        if config['cachemode'] is not False:
+            traverseLogger.error('CacheMode or path invalid, defaulting to Off')
         config['cachemode'] = 'Off'
-        traverseLogger.error('CacheMode or path invalid, defaulting to Off')
 
     AuthType = config['authtype']
     if AuthType not in ['None', 'Basic', 'Session', 'Token']:
@@ -127,22 +92,6 @@ def setConfig(filename, cdict=None):
         success = currentSession.startSession(User, Passwd, config['configuri'], certVal, proxies)
         if not success:
             raise RuntimeError("Session could not start")
-    if 'description' in config:
-        del config['description']
-    if 'updated' in config:
-        del config['updated']
-    config['configset'] = '1'
-
-
-def isConfigSet():
-    """
-    Check if the library is configured
-    """
-    if config['configset'] == '1':
-        return True
-    else:
-        raise RuntimeError("Configuration is not set")
-
 
 def isNonService(uri):
     """
@@ -234,7 +183,7 @@ def callResourceURI(URILink):
     else:
         headers = commonHeader
 
-    certVal = ChkCertBundle if ChkCert and ChkCertBundle is not None else ChkCert
+    certVal = ChkCertBundle if ChkCert and ChkCertBundle not in [None, ""] else ChkCert
 
     # rs-assertion: must have application/json or application/xml
     traverseLogger.debug('callingResourceURI{}with authtype {} and ssl {}: {}'.format(
