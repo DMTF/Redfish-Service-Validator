@@ -5,6 +5,7 @@
 # https://github.com/DMTF/Redfish-Service-Validator/LICENSE.md
 
 import argparse
+import configparser
 import io
 import os
 import sys
@@ -729,64 +730,102 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
 
     return validateSuccess, counts, results, refLinks, thisobj
 
+argparse2configparser = {
+        'user': 'username', 'nochkcert': '!certificatecheck', 'ca_bundle': 'certificatebundle', 'schemamode': 'schemamode',
+        'suffix': 'schemasuffix', 'schemadir': 'metadatafilepath', 'nossl': '!usessl', 'timeout': 'timeout', 'service': 'servicemode',
+        'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
+        'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
+        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token'}
 
-def main(argv):
+validatorconfig = {'payloadmode': 'Default', 'payloadfilepath': None, 'logpath': './logs'}
+
+def main(argv=None):
     # this should be surface level, does no execution (should maybe move html rendering to its own function
     # Only worry about configuring, executing and exiting circumstances, printout setup
     # info: config information (without password), time started/finished, individual problems, pass/fail
     # error: config is not good (catch, success), traverse is not good (should never happen)
     # warn: what's missing that we can work around (local files?)
     # debug:    
+    if argv is None:
+        argv = sys.argv
+
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
-    argget.add_argument('--ip', type=str, help='ip to test on [host:port]')
-    argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
-    argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
+    argget.add_argument('-ip', '--ip', type=str, help='ip to test on [host:port]')
     argget.add_argument('-u', '--user', default=None, type=str, help='user for basic auth')
     argget.add_argument('-p', '--passwd', default=None, type=str, help='pass for basic auth')
     argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
-    argget.add_argument('--dir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
+    argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
     argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
     argget.add_argument('--timeout', type=int, default=30, help='requests timeout in seconds')
     argget.add_argument('--nochkcert', action='store_true', help='ignore check for certificate')
     argget.add_argument('--nossl', action='store_true', help='use http instead of https')
-    argget.add_argument('--authtype', type=str, default='Basic', help='authorization type (None|Basic|Session)')
+    argget.add_argument('--authtype', type=str, default='Basic', help='authorization type (None|Basic|Session|Token)')
     argget.add_argument('--localonly', action='store_true', help='only use locally stored schema on your harddrive')
     argget.add_argument('--service', action='store_true', help='only use uris within the service')
     argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
     argget.add_argument('--ca_bundle', default="", type=str, help='path to Certificate Authority bundle file or directory')
+    argget.add_argument('--token', default="", type=str, help='bearer token for authtype Token')
     argget.add_argument('--http_proxy', type=str, default=None, help='URL for the HTTP proxy')
     argget.add_argument('--https_proxy', type=str, default=None, help='URL for the HTTPS proxy')
     argget.add_argument('-v', action='store_true', help='verbose log output to stdout')
+    argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
+    argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
 
     args = argget.parse_args()
 
+
     if args.v:
         rst.ch.setLevel(logging.DEBUG)
-
+    cdict = {}
     try:
         if args.config is not None:
-            rst.setConfig(args.config)
-            rst.isConfigSet()
+            configpsr = configparser.ConfigParser()
+            configpsr.read(args.config)
+            for x in configpsr:
+                for y in configpsr[x]:
+                    val = configpsr[x][y]
+                    if y not in rst.configset.keys() and x not in ['Information', 'Validator']:
+                        rsvLogger.error('Config option {} in {} unsupported!'.format(y, x))
+                    if val in ['', None]:
+                        continue
+                    if val.isdigit():
+                        val = int(val)
+                    elif str(val).lower() in ['on', 'true', 'yes']:
+                        val = True
+                    elif str(val).lower() in ['off', 'false', 'no']:
+                        val = False
+                    cdict[y] = val
         elif args.ip is not None:
-            rst.setConfigNamespace(args)
-            rst.isConfigSet()
+            for param in args.__dict__:
+                if param in argparse2configparser:
+                    if isinstance(args.__dict__[param], list):
+                        for cnt, item in enumerate(argparse2configparser[param].split('+')):
+                            cdict[item] = args.__dict__[param][cnt]
+                    elif '+' not in argparse2configparser[param]:
+                        if '!' in argparse2configparser[param]:
+                            cdict[argparse2configparser[param].replace('!','')] = not args.__dict__[param]
+                        else:
+                            cdict[argparse2configparser[param]] = args.__dict__[param]
         else:
-            rsvLogger.info('No ip or config specified.')  # Printout FORMAT
+            rsvLogger.info('No ip or config specified.')
             argget.print_help()
             return 1
+        # Send config only with keys supported by program
+        rst.setConfig({key: cdict[key] for key in cdict.keys() if key in rst.configset.keys()})
+
     except Exception as ex:
         rsvLogger.exception("Something went wrong")  # Printout FORMAT
         return 1
 
     config_str = ""
-    for cnt, item in enumerate(sorted(list(rst.config.keys() - set(['systeminfo', 'configuri', 'targetip', 'configset', 'password']))), 1):
-        config_str += "{}: {},  ".format(str(item), str(rst.config[item] if rst.config[item] != '' else 'None'))
+    for cnt, item in enumerate(sorted(list(cdict.keys() - set(['systeminfo', 'configuri', 'targetip', 'configset', 'password', 'description']))), 1):
+        config_str += "{}: {},  ".format(str(item), str(cdict[item] if cdict[item] != '' else 'None'))
         if cnt % 6 == 0:
             config_str += '\n'
 
-    sysDescription, ConfigURI = (rst.config['systeminfo'], rst.config['configuri'])
-    logpath = rst.config['logpath']
+    sysDescription, ConfigURI = (cdict['systeminfo'], rst.config['configuri'])
+    logpath = cdict['logpath']
 
     # Logging config
     startTick = datetime.now()
