@@ -79,6 +79,10 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
     """
     Validates an entity based on its uri given
     """
+    # check for required @odata.id
+    if '@odata.id' not in val:
+        rsvLogger.error("{}: EntityType resource does not contain required @odata.id property".format(name))
+        return False
     # check if the entity is truly what it's supposed to be
     uri = val['@odata.id']
     paramPass = False
