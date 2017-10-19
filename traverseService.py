@@ -364,6 +364,21 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
     return False, None, None
 
 
+def check_redfish_extensions_alias(name, item):
+    """
+    Check that edmx:Include for Namespace RedfishExtensions has the expected 'Redfish' Alias attribute
+    :param name: the name of the resource
+    :param item: the edmx:Include item for RedfishExtensions
+    :return:
+    """
+    alias = item.get('Alias')
+    if alias is None or alias != 'Redfish':
+        msg = ("In the resource {}, the {} namespace must have an alias of 'Redfish'. The alias is {}. " +
+               "This may cause properties of the form [PropertyName]@Redfish.TermName to be unrecognized.")
+        traverseLogger.error(msg.format(name, item.get('Namespace'),
+                             'missing' if alias is None else "'" + str(alias) + "'"))
+
+
 def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     """
     Create a reference dictionary from a soup file
@@ -387,6 +402,9 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
                 refDict[item['Alias']] = (item['Namespace'], ref['Uri'])
             else:
                 refDict[item['Namespace']] = (item['Namespace'], ref['Uri'])
+            # Check for proper Alias for RedfishExtensions
+            if name == '$metadata' and item.get('Namespace').startswith('RedfishExtensions.'):
+                check_redfish_extensions_alias(name, item)
 
     cntref = len(refDict)
     if metadata_dict is not None:
