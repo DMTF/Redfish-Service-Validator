@@ -848,6 +848,7 @@ def main(argv=None):
     # Start main
     status_code = 1
     jsonData = None
+    
     pmode, ppath = cdict.get('payloadmode'), cdict.get('payloadfilepath')
     if pmode not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
         pmode = 'Default'
@@ -867,23 +868,6 @@ def main(argv=None):
     else:
         success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
 
-    if rst.config.get('payloadmode') not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
-        rst.config['payloadmode'] = 'Default'
-        rsvLogger.error('PayloadMode or path invalid, using Default behavior')
-    if 'File' in rst.config.get('payloadmode'):
-        if rst.config.get('payloadfilepath') is not None and os.path.isfile(rst.config.get('payloadfilepath')):
-            with open(rst.config.get('payloadfilepath')) as f:
-                jsonData = json.load(f)
-                f.close()
-        else:
-            rsvLogger.error('File not found {}'.format(rst.config.get('payloadfilepath')))
-            return 1
-    if 'Single' in rst.config.get('payloadmode'):
-        success, counts, results, xlinks, topobj = validateSingleURI(rst.config.get('payloadfilepath'), 'Target', expectedJson=jsonData)
-    elif 'Tree' in rst.config.get('payloadmode'):
-        success, counts, results, xlinks, topobj = validateURITree(rst.config.get('payloadfilepath'), 'Target', expectedJson=jsonData)
-    else:
-        success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
     finalCounts = Counter()
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))  # Printout FORMAT
