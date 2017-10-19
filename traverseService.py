@@ -22,6 +22,7 @@ traverseLogger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 traverseLogger.addHandler(ch)
+
 commonHeader = {'OData-Version': '4.0'}
 proxies = {'http': None, 'https': None}
 
@@ -38,13 +39,14 @@ def getLogger():
 configset = {
         "targetip": type(""), "username": type(""), "password": type(""), "authtype": type(""), "usessl": type(True), "certificatecheck": type(True), "certificatebundle": type(""),
         "metadatafilepath": type(""), "cachemode": (type(False),type("")), "cachefilepath": type(""), "schemasuffix": type(""), "timeout": type(0), "httpproxy": type(""), "httpsproxy": type(""),
-        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type("")
+        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type(""), 'linklimit': dict
         }
 config = {
         'authtype': 'basic', 'username': "", 'password': "", 'token': '',
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
-        'localonlymode': False, 'servicemode': False }
+        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}
+        }
 
 def setConfig(cdict):
     """
@@ -55,15 +57,22 @@ def setConfig(cdict):
             traverseLogger.error('Unsupported {}'.format(item))
         elif not isinstance(cdict[item], configset[item]):
             traverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
+    
+    # Always keep LogEntry: 20
+    defaultlinklimit = config['linklimit']
 
     config.update(cdict)
     
+    defaultlinklimit.update(config['linklimit'])
+    config['linklimit'] = defaultlinklimit
+
     User, Passwd, Ip, ChkCert, UseSSL = config['username'], config['password'], config['targetip'], config['certificatecheck'], config['usessl']
     
     config['configuri'] = ('https' if UseSSL else 'http') + '://' + Ip
 
     config['certificatecheck'] = ChkCert and UseSSL
 
+    # Convert list of strings to dict
     chkcertbundle = config['certificatebundle']
     if chkcertbundle not in [None, ""] and config['certificatecheck']:
         if not os.path.isfile(chkcertbundle):
@@ -552,7 +561,7 @@ class ResourceObj:
         node = self.typeobj
         while node is not None:
             self.links.update(getAllLinks(
-                self.jsondata, node.propList, node.refs, context=expectedSchema))
+                self.jsondata, node.propList, node.refs, context=expectedSchema, linklimits=config['linklimit']))
             node = node.parent
 
 
@@ -839,7 +848,7 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
     return propEntry
 
 
-def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
+def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=None):
     # gets all links, this can miss something if it is not designated navigatable or properly autoextended, collections, etc
     # info: works underneath, can maybe report how many links it has gotten or leave that to whatever calls it?
     # debug: should be reported by what calls it?  not much debug is neede besides what is already generated earlier, 
@@ -857,6 +866,8 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
     :return: list of links
     """
     linkList = OrderedDict()
+    if linklimits is None:
+        linklimits = {}
     # check keys in propertyDictionary
     # if it is a Nav property, check that it exists
     #   if it is not a Nav Collection, add it to list
@@ -877,10 +888,16 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
                     autoExpand = propDict.get('OData.AutoExpand', None) is not None or\
                         propDict.get('OData.AutoExpand'.lower(), None) is not None
                     if cType is not None:
+                        cTypeName = getType(cType)
                         cSchema = refDict.get(getNamespace(cType), (None, None))[1]
                         if cSchema is None:
                             cSchema = context
                         for cnt, listItem in enumerate(insideItem):
+                            # starts at 0...
+                            if cTypeName in linklimits:
+                                if cnt >= linklimits[cTypeName]:
+                                    traverseLogger.debug("Truncating Links of {}".format(cTypeName))
+                                    break
                             linkList[prefix + str(item) + '.' + getType(propDict['isCollection']) +
                                      '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
                     else:
@@ -896,8 +913,15 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
             item = getType(key).split(':')[-1]
             if propDict['realtype'] == 'complex':
                 if jsonData.get(item) is not None:
-                    if propDict.get('isCollection') is not None:
-                        for listItem in jsonData[item]:
+                    cType = getType(propDict.get('isCollection'))
+                    if cType is not None:
+                        cTypeName = getType(cType)
+                        for cnt, listItem in enumerate(jsonData[item]):
+                            # starts at 0...
+                            if cTypeName in linklimits:
+                                if cnt >= linklimits[cTypeName]:
+                                    traverseLogger.debug("Truncating Links of {}".format(cTypeName))
+                                    break
                             linkList.update(getAllLinks(
                                 listItem, propDict['typeprops'].propList, refDict, prefix + item + '.', context))
                     else:
