@@ -260,7 +260,7 @@ def getSchemaDetails(SchemaType, SchemaURI):
 
     LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
 
-    if SchemaURI is not None and not LocalOnly:
+    if SchemaURI is not None and not LocalOnly or '/redfish/v1/$metadata' in SchemaURI:
         # Get our expected Schema file here
         # if success, generate Soup, then check for frags to parse
         #   start by parsing references, then check for the refLink
