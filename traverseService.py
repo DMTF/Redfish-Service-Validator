@@ -888,6 +888,8 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
             propDict = propx.propDict
             key = propx.name
             item = getType(key).split(':')[-1]
+            ownerNS = propx.propOwner.split('.')[0]
+            ownerType = propx.propOwner.split('.')[-1]
             if propDict['isNav']:
                 insideItem = jsonData.get(item)
                 if insideItem is not None:
@@ -908,6 +910,20 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context=''):
                             cSchema = context
                         linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
                             insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
+            elif item == 'Uri' and ownerNS == 'MessageRegistryFile' and ownerType == 'Location':
+                # special handling for MessageRegistryFile Location Uri
+                insideItem = jsonData.get(item)
+                uriItem = {'@odata.id': insideItem}
+                cType = ownerNS + '.' + ownerNS
+                autoExpand = propDict.get('OData.AutoExpand', None) is not None or \
+                             propDict.get('OData.AutoExpand'.lower(), None) is not None
+                cSchema = refDict.get(getNamespace(cType), (None, None))[1]
+                if cSchema is None:
+                    cSchema = context
+                traverseLogger.debug('Registry Location Uri: resource = {}, type = {}, schema = {}'
+                                     .format(insideItem, cType, cSchema))
+                linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
+                    uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem)
         for propx in propList:
             propDict = propx.propDict
             key = propx.name
