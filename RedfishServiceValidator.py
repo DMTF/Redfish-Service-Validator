@@ -195,20 +195,26 @@ def validateComplex(name, val, propTypeObj, payloadType):
 
 
 def validateDynamicPropertyType(name, key, value, prop_type):
-    if prop_type == 'Edm.Primitive':
-        primitive = (int, float, str, bool)
-        type_pass = isinstance(value, primitive)
-        if not type_pass:
-            rsvLogger.error('{} key "{}" with value "{}" is not of type "{}"'.format(name, key, value, prop_type))
+    type_pass = True
+    if prop_type == 'Edm.Primitive' or prop_type == 'Edm.PrimitiveType':
+        type_pass = isinstance(value, (int, float, str, bool))
     elif prop_type == 'Edm.String':
         type_pass = isinstance(value, str)
-        if not type_pass:
-            rsvLogger.error('{} key "{}" with value "{}" is not of type "{}"'.format(name, key, value, prop_type))
-    # TODO: handle other types
+    elif prop_type == 'Edm.Boolean':
+        type_pass = isinstance(value, bool)
+    elif prop_type == 'Edm.DateTimeOffset':
+        type_pass = validateDatetime(key, value)
+    elif prop_type == 'Edm.Int' or prop_type == 'Edm.Int16' or prop_type == 'Edm.Int32' or prop_type == 'Edm.Int64':
+        type_pass = isinstance(value, int)
+    elif prop_type == 'Edm.Decimal' or prop_type == 'Edm.Double':
+        type_pass = isinstance(value, (int, float))
+    elif prop_type == 'Edm.Guid':
+        type_pass = validateGuid(key, value)
     else:
-        type_pass = True
-        rsvLogger.warning('{} Do not know how to validate type "{}" for the value of key "{}"'
-                          .format(name, prop_type, key))
+        rsvLogger.debug('{}: Do not know how to validate type "{}" for the value of key "{}"'
+                        .format(name, prop_type, key))
+    if not type_pass:
+        rsvLogger.error('{} key "{}" with value "{}" is not of type "{}"'.format(name, key, value, prop_type))
     return type_pass
 
 
