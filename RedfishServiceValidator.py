@@ -185,7 +185,85 @@ def validateComplex(name, val, propTypeObj, payloadType):
         aMsgs, aCounts = validateActions(name, val, propTypeObj, payloadType)
         complexMessages.update(aMsgs)
         complexCounts.update(aCounts)
+
+    if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
+        patternMessages, patternCounts = validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType)
+        complexMessages.update(patternMessages)
+        complexCounts.update(patternCounts)
+
     return True, complexCounts, complexMessages
+
+
+def validateDynamicPropertyType(name, key, value, prop_type):
+    if prop_type == 'Edm.Primitive':
+        primitive = (int, float, str, bool)
+        type_pass = isinstance(value, primitive)
+        if not type_pass:
+            rsvLogger.error('{} key "{}" with value "{}" is not of type "{}"'.format(name, key, value, prop_type))
+    elif prop_type == 'Edm.String':
+        type_pass = isinstance(value, str)
+        if not type_pass:
+            rsvLogger.error('{} key "{}" with value "{}" is not of type "{}"'.format(name, key, value, prop_type))
+    # TODO: handle other types
+    else:
+        type_pass = True
+        rsvLogger.warning('{} Do not know how to validate type "{}" for the value of key "{}"'
+                          .format(name, prop_type, key))
+    return type_pass
+
+
+def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType):
+    messages = OrderedDict()
+    counts = Counter()
+    rsvLogger.debug('validateDynamicPropertyPatterns: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
+                    .format(name, type(val), propTypeObj.propPattern, payloadType))
+    prop_pattern = prop_type = None
+    if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
+        prop_pattern = propTypeObj.propPattern.get('Pattern')
+        prop_type = propTypeObj.propPattern.get('Type')
+    if prop_pattern is None or prop_type is None:
+        rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern or Type properties missing'
+                        .format(name))
+        return messages, counts
+    if not isinstance(prop_pattern, str):
+        rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern property not a string'
+                        .format(name))
+        return messages, counts
+    if not isinstance(prop_type, str):
+        rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Type property not a string'
+                        .format(name))
+        return messages, counts
+    if not isinstance(val, dict):
+        rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but payload value not a dictionary'
+                        .format(name))
+        return messages, counts
+
+    regex = re.compile(prop_pattern)
+    for key, value in val.items():
+        # validate the value key against the Pattern
+        pattern_pass = True
+        if isinstance(key, str):
+            if regex.match(key) is None:
+                pattern_pass = False
+                rsvLogger.error('{} key "{}" does not match pattern "{}"'.format(name, key, prop_pattern))
+        else:
+            pattern_pass = False
+            rsvLogger.error('{} key "{}" is not a string, so cannot be validated against pattern "{}"'
+                            .format(name, key, prop_pattern))
+        if pattern_pass:
+            counts['pass'] += 1
+        else:
+            counts['failDynamicPropertyPatterns'] += 1
+        # validate the value type against the Type
+        type_pass = validateDynamicPropertyType(name, key, value, prop_type)
+        if type_pass:
+            counts['pass'] += 1
+        else:
+            counts['failDynamicPropertyPatterns'] += 1
+        messages[key + ' '] = (
+            value, prop_type, 'Exists', 'PASS' if type_pass and pattern_pass else 'FAIL')
+
+    return messages, counts
 
 
 def validateDeprecatedEnum(name, val, listEnum):
