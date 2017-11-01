@@ -912,7 +912,7 @@ def main(argv=None):
                 if typename not in linklimitdict:
                     linklimitdict[typename] = int(count)
                 else:
-                    traverseLogger.error('Limit already exists for {}'.format(typename))
+                    rsvLogger.error('Limit already exists for {}'.format(typename))
         cdict['linklimit'] = linklimitdict
 
         rst.setConfig({key: cdict[key] for key in cdict.keys() if key in rst.configset.keys()})
