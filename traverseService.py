@@ -613,11 +613,12 @@ class PropType:
         self.isNav = False
         self.propList = []
         self.parent = None
+        self.propPattern = None
 
         propertyList = self.propList
         success, baseSoup, baseRefs, baseType = True, self.soup, self.refs, self.fulltype
         try:
-            self.additional, newList = getTypeDetails(
+            self.additional, newList, self.propPattern = getTypeDetails(
                 baseSoup, baseRefs, baseType, self.tagType, topVersion)
             propertyList.extend(newList)
             success, baseSoup, baseRefs, baseType = getParentType(
@@ -646,6 +647,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     Gets list of surface level properties for a given SchemaType,
     """
     PropertyList = list()
+    PropertyPattern = None
     additional = False
 
     SchemaNamespace, SchemaType = getNamespace(
@@ -660,7 +662,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     if innerschema is None:
         traverseLogger.error("Got XML, but expected schema doesn't exist...? {}, {}\n... we will be unable to generate properties".format(
                              SchemaNamespace, SchemaType))
-        return False, PropertyList
+        return False, PropertyList, PropertyPattern
 
     element = innerschema.find(tagType, attrs={'Name': SchemaType}, recursive=False)
     traverseLogger.debug("___")
@@ -682,6 +684,21 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     else:
         additional = False
     if additionalElementOther is not None:
+        # create PropertyPattern dict containing pattern and type for DynamicPropertyPatterns validation
+        traverseLogger.debug('getTypeDetails: Redfish.DynamicPropertyPatterns found, element = {}, SchemaAlias = {}'
+                             .format(element, SchemaAlias))
+        pattern_elem = additionalElementOther.find("PropertyValue", Property="Pattern")
+        pattern = prop_type = None
+        if pattern_elem is not None:
+            pattern = pattern_elem.get("String")
+        type_elem = additionalElementOther.find("PropertyValue", Property="Type")
+        if type_elem is not None:
+            prop_type = type_elem.get("String")
+        traverseLogger.debug('getTypeDetails: pattern = {}, type = {}'.format(pattern, prop_type))
+        if pattern is not None and prop_type is not None:
+            PropertyPattern = dict()
+            PropertyPattern['Pattern'] = pattern
+            PropertyPattern['Type'] = prop_type
         additional = True
 
     for innerelement in usableProperties:
@@ -695,7 +712,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
             PropertyList.append(
                 PropItem(soup, refs, newPropOwner, newProp, tagType=tagType, topVersion=topVersion))
 
-    return additional, PropertyList
+    return additional, PropertyList, PropertyPattern
 
 
 def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', topVersion=None):
@@ -947,7 +964,7 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
             item = getType(key).split(':')[-1]
             if propDict['realtype'] == 'complex':
                 if jsonData.get(item) is not None:
-                    cType = getType(propDict.get('isCollection'))
+                    cType = propDict.get('isCollection')
                     if cType is not None:
                         cTypeName = getType(cType)
                         for cnt, listItem in enumerate(jsonData[item]):
