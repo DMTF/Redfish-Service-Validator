@@ -947,7 +947,7 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
             item = getType(key).split(':')[-1]
             if propDict['realtype'] == 'complex':
                 if jsonData.get(item) is not None:
-                    cType = getType(propDict.get('isCollection'))
+                    cType = propDict.get('isCollection')
                     if cType is not None:
                         cTypeName = getType(cType)
                         for cnt, listItem in enumerate(jsonData[item]):
