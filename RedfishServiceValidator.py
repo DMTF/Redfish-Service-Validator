@@ -186,7 +186,7 @@ def validateComplex(name, val, propTypeObj, payloadType):
         complexMessages.update(aMsgs)
         complexCounts.update(aCounts)
 
-    # validate the Redfish.DynamicPropertyPatterns if specified
+    # validate the Redfish.DynamicPropertyPatterns if present
     if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
         patternMessages, patternCounts = validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType)
         complexMessages.update(patternMessages)
