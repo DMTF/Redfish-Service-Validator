@@ -186,6 +186,7 @@ def validateComplex(name, val, propTypeObj, payloadType):
         complexMessages.update(aMsgs)
         complexCounts.update(aCounts)
 
+    # validate the Redfish.DynamicPropertyPatterns if specified
     if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
         patternMessages, patternCounts = validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType)
         complexMessages.update(patternMessages)
@@ -195,6 +196,14 @@ def validateComplex(name, val, propTypeObj, payloadType):
 
 
 def validateDynamicPropertyType(name, key, value, prop_type):
+    """
+    Check the type of the property value
+    :param name: the name of the dictionary of properties being validated
+    :param key: the key of the individual property being validated
+    :param value: the value of the individual property being validated
+    :param prop_type: the expected type of the value
+    :return: True if the type check passes, False otherwise
+    """
     type_pass = True
     if prop_type == 'Edm.Primitive' or prop_type == 'Edm.PrimitiveType':
         type_pass = isinstance(value, (int, float, str, bool))
@@ -219,6 +228,14 @@ def validateDynamicPropertyType(name, key, value, prop_type):
 
 
 def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType):
+    """
+    Checks the value type and key pattern of the properties specified via Redfish.DynamicPropertyPatterns annotation
+    :param name: the name of the dictionary of properties being validated
+    :param val: the dictionary of properties being validated
+    :param propTypeObj: the PropType instance
+    :param payloadType: the type of the payload being validated
+    :return: the messages and counts of the validation results
+    """
     messages = OrderedDict()
     counts = Counter()
     rsvLogger.debug('validateDynamicPropertyPatterns: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
