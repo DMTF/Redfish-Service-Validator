@@ -487,7 +487,7 @@ def loadAttributeRegDict(odata_type, json_data):
         rsvLogger.debug('{}: Expected json_data param to be a dict, found {}'.format(fn, type(json_data)))
         return
 
-    # get Id property if present; if missing us e a key of 'default' to store the dictionary
+    # get Id property if present; if missing use a key of 'default' to store the dictionary
     reg_id = json_data.get('Id')
     if reg_id is None:
         reg_id = 'default'
