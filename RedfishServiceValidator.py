@@ -18,6 +18,9 @@ import traverseService as rst
 
 rsvLogger = rst.getLogger()
 
+attributeRegistries = dict()
+
+
 def validateActions(name, val, propTypeObj, payloadType):
     # checks for all Schema parents and gets their Action tags, does validation
     # info: what tags are we getting, treat them as if they were properties in a complex
@@ -134,7 +137,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
     return paramPass
 
 
-def validateComplex(name, val, propTypeObj, payloadType):
+def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
     # one of the more complex validation methods, but is similar to validateSingleURI
     # info: treat this like an individual payload, where is it, what is going on, perhaps reuse same code by moving it to helper
     # warn: lacks an odata type, defaulted to highest type (this would happen during type gen)
@@ -188,7 +191,8 @@ def validateComplex(name, val, propTypeObj, payloadType):
 
     # validate the Redfish.DynamicPropertyPatterns if present
     if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
-        patternMessages, patternCounts = validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType)
+        patternMessages, patternCounts = validateDynamicPropertyPatterns(name, val, propTypeObj,
+                                                                         payloadType, attrRegistryId)
         complexMessages.update(patternMessages)
         complexCounts.update(patternCounts)
 
@@ -227,19 +231,79 @@ def validateDynamicPropertyType(name, key, value, prop_type):
     return type_pass
 
 
-def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType):
+def validateAttributeRegistry(name, key, value, attr_reg):
+    """
+    Checks the given value against the type specified in the associated attribute registry
+    :param name: the name of the dictionary of properties being validated
+    :param key: the key of the individual property being validated
+    :param value: the value of the individual property being validated
+    :param attr_reg: the attribute registry entry for this property
+    :return: (1) True if the type check passes, False otherwise and (2) value of 'Type' property
+    """
+    fn = 'validateAttributeRegistry'
+    if key in attr_reg:
+        rsvLogger.debug('{}: {}: found attribute registry entry for key "{}"'.format(fn, name, key))
+        attr = attr_reg.get(key)
+    else:
+        rsvLogger.debug('{}: {}: did not find attribute registry entry for key "{}"'.format(fn, name, key))
+        return True, None
+    type_prop = attr.get('Type')
+    if type_prop is None:
+        rsvLogger.debug('{}: {}: no "Type" property found for key "{}"'.format(fn, name, key))
+        return True, None
+    reg_pass = True
+    if type_prop == 'Enumeration':
+        value_prop = attr.get('Value')
+        if value_prop is not None and isinstance(value_prop, list):
+            val_list = [a.get("ValueName") for a in value_prop]
+            reg_pass = value in val_list
+            if not reg_pass:
+                rsvLogger.error('Key "{}" has a value of "{}". This is not an expected value from the Enumeration: "{}"'
+                                .format(key, value, val_list))
+        else:
+            rsvLogger.debug('{}: {}: Expected "Value" property key "{}" to be a list, found "{}"'
+                            .format(fn, name, key, str(type(value)).strip('<>')))
+    elif type_prop == 'String':
+        reg_pass = isinstance(value, str)
+        if not reg_pass:
+            rsvLogger.error('Key "{}" has a value of "{}". The expected type is String but the type found is "{}"'
+                            .format(key, value, str(type(value)).strip('<>')))
+    elif type_prop == 'Integer':
+        reg_pass = isinstance(value, int)
+        if not reg_pass:
+            rsvLogger.error('Key "{}" has a value of "{}". The expected type is Integer but the type found is "{}"'
+                            .format(key, value, str(type(value)).strip('<>')))
+    elif type_prop == 'Boolean':
+        reg_pass = isinstance(value, bool)
+        if not reg_pass:
+            rsvLogger.error('Key "{}" has a value of "{}". The expected type is Boolean but the type found is "{}"'
+                            .format(key, value, str(type(value)).strip('<>')))
+    elif type_prop == 'Password':
+        reg_pass = value is None
+        if not reg_pass:
+            rsvLogger.error('Key "{}" is a Password. The value returned from GET must be null, but was of type "{}"'
+                            .format(key, str(type(value)).strip('<>')))
+    else:
+        rsvLogger.warning('Unexpected "Type" property "{}" found for key "{}".'
+                          .format(type_prop, key))
+    return reg_pass, type_prop
+
+
+def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrRegistryId):
     """
     Checks the value type and key pattern of the properties specified via Redfish.DynamicPropertyPatterns annotation
     :param name: the name of the dictionary of properties being validated
     :param val: the dictionary of properties being validated
     :param propTypeObj: the PropType instance
     :param payloadType: the type of the payload being validated
+    :param attrRegistryId: teh AttributeRegistry ID (if applicable) for this dictionary of properties
     :return: the messages and counts of the validation results
     """
+    fn = 'validateDynamicPropertyPatterns'
     messages = OrderedDict()
     counts = Counter()
-    rsvLogger.debug('validateDynamicPropertyPatterns: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
-                    .format(name, type(val), propTypeObj.propPattern, payloadType))
+    rsvLogger.debug('{}: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
+                    .format(fn, name, type(val), propTypeObj.propPattern, payloadType))
     prop_pattern = prop_type = None
     if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
         prop_pattern = propTypeObj.propPattern.get('Pattern')
@@ -260,7 +324,20 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType):
         rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but payload value not a dictionary'
                         .format(name))
         return messages, counts
-
+    # get the attribute registry dictionary if applicable
+    attr_reg = None
+    if attrRegistryId is not None:
+        if attrRegistryId in attributeRegistries:
+            rsvLogger.debug('{}: {}: Using attribute registry for {}'.format(fn, name, attrRegistryId))
+            attr_reg = attributeRegistries.get(attrRegistryId)
+        elif 'default' in attributeRegistries:
+            rsvLogger.debug('{}: {}: Using default attribute registry for {}'.format(fn, name, attrRegistryId))
+            attr_reg = attributeRegistries.get('default')
+        else:
+            rsvLogger.warning('{}: {}: Attribute Registry with ID {} not found'.format(fn, name, attrRegistryId))
+    else:
+        rsvLogger.debug('{}: {}: No Attribute Registry ID found'.format(fn, name, attrRegistryId))
+    # validate each property
     regex = re.compile(prop_pattern)
     for key, value in val.items():
         # validate the value key against the Pattern
@@ -283,8 +360,18 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType):
             counts['pass'] += 1
         else:
             counts['failDynamicPropertyPatterns'] += 1
+        # validate against the attribute registry if present
+        reg_pass = True
+        attr_reg_type = None
+        if attr_reg is not None:
+            reg_pass, attr_reg_type = validateAttributeRegistry(name, key, value, attr_reg)
+            if reg_pass:
+                counts['pass'] += 1
+            else:
+                counts['failAttributeRegistry'] += 1
         messages[key + ' '] = (
-            value, prop_type, 'Exists', 'PASS' if type_pass and pattern_pass else 'FAIL')
+            value, prop_type if attr_reg_type is None else attr_reg_type, 'Exists',
+            'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
 
     return messages, counts
 
@@ -386,6 +473,66 @@ def validateNumber(name, val, minVal=None, maxVal=None):
     else:
         rsvLogger.error("{}: Expected integer or float, got type {}".format(name, str(type(val))))
     return paramPass
+
+
+def loadAttributeRegDict(odata_type, json_data):
+    """
+    Load the attribute registry from the json payload into a dictionary and store it in global attributeRegistries dict
+    :param odata_type: the @odata.type for this json payload
+    :param json_data: the json payload from which to extract the attribute registry
+    :return:
+    """
+    fn = 'loadAttributeRegDict'
+    if not isinstance(json_data, dict):
+        rsvLogger.debug('{}: Expected json_data param to be a dict, found {}'.format(fn, type(json_data)))
+        return
+
+    # get Id property if present; if missing us e a key of 'default' to store the dictionary
+    reg_id = json_data.get('Id')
+    if reg_id is None:
+        reg_id = 'default'
+
+    rsvLogger.debug('{}: @odata.type = {}, Id = {}'.format(fn, odata_type, reg_id))
+
+    # do some validations on the format of the attribute registry
+    if reg_id in attributeRegistries:
+        rsvLogger.error('{}: An AttributeRegistry with Id "{}" has already been loaded'.format(fn, reg_id))
+        return
+    reg_entries = json_data.get('RegistryEntries')
+    if not isinstance(reg_entries, dict):
+        rsvLogger.warning('{}: Expected RegistryEntries property to be a dict, found {}'.format(fn, type(reg_entries)))
+        return
+    attributes = reg_entries.get('Attributes')
+    if not isinstance(attributes, list):
+        rsvLogger.warning('{}: Expected Attributes property to be an array, found {}'.format(fn, type(attributes)))
+        return
+    if len(attributes) > 0:
+        if not isinstance(attributes[0], dict):
+            rsvLogger.warning('{}: Expected elements of Attributes array to be of type dict, found {}'
+                              .format(fn, type(attributes[0])))
+            return
+    else:
+        rsvLogger.debug('{}: Attributes element was zero length'.format(fn))
+        return
+
+    # load the attribute registry into a dictionary
+    attr_dict = dict()
+    for attr in attributes:
+        attr_name = attr.get('AttributeName')
+        if attr_name is None:
+            rsvLogger.debug('{}: Expected AttributeName property was not found in array element'.format(fn))
+            continue
+        if attr.get(attr_name) is not None:
+            rsvLogger.warning('{}: AttributeName {} was already seen; previous version will be overwritten'
+                            .format(fn, attr_name))
+        attr_dict[attr_name] = attr
+
+    # store the attribute registry in global dict `attributeRegistries`
+    if len(attr_dict) > 0:
+        rsvLogger.debug('{}: Adding "{}" AttributeRegistry dict with {} entries'.format(fn, reg_id, len(attr_dict)))
+        attributeRegistries[reg_id] = attr_dict
+    else:
+        rsvLogger.debug('{}: "{}" AttributeRegistry dict has zero entries; not adding'.format(fn, reg_id))
 
 
 def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
@@ -533,7 +680,9 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             else:
                 if propRealType == 'complex':
                     innerPropType = PropertyItem['typeprops']
-                    success, complexCounts, complexMessages = validateComplex(PropertyName, val, innerPropType, decoded.get('@odata.type'))
+                    success, complexCounts, complexMessages = validateComplex(PropertyName, val, innerPropType,
+                                                                              decoded.get('@odata.type'),
+                                                                              decoded.get('AttributeRegistry'))
                     if not success:
                         counts['failComplex'] += 1
                         resultList[item + appendStr] = (
@@ -712,6 +861,15 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         return False, counts, results, None, None
     counts['passGet'] += 1
     results[uriName] = (str(URI) + ' (response time: {}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
+
+    # If this is an AttributeRegistry, load it for later use
+    if isinstance(propResourceObj.jsondata, dict):
+        odata_type = propResourceObj.jsondata.get('@odata.type')
+        if odata_type is not None:
+            namespace = odata_type.split('.')[0]
+            type_name = odata_type.split('.')[-1]
+            if namespace == '#AttributeRegistry' and type_name == 'AttributeRegistry':
+                loadAttributeRegDict(odata_type, propResourceObj.jsondata)
 
     node = propResourceObj.typeobj
     while node is not None:

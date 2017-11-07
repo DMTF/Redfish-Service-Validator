@@ -981,6 +981,10 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
         traverseLogger.debug(str(linkList))
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
+    # contents of Registries may be needed to validate other resources (like Bios), so move to front of linkList
+    if 'Registries.Registries' in linkList:
+        linkList.move_to_end('Registries.Registries', last=False)
+        traverseLogger.debug('getAllLinks: Moved Registries.Registries to front of list')
     return linkList
 
 
