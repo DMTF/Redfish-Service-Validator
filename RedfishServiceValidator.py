@@ -459,14 +459,8 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                 'Exists' if propExists else 'DNE',
                 'skipOptional')}, counts
 
-    propNullable = propAttr.get('nullable')
-    propNullablePass = True
-    if propNullable is not None:
-        propNullablePass = (
-            propNullable == 'true') or not propExists or propNotNull
-        rsvLogger.info("\tis Nullable: {} {}".format(propNullable, propNotNull))
-        rsvLogger.info("\tNullability test: {}".format(
-                       'OK' if propNullablePass else 'FAIL'))
+    nullable_attr = propAttr.get('Nullable')
+    propNullable = False if nullable_attr == 'false' else True  # default is true
 
     # rs-assertion: Check for permission change
     propPermissions = propAttr.get('Odata.Permissions')
@@ -509,7 +503,10 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         appendStr = (('#' + str(cnt)) if isCollection else '')
         if propRealType is not None and propExists and propNotNull:
             paramPass = False
-            if propRealType == 'Edm.Boolean':
+            if propNullable and val is None:
+                paramPass = True
+                rsvLogger.debug('Property in {} is nullable and is null, so type checking passes'.format(item))
+            elif propRealType == 'Edm.Boolean':
                 paramPass = isinstance(val, bool)
                 if not paramPass:
                     rsvLogger.error("{}: Not a boolean".format(PropertyName))
@@ -580,8 +577,8 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         resultList[item + appendStr] = (
                 val, (propType, propRealType),
                 'Exists' if propExists else 'DNE',
-                'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
-        if paramPass and propNullablePass and propMandatoryPass:
+                'PASS' if paramPass and propMandatoryPass else 'FAIL')
+        if paramPass and propMandatoryPass:
             counts['pass'] += 1
             rsvLogger.info("\tSuccess")  # Printout FORMAT
         else:
@@ -595,9 +592,6 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             elif not propMandatoryPass:
                 rsvLogger.error("%s: Mandatory prop does not exist" % PropertyName)  # Printout FORMAT
                 counts['failMandatoryExist'] += 1
-            elif not propNullablePass:
-                rsvLogger.error("%s: This property is not nullable" % PropertyName)  # Printout FORMAT
-                counts['failNull'] += 1
             rsvLogger.info("\tFAIL")  # Printout FORMAT
 
     return resultList, counts
