@@ -511,10 +511,10 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             if val is None:
                 if propNullable:
                     paramPass = True
-                    rsvLogger.debug('Property {} is nullable and is null, so type checking passes'
-                                    .format(PropertyName))
+                    rsvLogger.debug('Property #{} in {} is nullable and is null, so type checking passes'
+                                    .format(cnt, PropertyName))
                 else:
-                    rsvLogger.error('Property {} is null but is not Nullable'.format(PropertyName))
+                    rsvLogger.error('Property #{} in {} is null but is not Nullable'.format(cnt, PropertyName))
 
             elif propRealType == 'Edm.Boolean':
                 paramPass = isinstance(val, bool)
