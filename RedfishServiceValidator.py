@@ -487,8 +487,8 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
     isCollection = propCollectionType is not None
     if isCollection and propValue is None:
         # illegal for a collection to be null
-        rsvLogger.error('Value of Collection property {} in {} is null but Collections cannot be null, only their entries'
-                        .format(PropertyName, item))
+        rsvLogger.error('Value of Collection property {} is null but Collections cannot be null, only their entries'
+                        .format(PropertyName))
         propValueList = []
     elif propCollectionType is not None and propNotNull:
         # note: handle collections correctly, this needs a nicer printout
