@@ -485,7 +485,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
     # Note: make sure it checks each one
     propCollectionType = PropertyItem.get('isCollection')
     isCollection = propCollectionType is not None
-    if propCollectionType is not None and propNotNull:
+    if isCollection and propValue is None:
+        # illegal for a collection to be null
+        rsvLogger.error('Value of Collection property {} in {} is null but Collections cannot be null, only their entries'
+                        .format(PropertyName, item))
+        propValueList = []
+    elif propCollectionType is not None and propNotNull:
         # note: handle collections correctly, this needs a nicer printout
         # rs-assumption: do not assume URIs for collections
         # rs-assumption: check @odata.count property
@@ -503,9 +508,14 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         appendStr = (('#' + str(cnt)) if isCollection else '')
         if propRealType is not None and propExists and propNotNull:
             paramPass = False
-            if propNullable and val is None:
-                paramPass = True
-                rsvLogger.debug('Property in {} is nullable and is null, so type checking passes'.format(item))
+            if val is None:
+                if propNullable:
+                    paramPass = True
+                    rsvLogger.debug('Property {} is nullable and is null, so type checking passes'
+                                    .format(PropertyName))
+                else:
+                    rsvLogger.error('Property {} is null but is not Nullable'.format(PropertyName))
+
             elif propRealType == 'Edm.Boolean':
                 paramPass = isinstance(val, bool)
                 if not paramPass:
