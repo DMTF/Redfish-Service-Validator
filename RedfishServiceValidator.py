@@ -413,7 +413,6 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
     rsvLogger.info("\tvalue: {} {}".format(propValue, type(propValue)))
 
     propExists = not (propValue == 'n/a')
-    propNotNull = propExists and propValue is not None and propValue is not 'None'
 
     if PropertyItem is None:
         if not propExists:
@@ -479,7 +478,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
     validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
         int(validMaxAttr['Int']) if validMaxAttr is not None else None
     validPattern = validPatternAttr.get('String', '') if validPatternAttr is not None else None
-    paramPass = True
+    paramPass = propNullablePass = True
 
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
@@ -489,8 +488,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         # illegal for a collection to be null
         rsvLogger.error('Value of Collection property {} is null but Collections cannot be null, only their entries'
                         .format(PropertyName))
-        propValueList = []
-    elif propCollectionType is not None and propNotNull:
+        counts['failNullCollection'] += 1
+        return {item: (
+            '-', (propType, propRealType),
+            'Exists' if propExists else 'DNE',
+            'failNullCollection')}, counts
+    elif isCollection and propValue is not None:
         # note: handle collections correctly, this needs a nicer printout
         # rs-assumption: do not assume URIs for collections
         # rs-assumption: check @odata.count property
@@ -501,20 +504,20 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                             '...')
         propValueList = propValue
     else:
+        # not a collection
         propValueList = [propValue]
     # note: make sure we don't enter this on null values, some of which are
     # OK!
     for cnt, val in enumerate(propValueList):
         appendStr = (('#' + str(cnt)) if isCollection else '')
-        if propRealType is not None and propExists and propNotNull:
-            paramPass = False
+        if propRealType is not None and propExists and propValue is not None:
+            paramPass = propNullablePass = True
             if val is None:
                 if propNullable:
-                    paramPass = True
-                    rsvLogger.debug('Property #{} in {} is nullable and is null, so type checking passes'
+                    rsvLogger.debug('Property #{} in {} is nullable and is null, so Nullable checking passes'
                                     .format(cnt, PropertyName))
                 else:
-                    rsvLogger.error('Property #{} in {} is null but is not Nullable'.format(cnt, PropertyName))
+                    propNullablePass = False
 
             elif propRealType == 'Edm.Boolean':
                 paramPass = isinstance(val, bool)
@@ -587,8 +590,8 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         resultList[item + appendStr] = (
                 val, (propType, propRealType),
                 'Exists' if propExists else 'DNE',
-                'PASS' if paramPass and propMandatoryPass else 'FAIL')
-        if paramPass and propMandatoryPass:
+                'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
+        if paramPass and propNullablePass and propMandatoryPass:
             counts['pass'] += 1
             rsvLogger.info("\tSuccess")  # Printout FORMAT
         else:
@@ -602,6 +605,9 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             elif not propMandatoryPass:
                 rsvLogger.error("%s: Mandatory prop does not exist" % PropertyName)  # Printout FORMAT
                 counts['failMandatoryExist'] += 1
+            elif not propNullablePass:
+                rsvLogger.error('Property #{} in {} is null but is not Nullable'.format(cnt, PropertyName))
+                counts['failNullable'] += 1
             rsvLogger.info("\tFAIL")  # Printout FORMAT
 
     return resultList, counts
