@@ -510,12 +510,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
     # OK!
     for cnt, val in enumerate(propValueList):
         appendStr = (('#' + str(cnt)) if isCollection else '')
-        if propRealType is not None and propExists and propValue is not None:
+        if propRealType is not None and propExists:
             paramPass = propNullablePass = True
             if val is None:
                 if propNullable:
-                    rsvLogger.debug('Property #{} in {} is nullable and is null, so Nullable checking passes'
-                                    .format(cnt, PropertyName))
+                    rsvLogger.debug('Property {}{} is nullable and is null, so Nullable checking passes'
+                                    .format(PropertyName, '#' + str(cnt) if isCollection else ''))
                 else:
                     propNullablePass = False
 
@@ -606,7 +606,8 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                 rsvLogger.error("%s: Mandatory prop does not exist" % PropertyName)  # Printout FORMAT
                 counts['failMandatoryExist'] += 1
             elif not propNullablePass:
-                rsvLogger.error('Property #{} in {} is null but is not Nullable'.format(cnt, PropertyName))
+                rsvLogger.error('Property {}{} is null but is not Nullable'
+                                .format(PropertyName, '#' + str(cnt) if isCollection else ''))
                 counts['failNullable'] += 1
             rsvLogger.info("\tFAIL")  # Printout FORMAT
 
