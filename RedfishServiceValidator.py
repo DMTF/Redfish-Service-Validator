@@ -238,7 +238,7 @@ def validateAttributeRegistry(name, key, value, attr_reg):
     :param key: the key of the individual property being validated
     :param value: the value of the individual property being validated
     :param attr_reg: the attribute registry entry for this property
-    :return: (1) True if the type check passes, False otherwise and (2) value of 'Type' property
+    :return: a tuple containing (1) True if the type check passes, False otherwise and (2) value of 'Type' property
     """
     fn = 'validateAttributeRegistry'
     if key in attr_reg:
@@ -253,36 +253,108 @@ def validateAttributeRegistry(name, key, value, attr_reg):
         return True, None
     reg_pass = True
     if type_prop == 'Enumeration':
+        # validate enumeration
         value_prop = attr.get('Value')
         if value_prop is not None and isinstance(value_prop, list):
             val_list = [a.get("ValueName") for a in value_prop]
             reg_pass = value in val_list
             if not reg_pass:
-                rsvLogger.error('Key "{}" has a value of "{}". This is not an expected value from the Enumeration: "{}"'
-                                .format(key, value, val_list))
+                rsvLogger.error(
+                    'Attribute "{}" has a value of "{}". This is not an expected value from the Enumeration: "{}"'
+                    .format(key, value, val_list))
         else:
             rsvLogger.debug('{}: {}: Expected "Value" property key "{}" to be a list, found "{}"'
                             .format(fn, name, key, str(type(value)).strip('<>')))
     elif type_prop == 'String':
+        # validate type is string
         reg_pass = isinstance(value, str)
         if not reg_pass:
-            rsvLogger.error('Key "{}" has a value of "{}". The expected type is String but the type found is "{}"'
-                            .format(key, value, str(type(value)).strip('<>')))
+            rsvLogger.error(
+                'Attribute "{}" has a value of "{}". The expected type is String but the type found is "{}"'
+                .format(key, value, str(type(value)).strip('<>')))
+        else:
+            # validate MaxLength
+            max_len = attr.get('MaxLength')
+            if max_len is not None:
+                if isinstance(max_len, int):
+                    if len(value) > max_len:
+                        reg_pass = False
+                        rsvLogger.error(
+                            'The length of attribute "{}" is {}, which is greater than its MaxLength of {}'
+                            .format(key, len(value), max_len))
+                else:
+                    reg_pass = False
+                    rsvLogger.error('The MaxLength property in "{}" should be an int but the type found is "{}"'
+                                    .format(key, str(type(max_len)).strip('<>')))
+            # validate MinLength
+            min_len = attr.get('MinLength')
+            if min_len is not None:
+                if isinstance(min_len, int):
+                    if len(value) < min_len:
+                        reg_pass = False
+                        rsvLogger.error('The length of attribute "{}" is {}, which is less than its MinLength of {}'
+                                        .format(key, len(value), min_len))
+                else:
+                    reg_pass = False
+                    rsvLogger.error('The MinLength property in "{}" should be an int but the type found is "{}"'
+                                    .format(key, str(type(min_len)).strip('<>')))
+            # validate ValueExpression
+            val_expr = attr.get('ValueExpression')
+            if val_expr is not None:
+                if isinstance(val_expr, str):
+                    regex = re.compile(val_expr)
+                    if regex.match(value) is None:
+                        reg_pass = False
+                        rsvLogger.error(
+                            'The value of attribute "{}" is "{}" which does not match ValueExpression regex "{}"'
+                            .format(key, value, val_expr))
+                else:
+                    reg_pass = False
+                    rsvLogger.error(
+                        'The ValueExpression property in "{}" should be a string but the type found is "{}"'
+                        .format(key, str(type(val_expr)).strip('<>')))
     elif type_prop == 'Integer':
+        # validate type is int
         reg_pass = isinstance(value, int)
         if not reg_pass:
-            rsvLogger.error('Key "{}" has a value of "{}". The expected type is Integer but the type found is "{}"'
-                            .format(key, value, str(type(value)).strip('<>')))
+            rsvLogger.error(
+                'Attribute "{}" has a value of "{}". The expected type is Integer but the type found is "{}"'
+                .format(key, value, str(type(value)).strip('<>')))
+        else:
+            # validate LowerBound
+            lower_bound = attr.get('LowerBound')
+            if isinstance(lower_bound, int):
+                if value < lower_bound:
+                    reg_pass = False
+                    rsvLogger.error('The value of attribute "{}" is {}, which is less than its LowerBound of {}'
+                                    .format(key, value, lower_bound))
+            else:
+                reg_pass = False
+                rsvLogger.error('The LowerBound property in "{}" should be an int but the type found is "{}"'
+                                .format(key, str(type(lower_bound)).strip('<>')))
+            # validate UpperBound
+            upper_bound = attr.get('UpperBound')
+            if isinstance(upper_bound, int):
+                if value > upper_bound:
+                    reg_pass = False
+                    rsvLogger.error('The value of attribute "{}" is {}, which is greater than its UpperBound of {}'
+                                    .format(key, value, upper_bound))
+            else:
+                reg_pass = False
+                rsvLogger.error('The UpperBound property in "{}" should be an int but the type found is "{}"'
+                                .format(key, str(type(upper_bound)).strip('<>')))
     elif type_prop == 'Boolean':
         reg_pass = isinstance(value, bool)
         if not reg_pass:
-            rsvLogger.error('Key "{}" has a value of "{}". The expected type is Boolean but the type found is "{}"'
-                            .format(key, value, str(type(value)).strip('<>')))
+            rsvLogger.error(
+                'Attribute "{}" has a value of "{}". The expected type is Boolean but the type found is "{}"'
+                .format(key, value, str(type(value)).strip('<>')))
     elif type_prop == 'Password':
         reg_pass = value is None
         if not reg_pass:
-            rsvLogger.error('Key "{}" is a Password. The value returned from GET must be null, but was of type "{}"'
-                            .format(key, str(type(value)).strip('<>')))
+            rsvLogger.error(
+                'Attribute "{}" is a Password. The value returned from GET must be null, but was of type "{}"'
+                .format(key, str(type(value)).strip('<>')))
     else:
         rsvLogger.warning('Unexpected "Type" property "{}" found for key "{}".'
                           .format(type_prop, key))
