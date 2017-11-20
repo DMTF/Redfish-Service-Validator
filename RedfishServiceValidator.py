@@ -1053,15 +1053,18 @@ def main(argv=None):
             for i in results[item][3]:
                 htmlStr += '<tr>'
                 htmlStr += '<td>' + str(i) + '</td>'
-                for j in results[item][3][i]:
-                    if 'PASS' in str(j).upper():
-                        htmlStr += '<td class="pass center">' + str(j) + '</td>'
-                    elif 'FAIL' in str(j).upper():
-                        htmlStr += '<td class="fail center">' + str(j) + '</td>'
-                    elif 'SKIP' in str(j).upper():
-                        htmlStr += '<td class="warn center">' + str(j) + '</td>'
-                    else:
-                        htmlStr += '<td >' + str(j) + '</td>'
+                for j in results[item][3][i][:-1]:
+                    htmlStr += '<td >' + str(j) + '</td>'
+                # only color-code the last ("Success") column
+                success_col = results[item][3][i][-1]
+                if 'FAIL' in str(success_col).upper():
+                    htmlStr += '<td class="fail center">' + str(success_col) + '</td>'
+                elif 'SKIP' in str(success_col).upper():
+                    htmlStr += '<td class="warn center">' + str(success_col) + '</td>'
+                elif 'PASS' in str(success_col).upper():
+                    htmlStr += '<td class="pass center">' + str(success_col) + '</td>'
+                else:
+                    htmlStr += '<td class="center">' + str(success_col) + '</td>'
                 htmlStr += '</tr>'
         htmlStr += '</table></td></tr>'
         if results[item][4] is not None:
