@@ -79,6 +79,8 @@ CacheFilePath = Path to cache directory
 
 LinkLimit = TypeName:## -- Option to limit the amount of links accepted from collections, default LogEntry:20
 
+Sample = (integer) Number of random members from large collections to validate. The default is to validate all members. All members will be validated if a value of zero or a negative number is specified. If a LinkLimit and Sample apply to a given collection, the LinkLimit takes precedence.
+
 PayloadMode = [Default, Tree, Single, TreeFile, SingleFile] -- Options for the target of validation, allowing to specify a file or specific URI and traversal behavior
 
 PayloadFilePath = Path to URI/File
