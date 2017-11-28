@@ -888,12 +888,12 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
 
 def enumerate_collection(items, cTypeName, linklimits, sample_size):
     """
-    Generator function to enumerate the the items in a collection, applying the link limit or sample size if applicable.
+    Generator function to enumerate the items in a collection, applying the link limit or sample size if applicable.
     If a link limit is specified for this cTypeName, return the first N items as specified by the limit value.
     If a sample size greater than zero is specified, return a random sample of items specified by the sample_size.
     In both the above cases, if the limit value or sample size is greater than or equal to the number of items in the
     collection, return all the items.
-    If a limit value and sample size are both provided, the limit value takes precedence.
+    If a limit value for this cTypeName and a sample size are both provided, the limit value takes precedence.
     :param items: the collection of items to enumerate
     :param cTypeName: the type name of this collection
     :param linklimits: a dictionary mapping type names to their limit values
