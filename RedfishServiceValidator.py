@@ -925,13 +925,14 @@ def main(argv=None):
             return 1
         # Send config only with keys supported by program
         linklimitdict = {}
-        for item in cdict.get('linklimit',{}):
-            if re.match('[A-Za-z_]+:[0-9]+', item) is not None:
-                typename, count = tuple(item.split(':')[:2])
-                if typename not in linklimitdict:
-                    linklimitdict[typename] = int(count)
-                else:
-                    rsvLogger.error('Limit already exists for {}'.format(typename))
+        if cdict.get('linklimit') is not None:
+            for item in cdict.get('linklimit'):
+                if re.match('[A-Za-z_]+:[0-9]+', item) is not None:
+                    typename, count = tuple(item.split(':')[:2])
+                    if typename not in linklimitdict:
+                        linklimitdict[typename] = int(count)
+                    else:
+                        rsvLogger.error('Limit already exists for {}'.format(typename))
         cdict['linklimit'] = linklimitdict
 
         rst.setConfig({key: cdict[key] for key in cdict.keys() if key in rst.configset.keys()})
