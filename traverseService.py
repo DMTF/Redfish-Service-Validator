@@ -998,10 +998,12 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
                         cTypeName = getType(cType)
                         for cnt, listItem in enumerate_collection(jsonData[item], cTypeName, linklimits, sample_size):
                             linkList.update(getAllLinks(
-                                listItem, propDict['typeprops'].propList, refDict, prefix + item + '.', context, sample_size=sample_size))
+                                listItem, propDict['typeprops'].propList, refDict, prefix + item + '.', context,
+                                linklimits=linklimits, sample_size=sample_size))
                     else:
                         linkList.update(getAllLinks(
-                            jsonData[item], propDict['typeprops'].propList, refDict, prefix + item + '.', context, sample_size=sample_size))
+                            jsonData[item], propDict['typeprops'].propList, refDict, prefix + item + '.', context,
+                            linklimits=linklimits, sample_size=sample_size))
         traverseLogger.debug(str(linkList))
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
