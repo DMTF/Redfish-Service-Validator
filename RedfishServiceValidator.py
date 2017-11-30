@@ -1081,7 +1081,8 @@ argparse2configparser = {
         'suffix': 'schemasuffix', 'schemadir': 'metadatafilepath', 'nossl': '!usessl', 'timeout': 'timeout', 'service': 'servicemode',
         'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
         'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
-        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token', 'linklimit': 'linklimit'}
+        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
+        'linklimit': 'linklimit', 'sample': 'sample'}
 
 validatorconfig = {'payloadmode': 'Default', 'payloadfilepath': None, 'logpath': './logs'}
 
@@ -1118,6 +1119,7 @@ def main(argv=None):
     argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
     argget.add_argument('--linklimit', type=str, help='Limit the amount of links in collections, formatted TypeName:## TypeName:## ..., default LogEntry:20 ', nargs='*')
+    argget.add_argument('--sample', type=int, default=0, help='sample this number of members from large collections for validation; default is to validate all members')
 
     args = argget.parse_args()
 
@@ -1164,13 +1166,14 @@ def main(argv=None):
             return 1
         # Send config only with keys supported by program
         linklimitdict = {}
-        for item in cdict.get('linklimit',{}):
-            if re.match('[A-Za-z_]+:[0-9]+', item) is not None:
-                typename, count = tuple(item.split(':')[:2])
-                if typename not in linklimitdict:
-                    linklimitdict[typename] = int(count)
-                else:
-                    rsvLogger.error('Limit already exists for {}'.format(typename))
+        if cdict.get('linklimit') is not None:
+            for item in cdict.get('linklimit'):
+                if re.match('[A-Za-z_]+:[0-9]+', item) is not None:
+                    typename, count = tuple(item.split(':')[:2])
+                    if typename not in linklimitdict:
+                        linklimitdict[typename] = int(count)
+                    else:
+                        rsvLogger.error('Limit already exists for {}'.format(typename))
         cdict['linklimit'] = linklimitdict
 
         rst.setConfig({key: cdict[key] for key in cdict.keys() if key in rst.configset.keys()})

@@ -10,6 +10,7 @@ import sys
 import re
 import os
 import json
+import random
 from collections import OrderedDict
 from functools import lru_cache
 import logging
@@ -39,13 +40,13 @@ def getLogger():
 configset = {
         "targetip": type(""), "username": type(""), "password": type(""), "authtype": type(""), "usessl": type(True), "certificatecheck": type(True), "certificatebundle": type(""),
         "metadatafilepath": type(""), "cachemode": (type(False),type("")), "cachefilepath": type(""), "schemasuffix": type(""), "timeout": type(0), "httpproxy": type(""), "httpsproxy": type(""),
-        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type(""), 'linklimit': dict
+        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type(""), 'linklimit': dict, 'sample': type(0)
         }
 config = {
         'authtype': 'basic', 'username': "", 'password': "", 'token': '',
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
-        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}
+        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}, 'sample': 0
         }
 
 def setConfig(cdict):
@@ -577,9 +578,11 @@ class ResourceObj:
 
         self.links = OrderedDict()
         node = self.typeobj
+
         while node is not None:
             self.links.update(getAllLinks(
-                self.jsondata, node.propList, node.refs, context=expectedSchema, linklimits=config['linklimit']))
+                self.jsondata, node.propList, node.refs, context=expectedSchema, linklimits=config['linklimit'],
+                sample_size=config['sample']))
             node = node.parent
 
 
@@ -883,7 +886,38 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
     return propEntry
 
 
-def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=None):
+def enumerate_collection(items, cTypeName, linklimits, sample_size):
+    """
+    Generator function to enumerate the items in a collection, applying the link limit or sample size if applicable.
+    If a link limit is specified for this cTypeName, return the first N items as specified by the limit value.
+    If a sample size greater than zero is specified, return a random sample of items specified by the sample_size.
+    In both the above cases, if the limit value or sample size is greater than or equal to the number of items in the
+    collection, return all the items.
+    If a limit value for this cTypeName and a sample size are both provided, the limit value takes precedence.
+    :param items: the collection of items to enumerate
+    :param cTypeName: the type name of this collection
+    :param linklimits: a dictionary mapping type names to their limit values
+    :param sample_size: the number of items to sample from large collections
+    :return: enumeration of the items to be processed
+    """
+    if cTypeName in linklimits:
+        # "link limit" case
+        limit = min(linklimits[cTypeName], len(items))
+        traverseLogger.debug('Limiting "{}" to first {} links'.format(cTypeName, limit))
+        for i in range(limit):
+            yield i, items[i]
+    elif 0 < sample_size < len(items):
+        # "sample size" case
+        traverseLogger.debug('Limiting "{}" to sample of {} links'.format(cTypeName, sample_size))
+        for i in sorted(random.sample(range(len(items)), sample_size)):
+            yield i, items[i]
+    else:
+        # "all" case
+        traverseLogger.debug('Processing all links for "{}"'.format(cTypeName))
+        yield from enumerate(items)
+
+
+def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=None, sample_size=0):
     # gets all links, this can miss something if it is not designated navigatable or properly autoextended, collections, etc
     # info: works underneath, can maybe report how many links it has gotten or leave that to whatever calls it?
     # debug: should be reported by what calls it?  not much debug is neede besides what is already generated earlier, 
@@ -929,12 +963,7 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
                         cSchema = refDict.get(getNamespace(cType), (None, None))[1]
                         if cSchema is None:
                             cSchema = context
-                        for cnt, listItem in enumerate(insideItem):
-                            # starts at 0...
-                            if cTypeName in linklimits:
-                                if cnt >= linklimits[cTypeName]:
-                                    traverseLogger.debug("Truncating Links of {}".format(cTypeName))
-                                    break
+                        for cnt, listItem in enumerate_collection(insideItem, cTypeName, linklimits, sample_size):
                             linkList[prefix + str(item) + '.' + getType(propDict['isCollection']) +
                                      '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
                     else:
@@ -967,17 +996,14 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
                     cType = propDict.get('isCollection')
                     if cType is not None:
                         cTypeName = getType(cType)
-                        for cnt, listItem in enumerate(jsonData[item]):
-                            # starts at 0...
-                            if cTypeName in linklimits:
-                                if cnt >= linklimits[cTypeName]:
-                                    traverseLogger.debug("Truncating Links of {}".format(cTypeName))
-                                    break
+                        for cnt, listItem in enumerate_collection(jsonData[item], cTypeName, linklimits, sample_size):
                             linkList.update(getAllLinks(
-                                listItem, propDict['typeprops'].propList, refDict, prefix + item + '.', context))
+                                listItem, propDict['typeprops'].propList, refDict, prefix + item + '.', context,
+                                linklimits=linklimits, sample_size=sample_size))
                     else:
                         linkList.update(getAllLinks(
-                            jsonData[item], propDict['typeprops'].propList, refDict, prefix + item + '.', context))
+                            jsonData[item], propDict['typeprops'].propList, refDict, prefix + item + '.', context,
+                            linklimits=linklimits, sample_size=sample_size))
         traverseLogger.debug(str(linkList))
     except Exception as ex:
         traverseLogger.exception("Something went wrong")
