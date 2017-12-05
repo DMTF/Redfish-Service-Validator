@@ -107,7 +107,7 @@ def isNonService(uri):
     """
     Checks if a uri is within the service
     """
-    return 'http' in uri[:8]
+    return uri is not None and 'http' in uri[:8]
 
 
 def navigateJsonFragment(decoded, URILink):
@@ -270,7 +270,7 @@ def getSchemaDetails(SchemaType, SchemaURI):
 
     LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
 
-    if SchemaURI is not None and not LocalOnly or '/redfish/v1/$metadata' in SchemaURI:
+    if (SchemaURI is not None and not LocalOnly) or (SchemaURI is not None and '/redfish/v1/$metadata' in SchemaURI):
         # Get our expected Schema file here
         # if success, generate Soup, then check for frags to parse
         #   start by parsing references, then check for the refLink
@@ -325,7 +325,7 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
         xml = uriparse[0]
     else:
         traverseLogger.warn("SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
-        return getSchemaDetailsLocal(SchemaType, SchemaType + SchemaSuffix)
+        return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix)
     traverseLogger.debug((SchemaType, SchemaURI, SchemaLocation + '/' + xml))
     pout = Alias + SchemaSuffix if xml is None else xml
     try:
@@ -522,10 +522,18 @@ class ResourceObj:
         # Provide a context for this
         if expectedSchema is None:
             self.context = self.jsondata.get('@odata.context')
+            if self.context is None:
+                parent_type = parent.typeobj.stype if parent is not None and parent.typeobj is not None else None
+                if parent_type == 'MessageRegistryFile':
+                    # If this is a Registry resource, @odata.context is not required; do our best to construct one
+                    ns_name = getNamespace(fullType).split('.')[0]
+                    type_name = getType(fullType)
+                    self.context = '/redfish/v1/$metadata' + '#' + ns_name + '.' + type_name
+                    traverseLogger.debug('{}: @odata.context missing from Registry resource; constructed context {}'
+                                         .format(fullType, self.context))
+                else:
+                    traverseLogger.error('{}:  Json does not contain @odata.context'.format(self.uri))
             expectedSchema = self.context
-            if expectedSchema is None:
-                traverseLogger.error(
-                    '{}:  Json does not contain @odata.context'.format(self.uri))
         else:
             self.context = expectedSchema
 
