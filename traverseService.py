@@ -492,6 +492,13 @@ class ResourceObj:
         self.parent = parent
         self.uri, self.name = uri, name
         self.rtime = 0
+        self.isRegistry = False
+
+        # Check if this is a Registry resource
+        parent_type = parent.typeobj.stype if parent is not None and parent.typeobj is not None else None
+        if parent_type == 'MessageRegistryFile':
+            traverseLogger.debug('{} is a Registry resource'.format(self.uri))
+            self.isRegistry = True
 
         # Check if we provide a json
         if expectedJson is None:
@@ -519,12 +526,20 @@ class ResourceObj:
         else:
             fullType = self.jsondata.get('@odata.type', expectedType)
 
+        # Check for @odata.id
+        odata_id = self.jsondata.get('@odata.id')
+        if odata_id is None:
+            if self.isRegistry:
+                traverseLogger.debug('{}: @odata.id missing, but not required for Registry resource'
+                                     .format(self.uri))
+            else:
+                traverseLogger.error('{}: Json does not contain @odata.id'.format(self.uri))
+
         # Provide a context for this
         if expectedSchema is None:
             self.context = self.jsondata.get('@odata.context')
             if self.context is None:
-                parent_type = parent.typeobj.stype if parent is not None and parent.typeobj is not None else None
-                if parent_type == 'MessageRegistryFile':
+                if self.isRegistry:
                     # If this is a Registry resource, @odata.context is not required; do our best to construct one
                     ns_name = getNamespace(fullType).split('.')[0]
                     type_name = getType(fullType)
