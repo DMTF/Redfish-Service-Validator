@@ -76,7 +76,7 @@ def setConfig(cdict):
     # Convert list of strings to dict
     chkcertbundle = config['certificatebundle']
     if chkcertbundle not in [None, ""] and config['certificatecheck']:
-        if not os.path.isfile(chkcertbundle):
+        if not os.path.isfile(chkcertbundle) and not os.path.isdir(chkcertbundle):
             chkcertbundle = None
             traverseLogger.error('ChkCertBundle is not found, defaulting to None')
     else:
