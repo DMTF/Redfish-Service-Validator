@@ -16,6 +16,7 @@ from functools import lru_cache
 import logging
 from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+import copy
 
 
 traverseLogger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ def getLogger():
 configset = {
         "targetip": type(""), "username": type(""), "password": type(""), "authtype": type(""), "usessl": type(True), "certificatecheck": type(True), "certificatebundle": type(""),
         "metadatafilepath": type(""), "cachemode": (type(False),type("")), "cachefilepath": type(""), "schemasuffix": type(""), "timeout": type(0), "httpproxy": type(""), "httpsproxy": type(""),
-        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type(""), 'linklimit': dict, 'sample': type(0), 'extraheaders': dict
+        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type(""), 'linklimit': dict, 'sample': type(0), 'extrajsonheaders': dict, 'extraxmlheaders': dict
         }
 config = {
         'authtype': 'basic', 'username': "", 'password': "", 'token': '',
@@ -143,10 +144,6 @@ def callResourceURI(URILink):
             config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
     CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
 
-    ExtraHeaders = None
-    if 'extraheaders' in config:
-        ExtraHeaders = eval(config['extraheaders'])
-
     if URILink is None:
         traverseLogger.debug("This URI is empty!")
         return False, None, -1, 0
@@ -154,6 +151,17 @@ def callResourceURI(URILink):
     payload = None
     statusCode = ''
     elapsed = 0
+
+    isXML = False
+    if "$metadata" in URILink or ".xml" in URILink:
+        isXML = True
+        traverseLogger.debug('Should be XML')
+
+    ExtraHeaders = None
+    if 'extrajsonheaders' in config and not isXML:
+        ExtraHeaders = eval(config['extrajsonheaders'])
+    else if 'extraxmlheaders' in config and isXML:
+        ExtraHeaders = eval(config['extraxmlheaders'])
 
     # determine if we need to Auth...
     if not nonService:
@@ -195,7 +203,7 @@ def callResourceURI(URILink):
         headers = {"Authorization": "Bearer "+Token}
         headers.update(commonHeader)
     else:
-        headers = commonHeader
+        headers = copy.copy(commonHeader)
 
     if ExtraHeaders != None:
         headers.update(ExtraHeaders)
@@ -203,8 +211,8 @@ def callResourceURI(URILink):
     certVal = ChkCertBundle if ChkCert and ChkCertBundle not in [None, ""] else ChkCert
 
     # rs-assertion: must have application/json or application/xml
-    traverseLogger.debug('callingResourceURI{}with authtype {} and ssl {}: {}'.format(
-        ' out of service ' if nonService else ' ', AuthType, UseSSL, URILink))
+    traverseLogger.debug('callingResourceURI{}with authtype {} and ssl {}: {} {}'.format(
+        ' out of service ' if nonService else ' ', AuthType, UseSSL, URILink, headers))
     try:
         if payload is not None and CacheMode == 'Prefer':
             return True, payload, -1, 0
