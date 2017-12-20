@@ -40,7 +40,7 @@ def getLogger():
 configset = {
         "targetip": type(""), "username": type(""), "password": type(""), "authtype": type(""), "usessl": type(True), "certificatecheck": type(True), "certificatebundle": type(""),
         "metadatafilepath": type(""), "cachemode": (type(False),type("")), "cachefilepath": type(""), "schemasuffix": type(""), "timeout": type(0), "httpproxy": type(""), "httpsproxy": type(""),
-        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type(""), 'linklimit': dict, 'sample': type(0)
+        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type(""), 'linklimit': dict, 'sample': type(0), 'extraheaders': dict
         }
 config = {
         'authtype': 'basic', 'username': "", 'password': "", 'token': '',
@@ -143,6 +143,10 @@ def callResourceURI(URILink):
             config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
     CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
 
+    ExtraHeaders = None
+    if 'extraheaders' in config:
+        ExtraHeaders = eval(config['extraheaders'])
+
     if URILink is None:
         traverseLogger.debug("This URI is empty!")
         return False, None, -1, 0
@@ -192,6 +196,9 @@ def callResourceURI(URILink):
         headers.update(commonHeader)
     else:
         headers = commonHeader
+
+    if ExtraHeaders != None:
+        headers.update(ExtraHeaders)
 
     certVal = ChkCertBundle if ChkCert and ChkCertBundle not in [None, ""] else ChkCert
 
@@ -400,6 +407,9 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     refDict = {}
     ServiceOnly = config['servicemode']
 
+    if soup == None:
+        return refDict
+
     maintag = soup.find("edmx:Edmx", recursive=False)
     refs = maintag.find_all('edmx:Reference', recursive=False)
     for ref in refs:
@@ -515,7 +525,7 @@ class ResourceObj:
             if fullType is None:
                 traverseLogger.error(
                     '{}:  Json does not contain @odata.type'.format(self.uri))
-                return
+                #return
         else:
             fullType = self.jsondata.get('@odata.type', expectedType)
 
@@ -542,10 +552,10 @@ class ResourceObj:
 
         if not success:
             traverseLogger.error("validateURI: No schema XML for {}".format(fullType))
-            return
+            #return
 
         # Use string comprehension to get highest type
-        if fullType is expectedType:
+        if fullType is expectedType and typesoup != None:
             typelist = list()
             schlist = list()
             for schema in typesoup.find_all('Schema'):
@@ -578,7 +588,7 @@ class ResourceObj:
         # if we've generated this type, use it, else generate type
         if idtag in ResourceObj.robjcache:
             self.typeobj = ResourceObj.robjcache[idtag]
-        else:
+        elif fullType != None:
             typerefs = getReferenceDetails(typesoup, serviceRefs, self.context)
             self.typeobj = PropType(
                 fullType, typesoup, typerefs, 'EntityType', topVersion=getNamespace(fullType))
