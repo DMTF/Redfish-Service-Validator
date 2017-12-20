@@ -407,9 +407,6 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     refDict = {}
     ServiceOnly = config['servicemode']
 
-    if soup == None:
-        return refDict
-
     maintag = soup.find("edmx:Edmx", recursive=False)
     refs = maintag.find_all('edmx:Reference', recursive=False)
     for ref in refs:
@@ -525,7 +522,7 @@ class ResourceObj:
             if fullType is None:
                 traverseLogger.error(
                     '{}:  Json does not contain @odata.type'.format(self.uri))
-                #return
+                return
         else:
             fullType = self.jsondata.get('@odata.type', expectedType)
 
@@ -552,10 +549,10 @@ class ResourceObj:
 
         if not success:
             traverseLogger.error("validateURI: No schema XML for {}".format(fullType))
-            #return
+            return
 
         # Use string comprehension to get highest type
-        if fullType is expectedType and typesoup != None:
+        if fullType is expectedType:
             typelist = list()
             schlist = list()
             for schema in typesoup.find_all('Schema'):
@@ -588,7 +585,7 @@ class ResourceObj:
         # if we've generated this type, use it, else generate type
         if idtag in ResourceObj.robjcache:
             self.typeobj = ResourceObj.robjcache[idtag]
-        elif fullType != None:
+        else:
             typerefs = getReferenceDetails(typesoup, serviceRefs, self.context)
             self.typeobj = PropType(
                 fullType, typesoup, typerefs, 'EntityType', topVersion=getNamespace(fullType))
