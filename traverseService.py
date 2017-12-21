@@ -160,7 +160,7 @@ def callResourceURI(URILink):
     ExtraHeaders = None
     if 'extrajsonheaders' in config and not isXML:
         ExtraHeaders = eval(config['extrajsonheaders'])
-    else if 'extraxmlheaders' in config and isXML:
+    elif 'extraxmlheaders' in config and isXML:
         ExtraHeaders = eval(config['extraxmlheaders'])
 
     # determine if we need to Auth...
