@@ -209,7 +209,10 @@ def validateDynamicPropertyType(name, key, value, prop_type):
     :return: True if the type check passes, False otherwise
     """
     type_pass = True
-    if prop_type == 'Edm.Primitive' or prop_type == 'Edm.PrimitiveType':
+    if value is None:
+        # null value is OK
+        type_pass = True
+    elif prop_type == 'Edm.Primitive' or prop_type == 'Edm.PrimitiveType':
         type_pass = isinstance(value, (int, float, str, bool))
     elif prop_type == 'Edm.String':
         type_pass = isinstance(value, str)
@@ -252,7 +255,10 @@ def validateAttributeRegistry(name, key, value, attr_reg):
         rsvLogger.debug('{}: {}: no "Type" property found for key "{}"'.format(fn, name, key))
         return True, None
     reg_pass = True
-    if type_prop == 'Enumeration':
+    if value is None:
+        # null value is OK
+        reg_pass = True
+    elif type_prop == 'Enumeration':
         # validate enumeration
         value_prop = attr.get('Value')
         if value_prop is not None and isinstance(value_prop, list):
