@@ -51,7 +51,7 @@ UseSSL = <<On / Off>>
 
 CertificateCheck = <<On / Off>>
 
-CertificateBundle = 
+CertificateBundle = ca_bundle   Specify a bundle (file or directory) with certificates of trusted CAs. See [SelfSignedCerts.md](https://github.com/DMTF/Redfish-Service-Validator/blob/master/SelfSignedCerts.md) for tips on creating the bundle.
 
 Other  attributes under the “[Options]” section have schema specific implementations as described below
 
