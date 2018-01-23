@@ -454,6 +454,55 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
     return messages, counts
 
 
+def displayType(propType, propRealType):
+    if propType is None:
+        propType = ''
+    if propRealType is None:
+        propRealType = ''
+
+    # Edm.* types
+    if propRealType == 'Edm.Boolean':
+        disp_type = 'boolean'
+    elif propRealType == 'Edm.String':
+        disp_type = 'string'
+    elif propRealType.startswith('Edm.Int') or propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
+        disp_type = 'number'
+    elif propRealType == 'Edm.Guid':
+        disp_type = 'GUID'
+    elif propRealType == 'Edm.Primitive' or propRealType == 'Edm.PrimitiveType':
+        disp_type = 'primitive'
+    elif propRealType == 'Edm.DateTimeOffset':
+        disp_type = 'date'
+    elif propRealType == 'enum' or propRealType == 'deprecatedEnum':
+        disp_type = 'string (enum)'
+    elif propRealType.startswith('Edm.'):
+        disp_type = propRealType.split('.', 1)[1]
+    # Entity types
+    elif propRealType == 'entity':
+        if propType.startswith('Collection('):
+            member_type = propType.replace('Collection(', '').replace(')', '')
+            disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+        else:
+            disp_type = 'link to: {}'.format(propType.rsplit('.', 1)[-1])
+    # Complex types
+    elif propRealType == 'complex':
+        if propType.startswith('Collection('):
+            member_type = propType.replace('Collection(', '').replace(')', '')
+            disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+        else:
+            disp_type = propType
+    # Fallback cases
+    elif len(propRealType) > 0:
+        disp_type = propRealType
+    elif len(propType) > 0:
+        disp_type = propType
+    else:
+        disp_type = 'n/a'
+
+    rsvLogger.debug('displayType: ({}, {}) -> {}'.format(propType, propRealType, disp_type))
+    return disp_type
+
+
 def validateDeprecatedEnum(name, val, listEnum):
     """
     Validates a DeprecatedEnum
@@ -679,7 +728,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             rsvLogger.info("\tprop Does not exist, skip...")
             counts['skipOptional'] += 1
             return {item: (
-                '-', (propType, propRealType),
+                '-', displayType(propType, propRealType),
                 'Exists' if propExists else 'DNE',
                 'skipOptional')}, counts
 
@@ -715,7 +764,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                         .format(PropertyName))
         counts['failNullCollection'] += 1
         return {item: (
-            '-', (propType, propRealType),
+            '-', displayType(propType, propRealType),
             'Exists' if propExists else 'DNE',
             'failNullCollection')}, counts
     elif isCollection and propValue is not None:
@@ -724,7 +773,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
         rsvLogger.info("\tis Collection")
-        resultList[item] = ('Collection, size: ' + str(len(propValue)), (propType, propRealType),
+        resultList[item] = ('Collection, size: ' + str(len(propValue)), displayType(propType, propRealType),
                             'Exists' if propExists else 'DNE',
                             '...')
         propValueList = propValue
@@ -774,12 +823,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                     if not success:
                         counts['failComplex'] += 1
                         resultList[item + appendStr] = (
-                                    'ComplexDictionary' + appendStr, (propType, propRealType),
+                                    'ComplexDictionary' + appendStr, displayType(propType, propRealType),
                                     'Exists' if propExists else 'DNE',
                                     'failComplex')
                         continue
                     resultList[item + appendStr] = (
-                                    'ComplexDictionary' + appendStr, (propType, propRealType),
+                                    'ComplexDictionary' + appendStr, displayType(propType, propRealType),
                                     'Exists' if propExists else 'DNE',
                                     'complex')
 
@@ -815,7 +864,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                     paramPass = False
 
         resultList[item + appendStr] = (
-                val, (propType, propRealType),
+                val, displayType(propType, propRealType),
                 'Exists' if propExists else 'DNE',
                 'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
         if paramPass and propNullablePass and propMandatoryPass:
@@ -850,11 +899,13 @@ def checkPayloadConformance(uri, decoded):
     success = True
     for key in [k for k in decoded if '@odata' in k]:
         paramPass = False
+        display_type = 'string'
         if key == '@odata.id':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
         elif key == '@odata.count':
+            display_type = 'number'
             paramPass = isinstance(decoded[key], int)
         elif key == '@odata.context':
             paramPass = isinstance(decoded[key], str)
@@ -872,7 +923,7 @@ def checkPayloadConformance(uri, decoded):
             rsvLogger.error(key + "@odata item not compliant: " + decoded[key])  # Printout FORMAT
             success = False
         messages[key] = (
-                decoded[key], 'odata',
+                decoded[key], display_type,
                 'Exists',
                 'PASS' if paramPass else 'FAIL')
     return success, messages
