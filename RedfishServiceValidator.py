@@ -693,12 +693,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             rsvLogger.info('\tItem is skipped, no schema')
             counts['skipNoSchema'] += 1
             return {item: ('-', '-',
-                                'Yes' if propExists else 'No', 'skipNoSchema')}, counts
+                                'Yes' if propExists else 'No', 'NoSchema')}, counts
         else:
             rsvLogger.error('\tItem is present, no schema found')
             counts['failNoSchema'] += 1
             return {item: ('-', '-',
-                                'Yes' if propExists else 'No', 'failNoSchema')}, counts
+                                'Yes' if propExists else 'No', 'FAIL')}, counts
 
     propAttr = PropertyItem['attrs']
 
@@ -712,7 +712,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         rsvLogger.info('\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-',
-                            'Yes' if propExists else 'No', 'skipOEM')}, counts
+                            'Yes' if propExists else 'No', 'OEM')}, counts
 
     propMandatory = False
     propMandatoryPass = True
@@ -730,7 +730,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             return {item: (
                 '-', displayType(propType, propRealType),
                 'Yes' if propExists else 'No',
-                'skipOptional')}, counts
+                'Optional')}, counts
 
     nullable_attr = propAttr.get('Nullable')
     propNullable = False if nullable_attr == 'false' else True  # default is true
@@ -766,7 +766,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         return {item: (
             '-', displayType(propType, propRealType),
             'Yes' if propExists else 'No',
-            'failNullCollection')}, counts
+            'FAIL')}, counts
     elif isCollection and propValue is not None:
         # note: handle collections correctly, this needs a nicer printout
         # rs-assumption: do not assume URIs for collections
@@ -825,7 +825,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                         resultList[item + appendStr] = (
                                     'ComplexDictionary' + appendStr, displayType(propType, propRealType),
                                     'Yes' if propExists else 'No',
-                                    'failComplex')
+                                    'FAIL')
                         continue
                     resultList[item + appendStr] = (
                                     'ComplexDictionary' + appendStr, displayType(propType, propRealType),
@@ -843,12 +843,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                             resultList[item + '.' + key + appendStr] = (
                                     val[key], '-',
                                     '-',
-                                    'failAdditional')
+                                    'FAIL')
                         elif key not in complexMessages:
                             counts['unverifiedComplexAdditional'] += 1
                             resultList[item + '.' + key + appendStr] = (val[key], '-',
                                              '-',
-                                             'skipAdditional')
+                                             'Additional')
                     continue
 
                 elif propRealType == 'enum':
@@ -1052,12 +1052,12 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 counts['failAdditional'] += 1
                 messages[key] = (item, '-',
                                  '-',
-                                 'failAdditional')
+                                 'FAIL')
             else:
                 counts['unverifiedAdditional'] += 1
                 messages[key] = (item, '-',
                                  '-',
-                                 'skipAdditional')
+                                 'Additional')
 
     for key in messages:
         if key not in jsonData:
@@ -1360,7 +1360,7 @@ def main(argv=None):
                 success_col = results[item][3][i][-1]
                 if 'FAIL' in str(success_col).upper():
                     htmlStr += '<td class="fail center">' + str(success_col) + '</td>'
-                elif 'SKIP' in str(success_col).upper():
+                elif 'DEPRECATED' in str(success_col).upper():
                     htmlStr += '<td class="warn center">' + str(success_col) + '</td>'
                 elif 'PASS' in str(success_col).upper():
                     htmlStr += '<td class="pass center">' + str(success_col) + '</td>'
