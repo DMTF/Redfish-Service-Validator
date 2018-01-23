@@ -67,7 +67,7 @@ def validateActions(name, val, propTypeObj, payloadType):
                 rsvLogger.warn('{}: action not Found, is not mandatory'.format(k))
         actionMessages[k] = (
                     'Action', '-',
-                    'Exists' if actionDecoded != 'n/a' else 'DNE',
+                    'Yes' if actionDecoded != 'n/a' else 'No',
                     'PASS' if actPass else 'FAIL')
         if actPass:
             actionCounts['pass'] += 1
@@ -448,7 +448,7 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
             else:
                 counts['failAttributeRegistry'] += 1
         messages[key + ' '] = (
-            value, prop_type if attr_reg_type is None else attr_reg_type, 'Exists',
+            value, prop_type if attr_reg_type is None else attr_reg_type, 'Yes',
             'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
 
     return messages, counts
@@ -693,12 +693,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             rsvLogger.info('\tItem is skipped, no schema')
             counts['skipNoSchema'] += 1
             return {item: ('-', '-',
-                                'Exists' if propExists else 'DNE', 'skipNoSchema')}, counts
+                                'Yes' if propExists else 'No', 'skipNoSchema')}, counts
         else:
             rsvLogger.error('\tItem is present, no schema found')
             counts['failNoSchema'] += 1
             return {item: ('-', '-',
-                                'Exists' if propExists else 'DNE', 'failNoSchema')}, counts
+                                'Yes' if propExists else 'No', 'failNoSchema')}, counts
 
     propAttr = PropertyItem['attrs']
 
@@ -712,7 +712,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         rsvLogger.info('\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-',
-                            'Exists' if propExists else 'DNE', 'skipOEM')}, counts
+                            'Yes' if propExists else 'No', 'skipOEM')}, counts
 
     propMandatory = False
     propMandatoryPass = True
@@ -729,7 +729,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             counts['skipOptional'] += 1
             return {item: (
                 '-', displayType(propType, propRealType),
-                'Exists' if propExists else 'DNE',
+                'Yes' if propExists else 'No',
                 'skipOptional')}, counts
 
     nullable_attr = propAttr.get('Nullable')
@@ -765,7 +765,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         counts['failNullCollection'] += 1
         return {item: (
             '-', displayType(propType, propRealType),
-            'Exists' if propExists else 'DNE',
+            'Yes' if propExists else 'No',
             'failNullCollection')}, counts
     elif isCollection and propValue is not None:
         # note: handle collections correctly, this needs a nicer printout
@@ -774,7 +774,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         # rs-assumption: check @odata.link property
         rsvLogger.info("\tis Collection")
         resultList[item] = ('Collection, size: ' + str(len(propValue)), displayType(propType, propRealType),
-                            'Exists' if propExists else 'DNE',
+                            'Yes' if propExists else 'No',
                             '...')
         propValueList = propValue
     else:
@@ -824,12 +824,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                         counts['failComplex'] += 1
                         resultList[item + appendStr] = (
                                     'ComplexDictionary' + appendStr, displayType(propType, propRealType),
-                                    'Exists' if propExists else 'DNE',
+                                    'Yes' if propExists else 'No',
                                     'failComplex')
                         continue
                     resultList[item + appendStr] = (
                                     'ComplexDictionary' + appendStr, displayType(propType, propRealType),
-                                    'Exists' if propExists else 'DNE',
+                                    'Yes' if propExists else 'No',
                                     'complex')
 
                     counts.update(complexCounts)
@@ -842,12 +842,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                             counts['failComplexAdditional'] += 1
                             resultList[item + '.' + key + appendStr] = (
                                     val[key], '-',
-                                    'Exists (additional)',
+                                    '-',
                                     'failAdditional')
                         elif key not in complexMessages:
                             counts['unverifiedComplexAdditional'] += 1
                             resultList[item + '.' + key + appendStr] = (val[key], '-',
-                                             'Exists (additional.ok)',
+                                             '-',
                                              'skipAdditional')
                     continue
 
@@ -865,7 +865,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
 
         resultList[item + appendStr] = (
                 val, displayType(propType, propRealType),
-                'Exists' if propExists else 'DNE',
+                'Yes' if propExists else 'No',
                 'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
         if paramPass and propNullablePass and propMandatoryPass:
             counts['pass'] += 1
@@ -924,7 +924,7 @@ def checkPayloadConformance(uri, decoded):
             success = False
         messages[key] = (
                 decoded[key], display_type,
-                'Exists',
+                'Yes',
                 'PASS' if paramPass else 'FAIL')
     return success, messages
 
@@ -1051,12 +1051,12 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)  # Printout FORMAT
                 counts['failAdditional'] += 1
                 messages[key] = (item, '-',
-                                 'Exists (add.)',
+                                 '-',
                                  'failAdditional')
             else:
                 counts['unverifiedAdditional'] += 1
                 messages[key] = (item, '-',
-                                 'Exists (add.ok)',
+                                 '-',
                                  'skipAdditional')
 
     for key in messages:
