@@ -454,7 +454,14 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
     return messages, counts
 
 
-def displayType(propType, propRealType):
+def displayType(propType, propRealType, is_collection=False):
+    """
+    Convert inputs propType and propRealType to a simple, human readable type
+    :param propType: the 'Type' attribute from the PropItem.propDict
+    :param propRealType: the 'realtype' entry from the PropItem.propDict
+    :param is_collection: For collections: True if these types are for the collection; False if for a member
+    :return: the simplified type to display
+    """
     if propType is None:
         propType = ''
     if propRealType is None:
@@ -481,14 +488,20 @@ def displayType(propType, propRealType):
     elif propRealType == 'entity':
         if propType.startswith('Collection('):
             member_type = propType.replace('Collection(', '').replace(')', '')
-            disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+            if is_collection:
+                disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+            else:
+                disp_type = member_type.rsplit('.', 1)[-1]
         else:
             disp_type = 'link to: {}'.format(propType.rsplit('.', 1)[-1])
     # Complex types
     elif propRealType == 'complex':
         if propType.startswith('Collection('):
             member_type = propType.replace('Collection(', '').replace(')', '')
-            disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+            if is_collection:
+                disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+            else:
+                disp_type = member_type.rsplit('.', 1)[-1]
         else:
             disp_type = propType
     # Fallback cases
@@ -501,6 +514,23 @@ def displayType(propType, propRealType):
 
     rsvLogger.debug('displayType: ({}, {}) -> {}'.format(propType, propRealType, disp_type))
     return disp_type
+
+
+def displayValue(val):
+    """
+    Convert input val to a simple, human readable value
+    :param val: the value to be displayed
+    :return: the simplified value to display
+    """
+    if isinstance(val, dict) and len(val) == 1 and '@odata.id' in val:
+        disp_val = 'Link: {}'.format(val.get('@odata.id'))
+    elif isinstance(val, (int, float, str, bool)):
+        disp_val = val
+    else:
+        disp_val = '[JSON Object]'
+
+    rsvLogger.debug('displayValue: {} -> {}'.format(val, disp_val))
+    return disp_val
 
 
 def validateDeprecatedEnum(name, val, listEnum):
@@ -764,7 +794,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                         .format(PropertyName))
         counts['failNullCollection'] += 1
         return {item: (
-            '-', displayType(propType, propRealType),
+            '-', displayType(propType, propRealType, is_collection=True),
             'Yes' if propExists else 'No',
             'FAIL')}, counts
     elif isCollection and propValue is not None:
@@ -773,9 +803,9 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
         rsvLogger.info("\tis Collection")
-        resultList[item] = ('Collection, size: ' + str(len(propValue)), displayType(propType, propRealType),
-                            'Yes' if propExists else 'No',
-                            '...')
+        resultList[item] = ('Collection, size: ' + str(len(propValue)),
+                            displayType(propType, propRealType, is_collection=True),
+                            'Yes' if propExists else 'No', '...')
         propValueList = propValue
     else:
         # not a collection
@@ -823,12 +853,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                     if not success:
                         counts['failComplex'] += 1
                         resultList[item + appendStr] = (
-                                    'ComplexDictionary' + appendStr, displayType(propType, propRealType),
+                                    '[JSON Object]', displayType(propType, propRealType),
                                     'Yes' if propExists else 'No',
                                     'FAIL')
                         continue
                     resultList[item + appendStr] = (
-                                    'ComplexDictionary' + appendStr, displayType(propType, propRealType),
+                                    '[JSON Object]', displayType(propType, propRealType),
                                     'Yes' if propExists else 'No',
                                     'complex')
 
@@ -841,12 +871,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                             rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', item + '.' + key + appendStr)  # Printout FORMAT
                             counts['failComplexAdditional'] += 1
                             resultList[item + '.' + key + appendStr] = (
-                                    val[key], '-',
+                                    displayValue(val[key]), '-',
                                     '-',
                                     'FAIL')
                         elif key not in complexMessages:
                             counts['unverifiedComplexAdditional'] += 1
-                            resultList[item + '.' + key + appendStr] = (val[key], '-',
+                            resultList[item + '.' + key + appendStr] = (displayValue(val[key]), '-',
                                              '-',
                                              'Additional')
                     continue
@@ -864,7 +894,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                     paramPass = False
 
         resultList[item + appendStr] = (
-                val, displayType(propType, propRealType),
+                displayValue(val), displayType(propType, propRealType),
                 'Yes' if propExists else 'No',
                 'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
         if paramPass and propNullablePass and propMandatoryPass:
@@ -1050,12 +1080,12 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             if not propResourceObj.typeobj.additional:
                 rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)  # Printout FORMAT
                 counts['failAdditional'] += 1
-                messages[key] = (item, '-',
+                messages[key] = (displayValue(item), '-',
                                  '-',
                                  'FAIL')
             else:
                 counts['unverifiedAdditional'] += 1
-                messages[key] = (item, '-',
+                messages[key] = (displayValue(item), '-',
                                  '-',
                                  'Additional')
 
