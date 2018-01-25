@@ -235,7 +235,7 @@ def callResourceURI(URILink):
                 decoded = navigateJsonFragment(decoded, URILink)
                 if decoded is None:
                     traverseLogger.error(
-                            "This URI did not parse properly {}".format(URILink))
+                            "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
             elif contenttype is not None and 'application/xml' in contenttype:
                 decoded = response.text
             else:
