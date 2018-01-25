@@ -16,6 +16,8 @@ import logging
 import json
 import traverseService as rst
 
+tool_version = 0.91
+
 rsvLogger = rst.getLogger()
 
 attributeRegistries = dict()
@@ -1327,6 +1329,7 @@ def main(argv=None):
             .pass {background-color:#99EE99}\
             .fail {background-color:#EE9999}\
             .warn {background-color:#EEEE99}\
+            .bluebg {background-color:#BDD6EE}\
             .button {padding: 12px; display: inline-block}\
             .center {text-align:center;}\
             .log {text-align:left; white-space:pre-wrap; word-wrap:break-word; font-size:smaller}\
@@ -1342,26 +1345,51 @@ def main(argv=None):
             .titletable {width:100%}\
             </style>\
             </head>'
-            
 
-    htmlStrBodyHeader = '<body><table>\
-                <tr><th>##### Redfish Conformance Test Report #####</th></tr>\
-                <tr><th>System: ' + ConfigURI + '</th></tr>\
-                <tr><th>Description: ' + sysDescription + '</th></tr>\
-                <tr><th>' + str(config_str.replace('\n', '</br>')) + '</th></tr>\
-                <tr><th>Start time: ' + (startTick).strftime('%x - %X') + '</th></tr>\
-                <tr><th>Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + '</th></tr>\
-                <tr><th></th></tr>'
+    htmlStrBodyHeader = \
+        '<body><table><tr><th>' \
+        '<h2>##### Redfish Conformance Test Report #####</h2>' \
+        '<br>' \
+        '<h4><img align="center" alt="DMTF Redfish Logo" height="203" width="288"' \
+        'src="http://redfish.dmtf.org/sites/default/files/DMTF_Redfish_logo_R.jpg"></h4>' \
+        '<br>' \
+        '<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
+        'https://github.com/DMTF/Redfish-Service-Validator</a>' \
+        '<br>Tool Version: ' + str(tool_version) + \
+        '<br>' + startTick.strftime('%c') + \
+        '<br>(Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + ')' \
+        '' \
+        '<h4>This tool is provided and maintained by the DMTF. ' \
+        'For feedback, please open issues<br>in the tool’s Github repository: ' \
+        '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">' \
+        'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>' \
+        '</th></tr>' \
+        '<tr><th>' \
+        '<h4>System: <a href="' + ConfigURI + '">' + ConfigURI + '</a> Description: ' + sysDescription + '</h4>' \
+        '</th></tr>' \
+        '<tr><th>' \
+        '<h4>Configuration:</h4>' \
+        '<h4>' + str(config_str.replace('\n', '<br>')) + '</h4>' \
+        '</th></tr>' \
+        ''
 
     htmlStr = ''
 
     rsvLogger.info(len(results))
     for cnt, item in enumerate(results):
+        type_name = ''
+        prop_type = results[item][6]
+        if prop_type is not None:
+            namespace = prop_type.replace('#', '').rsplit('.', 1)[0]
+            type_name = prop_type.replace('#', '').rsplit('.', 1)[-1]
+            if '.' in namespace:
+                type_name += ' ' + namespace.split('.', 1)[-1]
+        htmlStr += '<tr><th class="titlerow bluebg"><b>{}</b> ({})</th></tr>'.format(results[item][0], type_name)
         htmlStr += '<tr><td class="titlerow"><table class="titletable"><tr>'
         htmlStr += '<td class="title" style="width:40%"><div>{}</div>\
                 <div class="button warn" onClick="document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');">Show results</div>\
                 </td>'.format(results[item][0], cnt, cnt)
-        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>ResourcePath:</b> {}</div><div><b>XML:</b> {}</div><div><b>type:</b> {}</div></td>'.format(item, results[item][5], results[item][6])
+        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>Schema File:</b> {}</div><div><b>Resource Type:</b> {}</div></td>'.format(results[item][5], type_name)
         htmlStr += '<td style="width:10%"' + \
             ('class="pass"> GET Success' if results[item]
              [1] else 'class="fail"> GET Failure') + '</td>'
