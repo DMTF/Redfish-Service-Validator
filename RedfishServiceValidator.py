@@ -95,7 +95,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
         success, data, status, delay = rst.callResourceURI(uri)
     else:
         success, data, status, delay = True, val, 200, 0
-    rsvLogger.debug('{}, {}, {}'.format(success, (propType, propCollectionType), data))
+    rsvLogger.debug('{}, {}, {}'.format((success, uri, status, delay), (propType, propCollectionType), data))
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
     if propCollectionType == 'Resource.Item' or propType in ['Resource.ResourceCollection', 'Resource.Item'] and success:
         paramPass = success

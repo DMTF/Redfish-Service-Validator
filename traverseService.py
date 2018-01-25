@@ -121,11 +121,14 @@ def navigateJsonFragment(decoded, URILink):
             if isinstance(decoded, dict):
                 decoded = decoded.get(item)
             elif isinstance(decoded, list):
-                decoded = decoded[int(item)] if int(
-                    item) < len(decoded) else None
+                if not item.isdigit(): 
+                    traverseLogger.error("This is an Array, but this is not an index, aborting: {} {}".format(URILink, item))
+                    return None 
+                decoded = decoded[int(item)] if int(item) < len(decoded) else None
         if not isinstance(decoded, dict):
-            traverseLogger.warn(
+            traverseLogger.error(
                 "Decoded object no longer a dictionary {}".format(URILink))
+            return None
     return decoded
 
 
@@ -230,6 +233,9 @@ def callResourceURI(URILink):
                 decoded = response.json(object_pairs_hook=OrderedDict)
                 # navigate fragment
                 decoded = navigateJsonFragment(decoded, URILink)
+                if decoded is None:
+                    traverseLogger.error(
+                            "This URI did not parse properly {}".format(URILink))
             elif contenttype is not None and 'application/xml' in contenttype:
                 decoded = response.text
             else:
@@ -1056,6 +1062,7 @@ def getAnnotations(soup, refs, decoded, prefix=''):
     """
     Function to gather @ additional props in a payload
     """
+    allowed_annotations = ['odata', 'Redfish', 'Privileges', 'Message']
     additionalProps = list()
     # For every ...@ in decoded, check for its presence in refs
     #   get the schema file for it
@@ -1065,6 +1072,9 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         annotationsFound += 1
         splitKey = key.split('@', 1)
         fullItem = splitKey[1]
+        if getNamespace(fullItem) not in allowed_annotations:
+            traverseLogger.error("getAnnotations: {} is not an allowed annotation namespace, please check spelling/capitalization.".format(fullItem))
+            continue
         realType, refLink = refs.get(getNamespace(fullItem), (None, None))
         success, annotationSoup, uri = getSchemaDetails(realType, refLink)
         traverseLogger.debug('{}, {}, {}, {}, {}'.format(
