@@ -16,7 +16,7 @@ import logging
 import json
 import traverseService as rst
 
-tool_version = 0.91
+tool_version = '1.0.0'
 
 rsvLogger = rst.getLogger()
 
@@ -1355,7 +1355,7 @@ def main(argv=None):
         '<br>' \
         '<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
         'https://github.com/DMTF/Redfish-Service-Validator</a>' \
-        '<br>Tool Version: ' + str(tool_version) + \
+        '<br>Tool Version: ' + tool_version + \
         '<br>' + startTick.strftime('%c') + \
         '<br>(Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + ')' \
         '' \
