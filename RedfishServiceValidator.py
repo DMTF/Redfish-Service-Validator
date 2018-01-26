@@ -450,8 +450,8 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
             else:
                 counts['failAttributeRegistry'] += 1
         messages[key + ' '] = (
-            value, prop_type if attr_reg_type is None else attr_reg_type, 'Yes',
-            'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
+            displayValue(value), displayType('', prop_type if attr_reg_type is None else attr_reg_type),
+            'Yes', 'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
 
     return messages, counts
 
@@ -469,12 +469,13 @@ def displayType(propType, propRealType, is_collection=False):
     if propRealType is None:
         propRealType = ''
 
-    # Edm.* types
-    if propRealType == 'Edm.Boolean':
+    # Edm.* and other explicit types
+    if propRealType == 'Edm.Boolean' or propRealType == 'Boolean':
         disp_type = 'boolean'
-    elif propRealType == 'Edm.String':
+    elif propRealType == 'Edm.String' or propRealType == 'String':
         disp_type = 'string'
-    elif propRealType.startswith('Edm.Int') or propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
+    elif (propRealType.startswith('Edm.Int') or propRealType == 'Edm.Decimal' or
+        propRealType == 'Edm.Double' or propRealType == 'Integer'):
         disp_type = 'number'
     elif propRealType == 'Edm.Guid':
         disp_type = 'GUID'
@@ -482,7 +483,9 @@ def displayType(propType, propRealType, is_collection=False):
         disp_type = 'primitive'
     elif propRealType == 'Edm.DateTimeOffset':
         disp_type = 'date'
-    elif propRealType == 'enum' or propRealType == 'deprecatedEnum':
+    elif propRealType == 'Password':
+        disp_type = 'password'
+    elif propRealType == 'enum' or propRealType == 'deprecatedEnum' or propRealType == 'Enumeration':
         disp_type = 'string (enum)'
     elif propRealType.startswith('Edm.'):
         disp_type = propRealType.split('.', 1)[1]
@@ -524,7 +527,9 @@ def displayValue(val):
     :param val: the value to be displayed
     :return: the simplified value to display
     """
-    if isinstance(val, dict) and len(val) == 1 and '@odata.id' in val:
+    if val is None:
+        disp_val = 'null'
+    elif isinstance(val, dict) and len(val) == 1 and '@odata.id' in val:
         disp_val = 'Link: {}'.format(val.get('@odata.id'))
     elif isinstance(val, (int, float, str, bool)):
         disp_val = val
