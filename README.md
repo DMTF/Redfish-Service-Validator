@@ -1,13 +1,17 @@
-Copyright 2017 Distributed Management Task Force, Inc. All rights reserved.
-# Redfish Service Validator - Version 0.91
+Copyright 2017-2018 Distributed Management Task Force, Inc. All rights reserved.
+
+# Redfish Service Validator
 
 ## About
+
 The Redfish Service Validator is a python3 tool for checking conformance of any "device" with a Redfish service interface against Redfish CSDL schema.  The tool is designed to be device agnostic and is driven based on the Redfish specifications and schema intended to be supported by the device.
 
 ## Introduction
+
 The Redfish Service Validator is an open source framework for checking conformance of any generic device with Redfish interface enabled against the DMTF defined Redfish schema and specifications. The tool is designed to be device agnostic and is driven purely based on the Redfish specifications intended to be supported by the device.
 
 ## Pre-requisites
+
 The Redfish Service Validator is based on Python 3 and the client system is required to have the Python framework installed before the tool can be installed and executed on the system. Additionally, the following packages are required to be installed and accessible from the python environment:
 * beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4
 * requests  - https://github.com/kennethreitz/requests (Documentation is available at http://docs.python-requests.org/)
@@ -24,9 +28,11 @@ pip3 install beautifulsoup4 --upgrade
 There is no dependency based on Windows or Linux OS. The result logs are generated in HTML format and an appropriate browser (Chrome, Firefox, IE, etc.) is required to view the logs on the client system.
 
 ## Installation
+
 The RedfishServiceValidator.py into the desired tool root directory.  Create the following subdirectories in the tool root directory: "config", "logs", "SchemaFiles".  Place the example config.ini file in the "config" directory.  Place the CSDL Schema files to be used by the tool in the root of the schema directory, or the directory given in config.ini.
 
 ## Execution Steps
+
 The Redfish Interop Validator is designed to execute as a purely command line interface tool with no intermediate inputs expected during tool execution. However, the tool requires various inputs regarding system details, DMTF schema files etc. which are consumed by the tool during execution to generate the conformance report logs. Below are the step by step instructions on setting up the tool for execution on any identified Redfish device for conformance test:
 
 Modify the config\config.ini file to enter the system details under below section
@@ -98,6 +104,7 @@ In order to run without a configuration file, the option --ip must be specified.
 python3 RedfishServiceValidator.py --ip host:port [...]
 
 ## Execution flow
+
 * 1.	Redfish Service Validator starts with the Service root Resource Schema by querying the service with the service root URI and getting all the device information, the resources supported and their links. Once the response of the Service root query is verified against its schema, the tool traverses through all the collections and Navigation properties returned by the service.
 * 2.	For each navigation property/Collection of resource returned, it does following operations:
   * i.	Reads all the Navigation/collection of resources from the respective resource collection schema file.
@@ -119,17 +126,20 @@ Upon validation of a resource, the following types of tests may occur:
 * If any unvalidated entries exist in the payload, determine whether or not additional properties are legitimate for this resource, otherwise throw a "failAdditional" error. 
  
 ## Conformance Logs – Summary and Detailed Conformance Report
+
 The Redfish Service Validator generates an html report under the “logs” folder, named as ConformanceHtmlLog_MM_DD_YYYY_HHMMSS.html The report gives the detailed view of the individual properties checked, with the Pass/Fail/Skip/Warning status for each resource checked for conformance.
 
 Additionally, there is a verbose log file that may be referenced to diagnose tool or schema problems when the HTML log is insufficient. 
 
 ## The Test Status
+
 The test result for each GET operation will be reported as follows:
 * PASS: If the operation is successful and returns a success code (E.g. 200, 204)
 * FAIL: If the operation failed for reasons mentioned in GET method execution, or some configuration.
 * SKIP: If the property or method being checked is not mandatory is not supported by the service.
 
 ## Limitations
+
 Redfish Service Validator covers all the GET execution on the service. Below are certain points which are not in this scope.
 * 1.	Patch/Post/Skip/Top/Head is not covered as part of Redfish Service Validator due to dependency on internal factor of the service.
 * 2.	Redfish Service Validator does not cover testing of multiple service at once. To execute this, we have to re-run the tool by running it separately.
