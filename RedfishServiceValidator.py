@@ -528,7 +528,7 @@ def displayValue(val):
     :return: the simplified value to display
     """
     if val is None:
-        disp_val = 'null'
+        disp_val = '[null]'
     elif isinstance(val, dict) and len(val) == 1 and '@odata.id' in val:
         disp_val = 'Link: {}'.format(val.get('@odata.id'))
     elif isinstance(val, (int, float, str, bool)):
