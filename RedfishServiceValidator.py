@@ -450,8 +450,8 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
             else:
                 counts['failAttributeRegistry'] += 1
         messages[key + ' '] = (
-            value, prop_type if attr_reg_type is None else attr_reg_type, 'Yes',
-            'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
+            displayValue(value), displayType('', prop_type if attr_reg_type is None else attr_reg_type),
+            'Yes', 'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
 
     return messages, counts
 
@@ -469,12 +469,13 @@ def displayType(propType, propRealType, is_collection=False):
     if propRealType is None:
         propRealType = ''
 
-    # Edm.* types
-    if propRealType == 'Edm.Boolean':
+    # Edm.* and other explicit types
+    if propRealType == 'Edm.Boolean' or propRealType == 'Boolean':
         disp_type = 'boolean'
-    elif propRealType == 'Edm.String':
+    elif propRealType == 'Edm.String' or propRealType == 'String':
         disp_type = 'string'
-    elif propRealType.startswith('Edm.Int') or propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
+    elif (propRealType.startswith('Edm.Int') or propRealType == 'Edm.Decimal' or
+        propRealType == 'Edm.Double' or propRealType == 'Integer'):
         disp_type = 'number'
     elif propRealType == 'Edm.Guid':
         disp_type = 'GUID'
@@ -482,7 +483,9 @@ def displayType(propType, propRealType, is_collection=False):
         disp_type = 'primitive'
     elif propRealType == 'Edm.DateTimeOffset':
         disp_type = 'date'
-    elif propRealType == 'enum' or propRealType == 'deprecatedEnum':
+    elif propRealType == 'Password':
+        disp_type = 'password'
+    elif propRealType == 'enum' or propRealType == 'deprecatedEnum' or propRealType == 'Enumeration':
         disp_type = 'string (enum)'
     elif propRealType.startswith('Edm.'):
         disp_type = propRealType.split('.', 1)[1]
@@ -524,7 +527,9 @@ def displayValue(val):
     :param val: the value to be displayed
     :return: the simplified value to display
     """
-    if isinstance(val, dict) and len(val) == 1 and '@odata.id' in val:
+    if val is None:
+        disp_val = '[null]'
+    elif isinstance(val, dict) and len(val) == 1 and '@odata.id' in val:
         disp_val = 'Link: {}'.format(val.get('@odata.id'))
     elif isinstance(val, (int, float, str, bool)):
         disp_val = val
@@ -551,7 +556,7 @@ def validateDeprecatedEnum(name, val, listEnum):
         if not paramPass:
             rsvLogger.error("{}: Invalid DeprecatedEnum, expected {}".format(str(name), str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val))))
+        rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -562,7 +567,7 @@ def validateEnum(name, val, listEnum):
         if not paramPass:
             rsvLogger.error("{}: Invalid Enum value '{}' found, expected {}".format(str(name), val, str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val))))
+        rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -580,7 +585,7 @@ def validateString(name, val, pattern=None):
         else:
             paramPass = True
     else:
-        rsvLogger.error("{}: Expected string value, got type {}".format(name, str(type(val))))
+        rsvLogger.error("{}: Expected string value, got type {}".format(name, str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -609,7 +614,7 @@ def validateInt(name, val, minVal=None, maxVal=None):
     Validates a Int, then passes info to validateNumber
     """
     if not isinstance(val, int):
-        rsvLogger.error("{}: Expected integer, got type {}".format(name, str(type(val))))
+        rsvLogger.error("{}: Expected integer, got type {}".format(name, str(type(val)).strip('<>')))
         return False
     else:
         return validateNumber(name, val, minVal, maxVal)
@@ -630,8 +635,19 @@ def validateNumber(name, val, minVal=None, maxVal=None):
             if not paramPass:
                 rsvLogger.error("{}: Value out of assigned max range, {} > {}".format(name, str(val), str(maxVal)))
     else:
-        rsvLogger.error("{}: Expected integer or float, got type {}".format(name, str(type(val))))
+        rsvLogger.error("{}: Expected integer or float, got type {}".format(name, str(type(val)).strip('<>')))
     return paramPass
+
+
+def validatePrimitive(name, val):
+    """
+    Validates a Primitive
+    """
+    if isinstance(val, (int, float, str, bool)):
+        return True
+    else:
+        rsvLogger.error("{}: Expected primitive type, got type {}".format(name, str(type(val)).strip('<>')))
+        return False
 
 
 def loadAttributeRegDict(odata_type, json_data):
@@ -845,6 +861,9 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
 
             elif propRealType == 'Edm.String':
                 paramPass = validateString(PropertyName, val, validPattern)
+
+            elif propRealType == 'Edm.Primitive' or propRealType == 'Edm.PrimitiveType':
+                paramPass = validatePrimitive(PropertyName, val)
 
             else:
                 if propRealType == 'complex':
