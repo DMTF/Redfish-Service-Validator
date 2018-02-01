@@ -556,7 +556,7 @@ def validateDeprecatedEnum(name, val, listEnum):
         if not paramPass:
             rsvLogger.error("{}: Invalid DeprecatedEnum, expected {}".format(str(name), str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val))))
+        rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -567,7 +567,7 @@ def validateEnum(name, val, listEnum):
         if not paramPass:
             rsvLogger.error("{}: Invalid Enum value '{}' found, expected {}".format(str(name), val, str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val))))
+        rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -585,7 +585,7 @@ def validateString(name, val, pattern=None):
         else:
             paramPass = True
     else:
-        rsvLogger.error("{}: Expected string value, got type {}".format(name, str(type(val))))
+        rsvLogger.error("{}: Expected string value, got type {}".format(name, str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -614,7 +614,7 @@ def validateInt(name, val, minVal=None, maxVal=None):
     Validates a Int, then passes info to validateNumber
     """
     if not isinstance(val, int):
-        rsvLogger.error("{}: Expected integer, got type {}".format(name, str(type(val))))
+        rsvLogger.error("{}: Expected integer, got type {}".format(name, str(type(val)).strip('<>')))
         return False
     else:
         return validateNumber(name, val, minVal, maxVal)
@@ -635,8 +635,19 @@ def validateNumber(name, val, minVal=None, maxVal=None):
             if not paramPass:
                 rsvLogger.error("{}: Value out of assigned max range, {} > {}".format(name, str(val), str(maxVal)))
     else:
-        rsvLogger.error("{}: Expected integer or float, got type {}".format(name, str(type(val))))
+        rsvLogger.error("{}: Expected integer or float, got type {}".format(name, str(type(val)).strip('<>')))
     return paramPass
+
+
+def validatePrimitive(name, val):
+    """
+    Validates a Primitive
+    """
+    if isinstance(val, (int, float, str, bool)):
+        return True
+    else:
+        rsvLogger.error("{}: Expected primitive type, got type {}".format(name, str(type(val)).strip('<>')))
+        return False
 
 
 def loadAttributeRegDict(odata_type, json_data):
@@ -850,6 +861,9 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
 
             elif propRealType == 'Edm.String':
                 paramPass = validateString(PropertyName, val, validPattern)
+
+            elif propRealType == 'Edm.Primitive' or propRealType == 'Edm.PrimitiveType':
+                paramPass = validatePrimitive(PropertyName, val)
 
             else:
                 if propRealType == 'complex':
