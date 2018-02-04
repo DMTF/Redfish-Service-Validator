@@ -467,28 +467,28 @@ def getParentType(soup, refs, currentType, tagType='EntityType'):
     """
     pnamespace, ptype = getNamespace(currentType), getType(currentType)
 
-    propSchema = soup.find(  # BS4 line
+    currentSchema = soup.find(  # BS4 line
         'Schema', attrs={'Namespace': pnamespace})
 
-    if propSchema is None:
+    if currentSchema is None:
         return False, None, None, None
 
-    propEntity = propSchema.find(tagType, attrs={'Name': ptype}, recursive=False)  # BS4 line
+    currentEntity = currentSchema.find(tagType, attrs={'Name': ptype}, recursive=False)  # BS4 line
 
-    if propEntity is None:
+    if currentEntity is None:
         return False, None, None, None
 
-    currentType = propEntity.get('BaseType')
+    currentType = currentEntity.get('BaseType')
 
     if currentType is None:
         return False, None, None, None
 
     currentType = currentType.replace('#', '')
-    SchemaNamespace, SchemaType = getNamespace(
-        currentType), getType(currentType)
-    propSchema = soup.find('Schema', attrs={'Namespace': SchemaNamespace})  # BS4 line
+    SchemaNamespace = getNamespace(
+        currentType)
+    parentSchema = soup.find('Schema', attrs={'Namespace': SchemaNamespace})  # BS4 line
 
-    if propSchema is None:
+    if parentSchema is None:
         success, innerSoup, uri = getSchemaDetails(
             *refs.get(SchemaNamespace, (None, None)))
         if not success:
@@ -762,7 +762,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     return additional, PropertyList, PropertyPattern
 
 
-def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', topVersion=None):
+def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='EntityType', topVersion=None):
     # gets an individual property's details, can be prone to problems if info does not exist in soup or is bad
     #   HOWEVER, this will rarely be the case: a property that does not exist in soup would never be expected to generate
     #   info: under the hood, too much info to be worth showing
@@ -776,90 +776,98 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
 
     param arg1: soup data
     param arg2: references
-    param arg3: a property string
+    ...
     """
 
     propEntry = dict()
+    OwnerNamespace, OwnerType = getNamespace(propertyOwner), getType(propertyOwner)
+    traverseLogger.debug('___')
+    traverseLogger.debug('{}, {}:{}, {}'.format(OwnerNamespace, propertyOwner, propertyName, ownerTagType))
 
-    SchemaNamespace, SchemaType = getNamespace(propOwner), getType(propOwner)
-    traverseLogger.debug('___') 
-    traverseLogger.debug('{}, {}:{}, {}'.format(SchemaNamespace, propOwner, propChild, tagType))
+    # Get Schema of the Owner that owns this prop
+    ownerSchema = soup.find('Schema', attrs={'Namespace': OwnerNamespace})
 
-    propSchema = soup.find('Schema', attrs={'Namespace': SchemaNamespace})
-    if propSchema is None:
+    if ownerSchema is None:
         traverseLogger.warn(
-            "getPropertyDetails: Schema could not be acquired,  {}".format(SchemaNamespace))
+            "getPropertyDetails: Schema could not be acquired,  {}".format(OwnerNamespace))
         return None
 
-    # get type tag and tag of property in type
-    propEntity = propSchema.find(tagType, attrs={'Name': SchemaType}, recursive=False)  # BS4 line
-    propTag = propEntity.find(['NavigationProperty', 'Property'], attrs={'Name': propChild}, recursive=False)  # BS4 line
+    # Get Entity of Owner, then the property of the Property we're targeting
+    ownerEntity = ownerSchema.find(
+        ownerTagType, attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+
+    propertyTag = ownerEntity.find(
+        ['NavigationProperty', 'Property'], attrs={'Name': propertyName}, recursive=False)  # BS4 line
 
     # check if this property is a nav property
     # Checks if this prop is an annotation
-    success, typeSoup, typeRefs, propType = getParentType(
-        soup, refs, SchemaType, tagType)
-    if '@' not in propChild:
-        propEntry['isTerm'] = False
+    success, propertySoup, propertyRefs, propertyFullType = True, soup, refs, OwnerType
+
+    if '@' not in propertyName:
+        propEntry['isTerm'] = False  # not an @ annotation
         # start adding attrs and props together
-        propAll = propTag.find_all()  # BS4 line
-        for tag in propAll:
+        propertyInnerTags = propertyTag.find_all()  # BS4 line
+        for tag in propertyInnerTags:
             propEntry[tag['Term']] = tag.attrs
-        propType = propTag.get('Type')
+        propertyFullType = propertyTag.get('Type')
     else:
         propEntry['isTerm'] = True
-        propTag = propEntity
-        propType = propTag.get('Type', propOwner)
+        propertyTag = ownerEntity
+        propertyFullType = propertyTag.get('Type', propertyOwner)
 
-    propEntry['isNav'] = propTag.name == 'NavigationProperty'
-    propEntry['attrs'] = propTag.attrs
+    propEntry['isNav'] = propertyTag.name == 'NavigationProperty'
+    propEntry['attrs'] = propertyTag.attrs
     traverseLogger.debug(propEntry)
 
     propEntry['realtype'] = 'none'
 
     # find the real type of this, by inheritance
-    while propType is not None:
+    while propertyFullType is not None:
         traverseLogger.debug("HASTYPE")
-        TypeNamespace, TypeSpec = getNamespace(propType), getType(propType)
+        PropertyNamespace, PropertyType = getNamespace(propertyFullType), getType(propertyFullType)
 
-        traverseLogger.debug('{}, {}'.format(TypeNamespace, propType))
+        traverseLogger.debug('{}, {}'.format(PropertyNamespace, propertyFullType))
+
         # Type='Collection(Edm.String)'
         # If collection, check its inside type
-        if re.match('Collection\(.*\)', propType) is not None:
-            propType = propType.replace('Collection(', "").replace(')', "")
-            propEntry['isCollection'] = propType
+        if re.match('Collection\(.*\)', propertyFullType) is not None:
+            propertyFullType = propertyFullType.replace('Collection(', "").replace(')', "")
+            propEntry['isCollection'] = propertyFullType
             continue
-        if 'Edm' in propType:
-            propEntry['realtype'] = propType
+
+        # If basic, just pass itself
+        if 'Edm' in propertyFullType:
+            propEntry['realtype'] = propertyFullType
             break
 
-        # get proper soup
-        if TypeNamespace.split('.')[0] != SchemaNamespace.split('.')[0]:
-            success, typeSoup, uri = getSchemaDetails(
-                *refs.get(TypeNamespace, (None, None)))
+        # get proper soup, check if this Namespace is the same as its Owner, otherwise find its SchemaXml
+        if PropertyNamespace.split('.')[0] != OwnerNamespace.split('.')[0]:
+            success, propertySoup, uri = getSchemaDetails(
+                *refs.get(PropertyNamespace, (None, None)))
+            propertyRefs = getReferenceDetails(propertySoup, refs, name=uri)
         else:
-            success, typeSoup, uri = True, soup, 'of parent'
+            success, propertySoup, uri = True, soup, 'of parent'
 
         if not success:
             traverseLogger.error(
-                "getPropertyDetails: InnerType could not be acquired, {} {} {}".format(propOwner, propChild ,uri))
+                "getPropertyDetails: Could not acquire appropriate Schema for this item, {} {} {}".format(propertyOwner, PropertyNamespace, propertyName))
             return propEntry
 
         # traverse tags to find the type
-        typeRefs = getReferenceDetails(typeSoup, refs, name=uri)
-        typeSchema = typeSoup.find(  # BS4 line
-            'Schema', attrs={'Namespace': TypeNamespace})
-        typeTag = typeSchema.find(  # BS4 line
-            ['EnumType', 'ComplexType', 'EntityType', 'TypeDefinition'], attrs={'Name': TypeSpec}, recursive=False)
-        nameOfTag = typeTag.name if typeTag is not None else 'None'
+        propertySchema = propertySoup.find(
+            'Schema', attrs={'Namespace': PropertyNamespace})
+        propertyTypeTag = propertySchema.find(
+            ['EnumType', 'ComplexType', 'EntityType', 'TypeDefinition'], attrs={'Name': PropertyType}, recursive=False)
+        nameOfTag = propertyTypeTag.name if propertyTypeTag is not None else 'None'
+
         # perform more logic for each type
         if nameOfTag == 'TypeDefinition':
-            propType = typeTag.get('UnderlyingType')
+            propertyFullType = propertyTypeTag.get('UnderlyingType')
             # This piece of code is rather simple UNLESS this is an "enumeration"
             #   this is a unique deprecated enum, labeled as Edm.String
-            isEnum = typeTag.find(  # BS4 line
+            isEnum = propertyTypeTag.find(  # BS4 line
                 'Annotation', attrs={'Term': 'Redfish.Enumeration'}, recursive=False)
-            if propType == 'Edm.String' and isEnum is not None:
+            if propertyFullType == 'Edm.String' and isEnum is not None:
                 propEntry['realtype'] = 'deprecatedEnum'
                 propEntry['typeprops'] = list()
                 memberList = isEnum.find(  # BS4 line
@@ -874,10 +882,27 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
 
         elif nameOfTag == 'ComplexType':
             traverseLogger.debug("go deeper in type")
+
             # We need to find the highest existence of this type vs topVersion schema
             # not ideal, but works for this solution
-            success, baseSoup, baseRefs, baseType = True, typeSoup, typeRefs, propType
-            if topVersion is not None and topVersion != SchemaNamespace:
+            success, baseSoup, baseRefs, baseType = True, propertySoup, propertyRefs, propertyFullType
+
+            # If we're outside of our normal Soup, then do something different, otherwise elif
+            if PropertyNamespace.split('.')[0] != OwnerNamespace.split('.')[0]:
+                typelist = []
+                schlist = []
+                for schema in baseSoup.find_all('Schema'):
+                    if schema.find('ComplexType', attrs={'Name': PropertyType}) is None:
+                        continue
+                    newNamespace = schema.get('Namespace')
+                    typelist.append(newNamespace)
+                    schlist.append(schema)
+                for item, schema in reversed(sorted(zip(typelist, schlist))):
+                    traverseLogger.debug(
+                        "Working backwards: {}   {}".format(item, getType(baseType)))
+                    baseType = item + '.' + getType(baseType)
+                    break
+            elif topVersion is not None and (topVersion != OwnerNamespace):
                 currentVersion = topVersion
                 currentSchema = baseSoup.find(  # BS4 line
                     'Schema', attrs={'Namespace': currentVersion})
@@ -886,16 +911,16 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
                 #   if it does, use our new expectedType, else continue down parent types
                 #   until we exhaust all schematags in file
                 while currentSchema is not None:
-                    expectedType = currentVersion + '.' + getType(propType)
+                    expectedType = currentVersion + '.' + PropertyType 
                     currentTypeTag = currentSchema.find(  # BS4 line
-                        'ComplexType', attrs={'Name': getType(propType)})
+                        'ComplexType', attrs={'Name': PropertyType}) 
                     if currentTypeTag is not None:
                         baseType = expectedType
                         traverseLogger.debug('new type: ' + baseType)  # Printout FORMAT
                         break
                     else:
                         nextEntity = currentSchema.find(  # BS4 line
-                            'EntityType', attrs={'Name': SchemaType})
+                            'EntityType', attrs={'Name': OwnerType})
                         nextType = nextEntity.get('BaseType')
                         currentVersion = getNamespace(nextType)
                         currentSchema = baseSoup.find(  # BS4 line
@@ -910,7 +935,7 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
             # If enum, get all members
             propEntry['realtype'] = 'enum'
             propEntry['typeprops'] = list()
-            for MemberName in typeTag.find_all('Member'):  # BS4 line
+            for MemberName in propertyTypeTag.find_all('Member'):  # BS4 line
                 propEntry['typeprops'].append(MemberName['Name'])
             break
 
@@ -918,13 +943,13 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
             # If entity, do nothing special (it's a reference link)
             propEntry['realtype'] = 'entity'
             propEntry['typeprops'] = dict()
-            traverseLogger.debug("typeEntityTag found {}".format(propTag['Name']))
+            traverseLogger.debug("typeEntityTag found {}".format(propertyTypeTag['Name']))
             break
 
         else:
-            traverseLogger.error("type doesn't exist? {}".format(propType))
+            traverseLogger.error("type doesn't exist? {}".format(propertyFullType))
             raise Exception(
-                "getPropertyDetails: problem grabbing type: " + propType)
+                "getPropertyDetails: problem grabbing type: " + propertyFullType)
             break
 
     return propEntry
