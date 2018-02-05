@@ -1323,7 +1323,7 @@ def main(argv=None):
         rsvLogger.error('PayloadMode or path invalid, using Default behavior')
     if 'File' in pmode:
         if ppath is not None and os.path.isfile(ppath):
-            with open(cdict.get(ppath)) as f:
+            with open(ppath) as f:
                 jsonData = json.load(f)
                 f.close()
         else:
