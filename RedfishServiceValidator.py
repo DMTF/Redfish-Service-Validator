@@ -85,6 +85,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
     """
     Validates an entity based on its uri given
     """
+    rsvLogger.debug('validateEntity: name = {}'.format(name))
     # check for required @odata.id
     if '@odata.id' not in val:
         rsvLogger.error("{}: EntityType resource does not contain required @odata.id property".format(name))
@@ -97,7 +98,8 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
         success, data, status, delay = rst.callResourceURI(uri)
     else:
         success, data, status, delay = True, val, 200, 0
-    rsvLogger.debug('{}, {}, {}'.format((success, uri, status, delay), (propType, propCollectionType), data))
+    rsvLogger.debug('(success, uri, status, delay) = {}, (propType, propCollectionType) = {}, data = {}'
+                    .format((success, uri, status, delay), (propType, propCollectionType), data))
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
     if propCollectionType == 'Resource.Item' or propType in ['Resource.ResourceCollection', 'Resource.Item'] and success:
         paramPass = success
@@ -115,7 +117,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
             success, baseSoup, uri = rst.getSchemaDetails(*baseLink)
         else:
             success = False
-        rsvLogger.debug('success: {} {} {}'.format(success, currentType, baseLink))
+        rsvLogger.debug('success = {}, currentType = {}, baseLink = {}'.format(success, currentType, baseLink))
 
         # Recurse through parent types, gather type hierarchy to check against
         if currentType is not None and success:
@@ -126,12 +128,16 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
             while currentType not in allTypes and success:
                 allTypes.append(currentType)
                 success, baseSoup, baseRefs, currentType = rst.getParentType(baseSoup, baseRefs, currentType, 'EntityType')
-                rsvLogger.debug('success: {} {}'.format(success, currentType))
+                rsvLogger.debug('success = {}, currentType = {}'.format(success, currentType))
 
-            rsvLogger.debug('{}, {}, {}'.format(propType, propCollectionType, allTypes))
+            rsvLogger.debug('propType = {}, propCollectionType = {}, allTypes = {}'
+                            .format(propType, propCollectionType, allTypes))
             paramPass = propType in allTypes or propCollectionType in allTypes
             if not paramPass:
-                rsvLogger.error("{}: Expected Entity type {}, but not found in type inheritance {}".format(name, (propType, propCollectionType), allTypes))
+                full_namespace = propCollectionType if propCollectionType is not None else propType
+                rsvLogger.error(
+                    '{}: Linked resource reports schema version (or namespace): {} not found in schema file {}'
+                    .format(name.split(':')[-1], full_namespace, full_namespace.split('.')[0]))
         else:
             rsvLogger.error("{}: Could not get schema file for Entity check".format(name))
     else:
