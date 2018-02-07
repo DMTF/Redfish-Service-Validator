@@ -895,7 +895,8 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                     additionalComplex = innerPropType.additional 
                     for key in val:
                         if key not in complexMessages and not additionalComplex:
-                            rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', item + '.' + key + appendStr)  # Printout FORMAT
+                            rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
+                                            .format(item + '.' + key + appendStr, innerPropType.snamespace))
                             counts['failComplexAdditional'] += 1
                             resultList[item + '.' + key + appendStr] = (
                                     displayValue(val[key]), '-',
@@ -1105,7 +1106,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         if key not in messages: 
             # note: extra messages for "unchecked" properties
             if not propResourceObj.typeobj.additional:
-                rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)  # Printout FORMAT
+                rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
+                                .format(key, SchemaNamespace))
                 counts['failAdditional'] += 1
                 messages[key] = (displayValue(item), '-',
                                  '-',
