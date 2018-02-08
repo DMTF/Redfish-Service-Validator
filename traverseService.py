@@ -100,7 +100,8 @@ def setConfig(cdict):
 
     if AuthType == 'Session':
         certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
-        success = currentSession.startSession(User, Passwd, config['configuri'], certVal, proxies)
+        # no proxy for system under test
+        success = currentSession.startSession(User, Passwd, config['configuri'], certVal, proxies=None)
         if not success:
             raise RuntimeError("Session could not start")
 
@@ -220,7 +221,8 @@ def callResourceURI(URILink):
         if payload is not None and CacheMode == 'Prefer':
             return True, payload, -1, 0
         response = requests.get(ConfigURI + URILink if not nonService else URILink,
-                                headers=headers, auth=auth, verify=certVal, timeout=timeout, proxies=proxies)
+                                headers=headers, auth=auth, verify=certVal, timeout=timeout,
+                                proxies=proxies if nonService else None)  # only proxy non-service
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
         statusCode = response.status_code
