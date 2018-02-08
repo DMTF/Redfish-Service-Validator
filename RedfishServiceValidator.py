@@ -1236,6 +1236,9 @@ def main(argv=None):
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
     argget.add_argument('--linklimit', type=str, help='Limit the amount of links in collections, formatted TypeName:## TypeName:## ..., default LogEntry:20 ', nargs='*')
     argget.add_argument('--sample', type=int, default=0, help='sample this number of members from large collections for validation; default is to validate all members')
+    argget.add_argument('--debug_logging', action="store_const", const=logging.DEBUG, default=logging.INFO,
+            help='Output debug statements to text log, otherwise it only uses INFO')
+
 
     args = argget.parse_args()
 
@@ -1313,7 +1316,7 @@ def main(argv=None):
         os.makedirs(logpath)
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    fh.setLevel(logging.DEBUG)
+    fh.setLevel(args.debug_logging)
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)  # Printout FORMAT
     rsvLogger.info('ConfigURI: ' + ConfigURI)
