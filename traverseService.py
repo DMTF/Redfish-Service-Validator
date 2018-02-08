@@ -851,6 +851,10 @@ def getPropertyDetails(soup, refs, propOwner, propChild, tagType='EntityType', t
         typeRefs = getReferenceDetails(typeSoup, refs, name=uri)
         typeSchema = typeSoup.find(  # BS4 line
             'Schema', attrs={'Namespace': TypeNamespace})
+        if typeSchema is None:
+            traverseLogger.error('Schema element with Namespace attribute of {} not found in schema file {}'
+                                 .format(TypeNamespace, uri))
+            break
         typeTag = typeSchema.find(  # BS4 line
             ['EnumType', 'ComplexType', 'EntityType', 'TypeDefinition'], attrs={'Name': TypeSpec}, recursive=False)
         nameOfTag = typeTag.name if typeTag is not None else 'None'
@@ -998,7 +1002,9 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
             item = getType(key).split(':')[-1]
             ownerNS = propx.propOwner.split('.')[0]
             ownerType = propx.propOwner.split('.')[-1]
-            if propDict['isNav']:
+            if propDict is None:
+                continue
+            elif propDict['isNav']:
                 insideItem = jsonData.get(item)
                 if insideItem is not None:
                     cType = propDict.get('isCollection')
@@ -1037,7 +1043,9 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
             propDict = propx.propDict
             key = propx.name
             item = getType(key).split(':')[-1]
-            if propDict['realtype'] == 'complex':
+            if propDict is None:
+                continue
+            elif propDict['realtype'] == 'complex':
                 if jsonData.get(item) is not None:
                     cType = propDict.get('isCollection')
                     if cType is not None:
