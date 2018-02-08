@@ -1416,6 +1416,19 @@ def main(argv=None):
 
         innerCounts = results[item][2]
         finalCounts.update(innerCounts)
+
+        # detect if there are error messages for this resource, but no failure counts; if so, add one to the innerCounts
+        counters_all_pass = True
+        for countType in sorted(innerCounts.keys()):
+            if 'problem' in countType or 'fail' in countType or 'exception' in countType:
+                counters_all_pass = False
+                break
+        error_messages_present = False
+        if results[item][4] is not None and len(results[item][4].getvalue()) > 0:
+            error_messages_present = True
+        if counters_all_pass and error_messages_present:
+            innerCounts['failSchema'] = 1
+
         for countType in sorted(innerCounts.keys()):
             if 'problem' in countType or 'fail' in countType or 'exception' in countType:
                 rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, str(results[item][0]).split(' ')[0]))  # Printout FORMAT
