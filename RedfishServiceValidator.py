@@ -803,6 +803,11 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
     validMinAttr = PropertyItem.get('Validation.Minimum')
     validMaxAttr = PropertyItem.get('Validation.Maximum')
 
+    # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
+    validDeprecated = PropertyItem.get('Redfish.Deprecated') 
+    if validDeprecated is not None:
+        rsvLogger.error('{}: The given property is deprecated: {}'.format(PropertyName, validDeprecated.get('String','')))
+
     validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
         int(validMaxAttr['Int']) if validMaxAttr is not None else None
     validPattern = validPatternAttr.get('String', '') if validPatternAttr is not None else None
