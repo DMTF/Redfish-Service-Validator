@@ -846,7 +846,8 @@ def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='En
         if PropertyNamespace.split('.')[0] != OwnerNamespace.split('.')[0]:
             success, propertySoup, uri = getSchemaDetails(
                 *refs.get(PropertyNamespace, (None, None)))
-            propertyRefs = getReferenceDetails(propertySoup, refs, name=uri)
+            if success:
+                propertyRefs = getReferenceDetails(propertySoup, refs, name=uri)
         else:
             success, propertySoup, uri = True, soup, 'of parent'
 
