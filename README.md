@@ -1,13 +1,17 @@
-Copyright 2017 Distributed Management Task Force, Inc. All rights reserved.
-# Redfish Service Validator - Version 0.91
+Copyright 2017-2018 Distributed Management Task Force, Inc. All rights reserved.
+
+# Redfish Service Validator
 
 ## About
+
 The Redfish Service Validator is a python3 tool for checking conformance of any "device" with a Redfish service interface against Redfish CSDL schema.  The tool is designed to be device agnostic and is driven based on the Redfish specifications and schema intended to be supported by the device.
 
 ## Introduction
+
 The Redfish Service Validator is an open source framework for checking conformance of any generic device with Redfish interface enabled against the DMTF defined Redfish schema and specifications. The tool is designed to be device agnostic and is driven purely based on the Redfish specifications intended to be supported by the device.
 
 ## Pre-requisites
+
 The Redfish Service Validator is based on Python 3 and the client system is required to have the Python framework installed before the tool can be installed and executed on the system. Additionally, the following packages are required to be installed and accessible from the python environment:
 * beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4
 * requests  - https://github.com/kennethreitz/requests (Documentation is available at http://docs.python-requests.org/)
@@ -24,32 +28,34 @@ pip3 install beautifulsoup4 --upgrade
 There is no dependency based on Windows or Linux OS. The result logs are generated in HTML format and an appropriate browser (Chrome, Firefox, IE, etc.) is required to view the logs on the client system.
 
 ## Installation
+
 The RedfishServiceValidator.py into the desired tool root directory.  Create the following subdirectories in the tool root directory: "config", "logs", "SchemaFiles".  Place the example config.ini file in the "config" directory.  Place the CSDL Schema files to be used by the tool in the root of the schema directory, or the directory given in config.ini.
 
 ## Execution Steps
+
 The Redfish Interop Validator is designed to execute as a purely command line interface tool with no intermediate inputs expected during tool execution. However, the tool requires various inputs regarding system details, DMTF schema files etc. which are consumed by the tool during execution to generate the conformance report logs. Below are the step by step instructions on setting up the tool for execution on any identified Redfish device for conformance test:
 
 Modify the config\config.ini file to enter the system details under below section
 
 [SystemInformation]
 
-TargetIP = <<IPv4 address of the system under test>>
+TargetIP = \<IPv4 address of the system under test\>
 
-SystemInfo = <<Describes the system>>
+SystemInfo = \<Describes the system\>
 
-UserName = <<User ID of Administrator on the system>>
+UserName = \<User ID of Administrator on the system\>
 
-Password = <<Password of the Administrator>>
+Password = \<Password of the Administrator\>
 
-AuthType = <<Type of authorization for above credentials (None,Basic,Session)>>
+AuthType = \<Type of authorization for above credentials (None,Basic,Session)\>
 
 The Tool has an option to ignore SSL certificate check if certificate is not installed on the client system. The certificate check can be switched on or off using the below parameter of the config.ini file. By default the parameter is set to ‘Off’.  UseSSL determines whether or not the https protocol is used.  If it is `Off`, it will also disable certification.
 
 [Options]
 
-UseSSL = <<On / Off>>
+UseSSL = \<On / Off\>
 
-CertificateCheck = <<On / Off>>
+CertificateCheck = \<On / Off\>
 
 CertificateBundle = ca_bundle   Specify a bundle (file or directory) with certificates of trusted CAs. See [SelfSignedCerts.md](https://github.com/DMTF/Redfish-Service-Validator/blob/master/SelfSignedCerts.md) for tips on creating the bundle.
 
@@ -67,11 +73,13 @@ Timeout - (integer) Interval of time before timing out
 
 SchemaSuffix - (string) When searching for local hard drive schema, append this if unable to derive the expected xml from the service's metadata
 
-HttpProxy - Proxy for http gets (untested)
+HttpProxy - (URL) Proxy for HTTP requests to external URLs (example: `HttpProxy = http://192.168.1.1:8888`)
 
-HttpsProxy - Proxy for https gets (untested)
+HttpsProxy - (URL) Proxy for HTTPS requests to external URLs (example: `HttpsProxy = http://192.168.1.1:8888`)
 
-Additional options are available for cached files and 
+Note: HttpProxy/HttpsProxy do not apply to requests to the system under test, only to URLs external to the system.
+
+Additional options are available for cached files, link limits, sampling and target payloads:
 
 CacheMode = [Off, Prefer, Fallback] -- Options for using a cache, which will allow a user to override or fallback to a file on disk during a resource call on a service
 
@@ -98,6 +106,7 @@ In order to run without a configuration file, the option --ip must be specified.
 python3 RedfishServiceValidator.py --ip host:port [...]
 
 ## Execution flow
+
 * 1.	Redfish Service Validator starts with the Service root Resource Schema by querying the service with the service root URI and getting all the device information, the resources supported and their links. Once the response of the Service root query is verified against its schema, the tool traverses through all the collections and Navigation properties returned by the service.
 * 2.	For each navigation property/Collection of resource returned, it does following operations:
   * i.	Reads all the Navigation/collection of resources from the respective resource collection schema file.
@@ -119,17 +128,20 @@ Upon validation of a resource, the following types of tests may occur:
 * If any unvalidated entries exist in the payload, determine whether or not additional properties are legitimate for this resource, otherwise throw a "failAdditional" error. 
  
 ## Conformance Logs – Summary and Detailed Conformance Report
+
 The Redfish Service Validator generates an html report under the “logs” folder, named as ConformanceHtmlLog_MM_DD_YYYY_HHMMSS.html The report gives the detailed view of the individual properties checked, with the Pass/Fail/Skip/Warning status for each resource checked for conformance.
 
 Additionally, there is a verbose log file that may be referenced to diagnose tool or schema problems when the HTML log is insufficient. 
 
 ## The Test Status
+
 The test result for each GET operation will be reported as follows:
 * PASS: If the operation is successful and returns a success code (E.g. 200, 204)
 * FAIL: If the operation failed for reasons mentioned in GET method execution, or some configuration.
 * SKIP: If the property or method being checked is not mandatory is not supported by the service.
 
 ## Limitations
+
 Redfish Service Validator covers all the GET execution on the service. Below are certain points which are not in this scope.
 * 1.	Patch/Post/Skip/Top/Head is not covered as part of Redfish Service Validator due to dependency on internal factor of the service.
 * 2.	Redfish Service Validator does not cover testing of multiple service at once. To execute this, we have to re-run the tool by running it separately.

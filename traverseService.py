@@ -100,7 +100,8 @@ def setConfig(cdict):
 
     if AuthType == 'Session':
         certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
-        success = currentSession.startSession(User, Passwd, config['configuri'], certVal, proxies)
+        # no proxy for system under test
+        success = currentSession.startSession(User, Passwd, config['configuri'], certVal, proxies=None)
         if not success:
             raise RuntimeError("Session could not start")
 
@@ -220,7 +221,8 @@ def callResourceURI(URILink):
         if payload is not None and CacheMode == 'Prefer':
             return True, payload, -1, 0
         response = requests.get(ConfigURI + URILink if not nonService else URILink,
-                                headers=headers, auth=auth, verify=certVal, timeout=timeout, proxies=proxies)
+                                headers=headers, auth=auth, verify=certVal, timeout=timeout,
+                                proxies=proxies if nonService else None)  # only proxy non-service
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
         statusCode = response.status_code
@@ -235,7 +237,7 @@ def callResourceURI(URILink):
                 decoded = navigateJsonFragment(decoded, URILink)
                 if decoded is None:
                     traverseLogger.error(
-                            "This URI did not parse properly {}".format(URILink))
+                            "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
             elif contenttype is not None and 'application/xml' in contenttype:
                 decoded = response.text
             else:
@@ -856,9 +858,14 @@ def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='En
         # traverse tags to find the type
         propertySchema = propertySoup.find(
             'Schema', attrs={'Namespace': PropertyNamespace})
+        if propertySchema is None:
+            traverseLogger.error('Schema element with Namespace attribute of {} not found in schema file {}'
+                                 .format(PropertyNamespace, uri))
+            break
         propertyTypeTag = propertySchema.find(
             ['EnumType', 'ComplexType', 'EntityType', 'TypeDefinition'], attrs={'Name': PropertyType}, recursive=False)
         nameOfTag = propertyTypeTag.name if propertyTypeTag is not None else 'None'
+
 
         # perform more logic for each type
         if nameOfTag == 'TypeDefinition':
@@ -1021,7 +1028,9 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
             item = getType(key).split(':')[-1]
             ownerNS = propx.propOwner.split('.')[0]
             ownerType = propx.propOwner.split('.')[-1]
-            if propDict['isNav']:
+            if propDict is None:
+                continue
+            elif propDict['isNav']:
                 insideItem = jsonData.get(item)
                 if insideItem is not None:
                     cType = propDict.get('isCollection')
@@ -1060,7 +1069,9 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
             propDict = propx.propDict
             key = propx.name
             item = getType(key).split(':')[-1]
-            if propDict['realtype'] == 'complex':
+            if propDict is None:
+                continue
+            elif propDict['realtype'] == 'complex':
                 if jsonData.get(item) is not None:
                     cType = propDict.get('isCollection')
                     if cType is not None:

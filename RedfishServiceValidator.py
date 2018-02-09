@@ -16,6 +16,8 @@ import logging
 import json
 import traverseService as rst
 
+tool_version = '1.0.1'
+
 rsvLogger = rst.getLogger()
 
 attributeRegistries = dict()
@@ -67,7 +69,7 @@ def validateActions(name, val, propTypeObj, payloadType):
                 rsvLogger.warn('{}: action not Found, is not mandatory'.format(k))
         actionMessages[k] = (
                     'Action', '-',
-                    'Exists' if actionDecoded != 'n/a' else 'DNE',
+                    'Yes' if actionDecoded != 'n/a' else 'No',
                     'PASS' if actPass else 'FAIL')
         if actPass:
             actionCounts['pass'] += 1
@@ -83,6 +85,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
     """
     Validates an entity based on its uri given
     """
+    rsvLogger.debug('validateEntity: name = {}'.format(name))
     # check for required @odata.id
     if '@odata.id' not in val:
         rsvLogger.error("{}: EntityType resource does not contain required @odata.id property".format(name))
@@ -95,7 +98,8 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
         success, data, status, delay = rst.callResourceURI(uri)
     else:
         success, data, status, delay = True, val, 200, 0
-    rsvLogger.debug('{}, {}, {}'.format((success, uri, status, delay), (propType, propCollectionType), data))
+    rsvLogger.debug('(success, uri, status, delay) = {}, (propType, propCollectionType) = {}, data = {}'
+                    .format((success, uri, status, delay), (propType, propCollectionType), data))
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
     if propCollectionType == 'Resource.Item' or propType in ['Resource.ResourceCollection', 'Resource.Item'] and success:
         paramPass = success
@@ -113,7 +117,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
             success, baseSoup, uri = rst.getSchemaDetails(*baseLink)
         else:
             success = False
-        rsvLogger.debug('success: {} {} {}'.format(success, currentType, baseLink))
+        rsvLogger.debug('success = {}, currentType = {}, baseLink = {}'.format(success, currentType, baseLink))
 
         # Recurse through parent types, gather type hierarchy to check against
         if currentType is not None and success:
@@ -124,12 +128,16 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
             while currentType not in allTypes and success:
                 allTypes.append(currentType)
                 success, baseSoup, baseRefs, currentType = rst.getParentType(baseSoup, baseRefs, currentType, 'EntityType')
-                rsvLogger.debug('success: {} {}'.format(success, currentType))
+                rsvLogger.debug('success = {}, currentType = {}'.format(success, currentType))
 
-            rsvLogger.debug('{}, {}, {}'.format(propType, propCollectionType, allTypes))
+            rsvLogger.debug('propType = {}, propCollectionType = {}, allTypes = {}'
+                            .format(propType, propCollectionType, allTypes))
             paramPass = propType in allTypes or propCollectionType in allTypes
             if not paramPass:
-                rsvLogger.error("{}: Expected Entity type {}, but not found in type inheritance {}".format(name, (propType, propCollectionType), allTypes))
+                full_namespace = propCollectionType if propCollectionType is not None else propType
+                rsvLogger.error(
+                    '{}: Linked resource reports schema version (or namespace): {} not found in schema file {}'
+                    .format(name.split(':')[-1], full_namespace, full_namespace.split('.')[0]))
         else:
             rsvLogger.error("{}: Could not get schema file for Entity check".format(name))
     else:
@@ -448,10 +456,94 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
             else:
                 counts['failAttributeRegistry'] += 1
         messages[key + ' '] = (
-            value, prop_type if attr_reg_type is None else attr_reg_type, 'Exists',
-            'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
+            displayValue(value), displayType('', prop_type if attr_reg_type is None else attr_reg_type),
+            'Yes', 'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
 
     return messages, counts
+
+
+def displayType(propType, propRealType, is_collection=False):
+    """
+    Convert inputs propType and propRealType to a simple, human readable type
+    :param propType: the 'Type' attribute from the PropItem.propDict
+    :param propRealType: the 'realtype' entry from the PropItem.propDict
+    :param is_collection: For collections: True if these types are for the collection; False if for a member
+    :return: the simplified type to display
+    """
+    if propType is None:
+        propType = ''
+    if propRealType is None:
+        propRealType = ''
+
+    # Edm.* and other explicit types
+    if propRealType == 'Edm.Boolean' or propRealType == 'Boolean':
+        disp_type = 'boolean'
+    elif propRealType == 'Edm.String' or propRealType == 'String':
+        disp_type = 'string'
+    elif (propRealType.startswith('Edm.Int') or propRealType == 'Edm.Decimal' or
+        propRealType == 'Edm.Double' or propRealType == 'Integer'):
+        disp_type = 'number'
+    elif propRealType == 'Edm.Guid':
+        disp_type = 'GUID'
+    elif propRealType == 'Edm.Primitive' or propRealType == 'Edm.PrimitiveType':
+        disp_type = 'primitive'
+    elif propRealType == 'Edm.DateTimeOffset':
+        disp_type = 'date'
+    elif propRealType == 'Password':
+        disp_type = 'password'
+    elif propRealType == 'enum' or propRealType == 'deprecatedEnum' or propRealType == 'Enumeration':
+        disp_type = 'string (enum)'
+    elif propRealType.startswith('Edm.'):
+        disp_type = propRealType.split('.', 1)[1]
+    # Entity types
+    elif propRealType == 'entity':
+        if propType.startswith('Collection('):
+            member_type = propType.replace('Collection(', '').replace(')', '')
+            if is_collection:
+                disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+            else:
+                disp_type = member_type.rsplit('.', 1)[-1]
+        else:
+            disp_type = 'link to: {}'.format(propType.rsplit('.', 1)[-1])
+    # Complex types
+    elif propRealType == 'complex':
+        if propType.startswith('Collection('):
+            member_type = propType.replace('Collection(', '').replace(')', '')
+            if is_collection:
+                disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+            else:
+                disp_type = member_type.rsplit('.', 1)[-1]
+        else:
+            disp_type = propType
+    # Fallback cases
+    elif len(propRealType) > 0:
+        disp_type = propRealType
+    elif len(propType) > 0:
+        disp_type = propType
+    else:
+        disp_type = 'n/a'
+
+    rsvLogger.debug('displayType: ({}, {}) -> {}'.format(propType, propRealType, disp_type))
+    return disp_type
+
+
+def displayValue(val):
+    """
+    Convert input val to a simple, human readable value
+    :param val: the value to be displayed
+    :return: the simplified value to display
+    """
+    if val is None:
+        disp_val = '[null]'
+    elif isinstance(val, dict) and len(val) == 1 and '@odata.id' in val:
+        disp_val = 'Link: {}'.format(val.get('@odata.id'))
+    elif isinstance(val, (int, float, str, bool)):
+        disp_val = val
+    else:
+        disp_val = '[JSON Object]'
+
+    rsvLogger.debug('displayValue: {} -> {}'.format(val, disp_val))
+    return disp_val
 
 
 def validateDeprecatedEnum(name, val, listEnum):
@@ -470,7 +562,7 @@ def validateDeprecatedEnum(name, val, listEnum):
         if not paramPass:
             rsvLogger.error("{}: Invalid DeprecatedEnum, expected {}".format(str(name), str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val))))
+        rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -481,7 +573,7 @@ def validateEnum(name, val, listEnum):
         if not paramPass:
             rsvLogger.error("{}: Invalid Enum value '{}' found, expected {}".format(str(name), val, str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val))))
+        rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -499,7 +591,7 @@ def validateString(name, val, pattern=None):
         else:
             paramPass = True
     else:
-        rsvLogger.error("{}: Expected string value, got type {}".format(name, str(type(val))))
+        rsvLogger.error("{}: Expected string value, got type {}".format(name, str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -528,7 +620,7 @@ def validateInt(name, val, minVal=None, maxVal=None):
     Validates a Int, then passes info to validateNumber
     """
     if not isinstance(val, int):
-        rsvLogger.error("{}: Expected integer, got type {}".format(name, str(type(val))))
+        rsvLogger.error("{}: Expected integer, got type {}".format(name, str(type(val)).strip('<>')))
         return False
     else:
         return validateNumber(name, val, minVal, maxVal)
@@ -549,8 +641,19 @@ def validateNumber(name, val, minVal=None, maxVal=None):
             if not paramPass:
                 rsvLogger.error("{}: Value out of assigned max range, {} > {}".format(name, str(val), str(maxVal)))
     else:
-        rsvLogger.error("{}: Expected integer or float, got type {}".format(name, str(type(val))))
+        rsvLogger.error("{}: Expected integer or float, got type {}".format(name, str(type(val)).strip('<>')))
     return paramPass
+
+
+def validatePrimitive(name, val):
+    """
+    Validates a Primitive
+    """
+    if isinstance(val, (int, float, str, bool)):
+        return True
+    else:
+        rsvLogger.error("{}: Expected primitive type, got type {}".format(name, str(type(val)).strip('<>')))
+        return False
 
 
 def loadAttributeRegDict(odata_type, json_data):
@@ -644,12 +747,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             rsvLogger.info('\tItem is skipped, no schema')
             counts['skipNoSchema'] += 1
             return {item: ('-', '-',
-                                'Exists' if propExists else 'DNE', 'skipNoSchema')}, counts
+                                'Yes' if propExists else 'No', 'NoSchema')}, counts
         else:
             rsvLogger.error('\tItem is present, no schema found')
             counts['failNoSchema'] += 1
             return {item: ('-', '-',
-                                'Exists' if propExists else 'DNE', 'failNoSchema')}, counts
+                                'Yes' if propExists else 'No', 'FAIL')}, counts
 
     propAttr = PropertyItem['attrs']
 
@@ -663,7 +766,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
         rsvLogger.info('\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-',
-                            'Exists' if propExists else 'DNE', 'skipOEM')}, counts
+                            'Yes' if propExists else 'No', 'OEM')}, counts
 
     propMandatory = False
     propMandatoryPass = True
@@ -679,9 +782,9 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             rsvLogger.info("\tprop Does not exist, skip...")
             counts['skipOptional'] += 1
             return {item: (
-                '-', (propType, propRealType),
-                'Exists' if propExists else 'DNE',
-                'skipOptional')}, counts
+                '-', displayType(propType, propRealType),
+                'Yes' if propExists else 'No',
+                'Optional')}, counts
 
     nullable_attr = propAttr.get('Nullable')
     propNullable = False if nullable_attr == 'false' else True  # default is true
@@ -720,18 +823,18 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                         .format(PropertyName))
         counts['failNullCollection'] += 1
         return {item: (
-            '-', (propType, propRealType),
-            'Exists' if propExists else 'DNE',
-            'failNullCollection')}, counts
+            '-', displayType(propType, propRealType, is_collection=True),
+            'Yes' if propExists else 'No',
+            'FAIL')}, counts
     elif isCollection and propValue is not None:
         # note: handle collections correctly, this needs a nicer printout
         # rs-assumption: do not assume URIs for collections
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
         rsvLogger.info("\tis Collection")
-        resultList[item] = ('Collection, size: ' + str(len(propValue)), (propType, propRealType),
-                            'Exists' if propExists else 'DNE',
-                            '...')
+        resultList[item] = ('Collection, size: ' + str(len(propValue)),
+                            displayType(propType, propRealType, is_collection=True),
+                            'Yes' if propExists else 'No', '...')
         propValueList = propValue
     else:
         # not a collection
@@ -770,6 +873,9 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
             elif propRealType == 'Edm.String':
                 paramPass = validateString(PropertyName, val, validPattern)
 
+            elif propRealType == 'Edm.Primitive' or propRealType == 'Edm.PrimitiveType':
+                paramPass = validatePrimitive(PropertyName, val)
+
             else:
                 if propRealType == 'complex':
                     innerPropType = PropertyItem['typeprops']
@@ -779,13 +885,13 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                     if not success:
                         counts['failComplex'] += 1
                         resultList[item + appendStr] = (
-                                    'ComplexDictionary' + appendStr, (propType, propRealType),
-                                    'Exists' if propExists else 'DNE',
-                                    'failComplex')
+                                    '[JSON Object]', displayType(propType, propRealType),
+                                    'Yes' if propExists else 'No',
+                                    'FAIL')
                         continue
                     resultList[item + appendStr] = (
-                                    'ComplexDictionary' + appendStr, (propType, propRealType),
-                                    'Exists' if propExists else 'DNE',
+                                    '[JSON Object]', displayType(propType, propRealType),
+                                    'Yes' if propExists else 'No',
                                     'complex')
 
                     counts.update(complexCounts)
@@ -794,17 +900,18 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                     additionalComplex = innerPropType.additional 
                     for key in val:
                         if key not in complexMessages and not additionalComplex:
-                            rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', item + '.' + key + appendStr)  # Printout FORMAT
+                            rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
+                                            .format(item + '.' + key + appendStr, innerPropType.snamespace))
                             counts['failComplexAdditional'] += 1
                             resultList[item + '.' + key + appendStr] = (
-                                    val[key], '-',
-                                    'Exists (additional)',
-                                    'failAdditional')
+                                    displayValue(val[key]), '-',
+                                    '-',
+                                    'FAIL')
                         elif key not in complexMessages:
                             counts['unverifiedComplexAdditional'] += 1
-                            resultList[item + '.' + key + appendStr] = (val[key], '-',
-                                             'Exists (additional.ok)',
-                                             'skipAdditional')
+                            resultList[item + '.' + key + appendStr] = (displayValue(val[key]), '-',
+                                             '-',
+                                             'Additional')
                     continue
 
                 elif propRealType == 'enum':
@@ -820,8 +927,8 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs):
                     paramPass = False
 
         resultList[item + appendStr] = (
-                val, (propType, propRealType),
-                'Exists' if propExists else 'DNE',
+                displayValue(val), displayType(propType, propRealType),
+                'Yes' if propExists else 'No',
                 'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
         if paramPass and propNullablePass and propMandatoryPass:
             counts['pass'] += 1
@@ -855,11 +962,13 @@ def checkPayloadConformance(uri, decoded):
     success = True
     for key in [k for k in decoded if '@odata' in k]:
         paramPass = False
+        display_type = 'string'
         if key == '@odata.id':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
         elif key == '@odata.count':
+            display_type = 'number'
             paramPass = isinstance(decoded[key], int)
         elif key == '@odata.context':
             paramPass = isinstance(decoded[key], str)
@@ -877,8 +986,8 @@ def checkPayloadConformance(uri, decoded):
             rsvLogger.error(key + "@odata item not compliant: " + decoded[key])  # Printout FORMAT
             success = False
         messages[key] = (
-                decoded[key], 'odata',
-                'Exists',
+                decoded[key], display_type,
+                'Yes',
                 'PASS' if paramPass else 'FAIL')
     return success, messages
 
@@ -1002,16 +1111,17 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         if key not in messages: 
             # note: extra messages for "unchecked" properties
             if not propResourceObj.typeobj.additional:
-                rsvLogger.error('%s: Appears to be an extra property (check inheritance or casing?)', key)  # Printout FORMAT
+                rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
+                                .format(key, SchemaNamespace))
                 counts['failAdditional'] += 1
-                messages[key] = (item, '-',
-                                 'Exists (add.)',
-                                 'failAdditional')
+                messages[key] = (displayValue(item), '-',
+                                 '-',
+                                 'FAIL')
             else:
                 counts['unverifiedAdditional'] += 1
-                messages[key] = (item, '-',
-                                 'Exists (add.ok)',
-                                 'skipAdditional')
+                messages[key] = (displayValue(item), '-',
+                                 '-',
+                                 'Additional')
 
     for key in messages:
         if key not in jsonData:
@@ -1131,6 +1241,9 @@ def main(argv=None):
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
     argget.add_argument('--linklimit', type=str, help='Limit the amount of links in collections, formatted TypeName:## TypeName:## ..., default LogEntry:20 ', nargs='*')
     argget.add_argument('--sample', type=int, default=0, help='sample this number of members from large collections for validation; default is to validate all members')
+    argget.add_argument('--debug_logging', action="store_const", const=logging.DEBUG, default=logging.INFO,
+            help='Output debug statements to text log, otherwise it only uses INFO')
+
 
     args = argget.parse_args()
 
@@ -1208,7 +1321,7 @@ def main(argv=None):
         os.makedirs(logpath)
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    fh.setLevel(logging.DEBUG)
+    fh.setLevel(args.debug_logging)
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)  # Printout FORMAT
     rsvLogger.info('ConfigURI: ' + ConfigURI)
@@ -1226,7 +1339,7 @@ def main(argv=None):
         rsvLogger.error('PayloadMode or path invalid, using Default behavior')
     if 'File' in pmode:
         if ppath is not None and os.path.isfile(ppath):
-            with open(cdict.get(ppath)) as f:
+            with open(ppath) as f:
                 jsonData = json.load(f)
                 f.close()
         else:
@@ -1251,6 +1364,7 @@ def main(argv=None):
             .pass {background-color:#99EE99}\
             .fail {background-color:#EE9999}\
             .warn {background-color:#EEEE99}\
+            .bluebg {background-color:#BDD6EE}\
             .button {padding: 12px; display: inline-block}\
             .center {text-align:center;}\
             .log {text-align:left; white-space:pre-wrap; word-wrap:break-word; font-size:smaller}\
@@ -1266,26 +1380,51 @@ def main(argv=None):
             .titletable {width:100%}\
             </style>\
             </head>'
-            
 
-    htmlStrBodyHeader = '<body><table>\
-                <tr><th>##### Redfish Conformance Test Report #####</th></tr>\
-                <tr><th>System: ' + ConfigURI + '</th></tr>\
-                <tr><th>Description: ' + sysDescription + '</th></tr>\
-                <tr><th>' + str(config_str.replace('\n', '</br>')) + '</th></tr>\
-                <tr><th>Start time: ' + (startTick).strftime('%x - %X') + '</th></tr>\
-                <tr><th>Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + '</th></tr>\
-                <tr><th></th></tr>'
+    htmlStrBodyHeader = \
+        '<body><table><tr><th>' \
+        '<h2>##### Redfish Conformance Test Report #####</h2>' \
+        '<br>' \
+        '<h4><img align="center" alt="DMTF Redfish Logo" height="203" width="288"' \
+        'src="http://redfish.dmtf.org/sites/default/files/DMTF_Redfish_logo_R.jpg"></h4>' \
+        '<br>' \
+        '<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
+        'https://github.com/DMTF/Redfish-Service-Validator</a>' \
+        '<br>Tool Version: ' + tool_version + \
+        '<br>' + startTick.strftime('%c') + \
+        '<br>(Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + ')' \
+        '' \
+        '<h4>This tool is provided and maintained by the DMTF. ' \
+        'For feedback, please open issues<br>in the tool’s Github repository: ' \
+        '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">' \
+        'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>' \
+        '</th></tr>' \
+        '<tr><th>' \
+        '<h4>System: <a href="' + ConfigURI + '">' + ConfigURI + '</a> Description: ' + sysDescription + '</h4>' \
+        '</th></tr>' \
+        '<tr><th>' \
+        '<h4>Configuration:</h4>' \
+        '<h4>' + str(config_str.replace('\n', '<br>')) + '</h4>' \
+        '</th></tr>' \
+        ''
 
     htmlStr = ''
 
     rsvLogger.info(len(results))
     for cnt, item in enumerate(results):
+        type_name = ''
+        prop_type = results[item][6]
+        if prop_type is not None:
+            namespace = prop_type.replace('#', '').rsplit('.', 1)[0]
+            type_name = prop_type.replace('#', '').rsplit('.', 1)[-1]
+            if '.' in namespace:
+                type_name += ' ' + namespace.split('.', 1)[-1]
+        htmlStr += '<tr><th class="titlerow bluebg"><b>{}</b> ({})</th></tr>'.format(results[item][0], type_name)
         htmlStr += '<tr><td class="titlerow"><table class="titletable"><tr>'
         htmlStr += '<td class="title" style="width:40%"><div>{}</div>\
                 <div class="button warn" onClick="document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');">Show results</div>\
                 </td>'.format(results[item][0], cnt, cnt)
-        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>ResourcePath:</b> {}</div><div><b>XML:</b> {}</div><div><b>type:</b> {}</div></td>'.format(item, results[item][5], results[item][6])
+        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>Schema File:</b> {}</div><div><b>Resource Type:</b> {}</div></td>'.format(results[item][5], type_name)
         htmlStr += '<td style="width:10%"' + \
             ('class="pass"> GET Success' if results[item]
              [1] else 'class="fail"> GET Failure') + '</td>'
@@ -1293,6 +1432,19 @@ def main(argv=None):
 
         innerCounts = results[item][2]
         finalCounts.update(innerCounts)
+
+        # detect if there are error messages for this resource, but no failure counts; if so, add one to the innerCounts
+        counters_all_pass = True
+        for countType in sorted(innerCounts.keys()):
+            if 'problem' in countType or 'fail' in countType or 'exception' in countType:
+                counters_all_pass = False
+                break
+        error_messages_present = False
+        if results[item][4] is not None and len(results[item][4].getvalue()) > 0:
+            error_messages_present = True
+        if counters_all_pass and error_messages_present:
+            innerCounts['failSchema'] = 1
+
         for countType in sorted(innerCounts.keys()):
             if 'problem' in countType or 'fail' in countType or 'exception' in countType:
                 rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, str(results[item][0]).split(' ')[0]))  # Printout FORMAT
@@ -1303,7 +1455,7 @@ def main(argv=None):
                     style='class="fail log"' if 'fail' in countType or 'exception' in countType else 'class=log')
         htmlStr += '</td></tr>'
         htmlStr += '</table></td></tr>'
-        htmlStr += '<tr><td class="results" id=\'resNum{}\'><table><tr><td><table><tr><th style="width:15%"> Name</th> <th> Value</th> <th>Type</th> <th style="width:10%">Exists?</th> <th style="width:10%">Success</th> <tr>'.format(cnt)
+        htmlStr += '<tr><td class="results" id=\'resNum{}\'><table><tr><td><table><tr><th style="width:15%">Property Name</th> <th>Value</th> <th>Type</th> <th style="width:10%">Exists?</th> <th style="width:10%">Result</th> <tr>'.format(cnt)
         if results[item][3] is not None:
             for i in results[item][3]:
                 htmlStr += '<tr>'
@@ -1314,7 +1466,7 @@ def main(argv=None):
                 success_col = results[item][3][i][-1]
                 if 'FAIL' in str(success_col).upper():
                     htmlStr += '<td class="fail center">' + str(success_col) + '</td>'
-                elif 'SKIP' in str(success_col).upper():
+                elif 'DEPRECATED' in str(success_col).upper():
                     htmlStr += '<td class="warn center">' + str(success_col) + '</td>'
                 elif 'PASS' in str(success_col).upper():
                     htmlStr += '<td class="pass center">' + str(success_col) + '</td>'
