@@ -1,5 +1,12 @@
 # Change Log
 
+## [1.0.2] - 2018-02-09
+- Made fixes to proxy support
+- Added better handling for when incorrect namespaces are referenced
+- Improvements to error messages
+- Fixed handling of resolving external ComplexType definitions
+- Added argument to control debug output
+
 ## [1.0.1] - 2018-02-02
 - Fixed the display of null types in the report
 - Fixed the display of data types found in registries
