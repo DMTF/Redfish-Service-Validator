@@ -277,7 +277,7 @@ def validateAttributeRegistry(name, key, value, attr_reg):
             reg_pass = value in val_list
             if not reg_pass:
                 rsvLogger.error(
-                    'Attribute {} has a value of {}. This is not an expected value from the Enumeration: {}'
+                    '{} has a value of {}. This is not an expected value from the Enumeration: {}'
                     .format(name + '.' + key, value, val_list))
         else:
             rsvLogger.debug('{}: Expected Value property key {} to be a list, found type {}'
@@ -287,7 +287,7 @@ def validateAttributeRegistry(name, key, value, attr_reg):
         reg_pass = isinstance(value, str)
         if not reg_pass:
             rsvLogger.error(
-                'Attribute {} has a value of {}. The expected type is String but the type found is {}'
+                '{} has a value of {}. The expected type is String but the type found is {}'
                 .format(name + '.' + key, value, str(type(value)).strip('<>')))
         else:
             # validate MaxLength
@@ -297,11 +297,11 @@ def validateAttributeRegistry(name, key, value, attr_reg):
                     if len(value) > max_len:
                         reg_pass = False
                         rsvLogger.error(
-                            'The length of attribute {} is {}, which is greater than its MaxLength of {}'
+                            '{} has a length of {}, which is greater than its MaxLength of {}'
                             .format(name + '.' + key, len(value), max_len))
                 else:
                     reg_pass = False
-                    rsvLogger.error('The MaxLength property in {} should be an int but the type found is {}'
+                    rsvLogger.error('{} should have a MaxLength property that is an integer, but the type found is {}'
                                     .format(name + '.' + key, str(type(max_len)).strip('<>')))
             # validate MinLength
             min_len = attr.get('MinLength')
@@ -309,11 +309,11 @@ def validateAttributeRegistry(name, key, value, attr_reg):
                 if isinstance(min_len, int):
                     if len(value) < min_len:
                         reg_pass = False
-                        rsvLogger.error('The length of attribute {} is {}, which is less than its MinLength of {}'
+                        rsvLogger.error('{} has a length of {}, which is less than its MinLength of {}'
                                         .format(name + '.' + key, len(value), min_len))
                 else:
                     reg_pass = False
-                    rsvLogger.error('The MinLength property in {} should be an int but the type found is {}'
+                    rsvLogger.error('{} should have a MinLength property that is an integer, but the type found is {}'
                                     .format(name + '.' + key, str(type(min_len)).strip('<>')))
             # validate ValueExpression
             val_expr = attr.get('ValueExpression')
@@ -323,19 +323,19 @@ def validateAttributeRegistry(name, key, value, attr_reg):
                     if regex.match(value) is None:
                         reg_pass = False
                         rsvLogger.error(
-                            'The value of attribute {} is {} which does not match ValueExpression regex "{}"'
+                            '{} has a value of {} which does not match the ValueExpression regex "{}"'
                             .format(name + '.' + key, value, val_expr))
                 else:
                     reg_pass = False
                     rsvLogger.error(
-                        'The ValueExpression property in {} should be a string but the type found is {}'
+                        '{} should have a ValueExpression property that is a string, but the type found is {}'
                         .format(name + '.' + key, str(type(val_expr)).strip('<>')))
     elif type_prop == 'Integer':
         # validate type is int
         reg_pass = isinstance(value, int)
         if not reg_pass:
             rsvLogger.error(
-                'Attribute {} has a value of {}. The expected type is Integer but the type found is {}'
+                '{} has a value of {}. The expected type is Integer but the type found is {}'
                 .format(name + '.' + key, value, str(type(value)).strip('<>')))
         else:
             # validate LowerBound
@@ -343,38 +343,38 @@ def validateAttributeRegistry(name, key, value, attr_reg):
             if isinstance(lower_bound, int):
                 if value < lower_bound:
                     reg_pass = False
-                    rsvLogger.error('The value of attribute {} is {}, which is less than its LowerBound of {}'
+                    rsvLogger.error('{} has a value of {}, which is less than its LowerBound of {}'
                                     .format(name + '.' + key, value, lower_bound))
             else:
                 reg_pass = False
-                rsvLogger.error('The LowerBound property in {} should be an int but the type found is {}'
+                rsvLogger.error('{} should have a LowerBound property that is an integer, but the type found is {}'
                                 .format(name + '.' + key, str(type(lower_bound)).strip('<>')))
             # validate UpperBound
             upper_bound = attr.get('UpperBound')
             if isinstance(upper_bound, int):
                 if value > upper_bound:
                     reg_pass = False
-                    rsvLogger.error('The value of attribute {} is {}, which is greater than its UpperBound of {}'
+                    rsvLogger.error('{} has a value of {}, which is greater than its UpperBound of {}'
                                     .format(name + '.' + key, value, upper_bound))
             else:
                 reg_pass = False
-                rsvLogger.error('The UpperBound property in {} should be an int but the type found is {}'
+                rsvLogger.error('{} should have an UpperBound property that is an integer, but the type found is {}'
                                 .format(name + '.' + key, str(type(upper_bound)).strip('<>')))
     elif type_prop == 'Boolean':
         reg_pass = isinstance(value, bool)
         if not reg_pass:
             rsvLogger.error(
-                'Attribute {} has a value of {}. The expected type is Boolean but the type found is {}'
+                '{} has a value of {}. The expected type is Boolean but the type found is {}'
                 .format(name + '.' + key, value, str(type(value)).strip('<>')))
     elif type_prop == 'Password':
         reg_pass = value is None
         if not reg_pass:
             rsvLogger.error(
-                'Attribute {} is a Password. The value returned from GET must be null, but was of type {}'
+                '{} is a Password. The value returned from GET must be null, but was of type {}'
                 .format(name + '.' + key, str(type(value)).strip('<>')))
     else:
-        rsvLogger.warning('Unexpected Type property {} found for key {}'
-                          .format(type_prop, name + '.' + key))
+        rsvLogger.warning('{} has an unexpected Type property of {}'
+                          .format(name + '.' + key, type_prop))
     return reg_pass, type_prop
 
 
@@ -423,7 +423,7 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
             rsvLogger.debug('{}: {}: Using default attribute registry for {}'.format(fn, name, attrRegistryId))
             attr_reg = attributeRegistries.get('default')
         else:
-            rsvLogger.warning('{}: {}: Attribute Registry with ID {} not found'.format(fn, name, attrRegistryId))
+            rsvLogger.warning('{}: Attribute Registry with ID {} not found'.format(name, attrRegistryId))
     else:
         rsvLogger.debug('{}: {}: No Attribute Registry ID found'.format(fn, name, attrRegistryId))
     # validate each property
@@ -555,17 +555,21 @@ def validateDeprecatedEnum(name, val, listEnum):
     """
     paramPass = True
     if isinstance(val, list):
+        display_val = []
         for enumItem in val:
+            display_val.append(dict(enumItem))
             for k, v in enumItem.items():
                 paramPass = paramPass and str(v) in listEnum
         if not paramPass:
-            rsvLogger.error("{}: Invalid DeprecatedEnum, expected {}".format(str(name), str(listEnum)))
+            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}"
+                            .format(str(name), display_val, str(listEnum)))
     elif isinstance(val, str):
         paramPass = str(val) in listEnum
         if not paramPass:
-            rsvLogger.error("{}: Invalid DeprecatedEnum, expected {}".format(str(name), str(listEnum)))
+            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}"
+                            .format(str(name), val, str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val)).strip('<>')))
+        rsvLogger.error("{}: Expected list or string value for DeprecatedEnum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -576,7 +580,7 @@ def validateEnum(name, val, listEnum):
         if not paramPass:
             rsvLogger.error("{}: Invalid Enum value '{}' found, expected {}".format(str(name), val, str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val)).strip('<>')))
+        rsvLogger.error("{}: Expected string value for Enum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -946,7 +950,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
                 rsvLogger.error("%s: Mandatory prop does not exist" % sub_item)  # Printout FORMAT
                 counts['failMandatoryExist'] += 1
             elif not propNullablePass:
-                rsvLogger.error('Property {} is null but is not Nullable'
+                rsvLogger.error('{}: property is null but is not Nullable'
                                 .format(sub_item))
                 counts['failNullable'] += 1
             rsvLogger.info("\tFAIL")  # Printout FORMAT
@@ -1345,7 +1349,7 @@ def main(argv=None):
                 jsonData = json.load(f)
                 f.close()
         else:
-            rsvLogger.error('File not found {}'.format(ppath))
+            rsvLogger.error('File not found: {}'.format(ppath))
             return 1
     if 'Single' in pmode:
         success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
