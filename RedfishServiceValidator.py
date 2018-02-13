@@ -44,7 +44,7 @@ def validateActions(name, val, propTypeObj, payloadType):
             actionsDict[keyname] = act
         success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'EntityType')
 
-    # For each action found, check action dictionary for existence and compliance
+    # For each action found, check action dictionary for existence and conformance
     # No action is required unless specified, target is not required unless specified
     # (should check for viable parameters)
     for k in actionsDict:
@@ -58,7 +58,7 @@ def validateActions(name, val, propTypeObj, payloadType):
                 rsvLogger.warn('{}: target for action is missing'.format(name + '.' + k))
                 actPass = True
             else:
-                rsvLogger.error('{} : target for action is malformed, expected string got'
+                rsvLogger.error('{}: target for action is malformed; expected string, got {}'
                                 .format(name + '.' + k, str(type(target))))
         else:
             # <Annotation Term="Redfish.Required"/>
@@ -158,7 +158,7 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
     """
     rsvLogger.info('\t***going into Complex')
     if not isinstance(val, dict):
-        rsvLogger.error(name + ' : Complex item not a dictionary')  # Printout FORMAT
+        rsvLogger.error(name + ': Complex item not a dictionary')  # Printout FORMAT
         return False, None, None
 
     # Check inside of complexType, treat it like an Entity
@@ -192,7 +192,7 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
     complexMessages.update(odataMessages)
     if not successPayload:
         complexCounts['failComplexPayloadError'] += 1
-        rsvLogger.error('In complex {}:  payload error, @odata property noncompliant'.format(str(name)))
+        rsvLogger.error('{}: complex payload error, @odata property non-conformant'.format(str(name)))
     rsvLogger.info('\t***out of Complex')
     rsvLogger.info('complex {}'.format(str(complexCounts)))
     if name == 'Actions':
@@ -754,12 +754,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
 
     if PropertyItem is None:
         if not propExists:
-            rsvLogger.info('\tItem is skipped, no schema')
+            rsvLogger.info('{}: Item is skipped, no schema'.format(item))
             counts['skipNoSchema'] += 1
             return {item: ('-', '-',
                                 'Yes' if propExists else 'No', 'NoSchema')}, counts
         else:
-            rsvLogger.error('\tItem is present, no schema found')
+            rsvLogger.error('{}: Item is present, but no schema found'.format(item))
             counts['failNoSchema'] += 1
             return {item: ('-', '-',
                                 'Yes' if propExists else 'No', 'FAIL')}, counts
@@ -816,7 +816,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
     validDeprecated = PropertyItem.get('Redfish.Deprecated') 
     if validDeprecated is not None:
-        rsvLogger.error('{}: The given property is deprecated: {}'.format(PropertyName, validDeprecated.get('String','')))
+        rsvLogger.error('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String','')))
 
     validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
         int(validMaxAttr['Int']) if validMaxAttr is not None else None
@@ -829,8 +829,8 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
     isCollection = propCollectionType is not None
     if isCollection and propValue is None:
         # illegal for a collection to be null
-        rsvLogger.error('Value of Collection property {} is null but Collections cannot be null, only their entries'
-                        .format(PropertyName))
+        rsvLogger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'
+                        .format(item))
         counts['failNullCollection'] += 1
         return {item: (
             '-', displayType(propType, propRealType, is_collection=True),
@@ -942,16 +942,14 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
             counts['err.' + str(propType)] += 1
             if not paramPass:
                 if propMandatory:
-                    rsvLogger.error("%s: Mandatory prop has failed to check" % sub_item)  # Printout FORMAT
                     counts['failMandatoryProp'] += 1
                 else:
                     counts['failProp'] += 1
             elif not propMandatoryPass:
-                rsvLogger.error("%s: Mandatory prop does not exist" % sub_item)  # Printout FORMAT
+                rsvLogger.error("{}: Mandatory prop does not exist".format(sub_item))  # Printout FORMAT
                 counts['failMandatoryExist'] += 1
             elif not propNullablePass:
-                rsvLogger.error('{}: property is null but is not Nullable'
-                                .format(sub_item))
+                rsvLogger.error('{}: Property is null but is not Nullable'.format(sub_item))
                 counts['failNullable'] += 1
             rsvLogger.info("\tFAIL")  # Printout FORMAT
 
@@ -989,7 +987,7 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
         else:
             paramPass = True
         if not paramPass:
-            rsvLogger.error(prefix + key + " @odata item not compliant: " + decoded[key])  # Printout FORMAT
+            rsvLogger.error(prefix + key + " @odata item not conformant: " + decoded[key])  # Printout FORMAT
             success = False
         messages[prefix + key] = (
                 decoded[key], display_type,
@@ -1045,7 +1043,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     if not successPayload:
         counts['failPayloadError'] += 1
-        rsvLogger.error(str(URI) + ':  payload error, @odata property noncompliant',)  # Printout FORMAT
+        rsvLogger.error(str(URI) + ': payload error, @odata property non-conformant',)  # Printout FORMAT
         # rsvLogger.removeHandler(errh)  # Printout FORMAT
         # return False, counts, results, None, propResourceObj
     # Generate dictionary of property info
@@ -1089,7 +1087,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 counts.update(propCounts)
             except Exception as ex:
                 rsvLogger.exception("Something went wrong")  # Printout FORMAT
-                rsvLogger.error('%s:  Could not finish check on this property' % (prop.name))  # Printout FORMAT
+                rsvLogger.error('%s: Could not finish check on this property' % (prop.name))  # Printout FORMAT
                 counts['exceptionPropCheck'] += 1
         node = node.parent
 
