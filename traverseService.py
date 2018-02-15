@@ -387,7 +387,7 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
             return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix)
         else:
             traverseLogger.error(
-                "File not found in {} for {}: ".format(SchemaLocation, pout))
+                "Schema file {} not found in {}".format(pout, SchemaLocation))
             if Alias == '$metadata':
                 traverseLogger.error(
                     "If $metadata cannot be found, Annotations may be unverifiable")

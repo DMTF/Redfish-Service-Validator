@@ -44,7 +44,7 @@ def validateActions(name, val, propTypeObj, payloadType):
             actionsDict[keyname] = act
         success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'EntityType')
 
-    # For each action found, check action dictionary for existence and compliance
+    # For each action found, check action dictionary for existence and conformance
     # No action is required unless specified, target is not required unless specified
     # (should check for viable parameters)
     for k in actionsDict:
@@ -55,19 +55,20 @@ def validateActions(name, val, propTypeObj, payloadType):
             if target is not None and isinstance(target, str):
                 actPass = True
             elif target is None:
-                rsvLogger.warn('{}: target for action is missing'.format(k))
+                rsvLogger.warn('{}: target for action is missing'.format(name + '.' + k))
                 actPass = True
             else:
-                rsvLogger.error('{} : target for action is malformed, expected string got'.format(k, str(type(target))))
+                rsvLogger.error('{}: target for action is malformed; expected string, got {}'
+                                .format(name + '.' + k, str(type(target))))
         else:
             # <Annotation Term="Redfish.Required"/>
             if actionsDict[k].find('annotation', {'term': 'Redfish.Required'}):
 
-                rsvLogger.error('{}: action not Found, is mandatory'.format(k))
+                rsvLogger.error('{}: action not found, is mandatory'.format(name + '.' + k))
             else:
                 actPass = True
-                rsvLogger.warn('{}: action not Found, is not mandatory'.format(k))
-        actionMessages[k] = (
+                rsvLogger.warn('{}: action not found, is not mandatory'.format(name + '.' + k))
+        actionMessages[name + '.' + k] = (
                     'Action', '-',
                     'Yes' if actionDecoded != 'n/a' else 'No',
                     'PASS' if actPass else 'FAIL')
@@ -89,7 +90,7 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
     # check for required @odata.id
     if '@odata.id' not in val:
         if autoExpand:
-            default = parentURI + '#/{}'.format(name.replace('#','/'))
+            default = parentURI + '#/{}'.format(name.replace('[','/').strip(']'))
         else:
             default = parentURI + '/{}'.format(name)
         rsvLogger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, default))
@@ -164,7 +165,7 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
     """
     rsvLogger.info('\t***going into Complex')
     if not isinstance(val, dict):
-        rsvLogger.error(name + ' : Complex item not a dictionary')  # Printout FORMAT
+        rsvLogger.error(name + ': Complex item not a dictionary')  # Printout FORMAT
         return False, None, None
 
     # Check inside of complexType, treat it like an Entity
@@ -178,7 +179,8 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
         successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
         propSoup, propRefs = serviceSchemaSoup, serviceRefs
         for prop in additionalProps:
-            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs)
+            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs,
+                                                                ParentItem=name)
             complexMessages.update(propMessages)
             complexCounts.update(propCounts)
     
@@ -188,18 +190,19 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
     while node is not None:
         propList, propSoup, propRefs = node.propList, node.soup, node.refs
         for prop in propList:
-            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs)
+            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs,
+                                                                ParentItem=name)
             complexMessages.update(propMessages)
             complexCounts.update(propCounts)
         node = node.parent
-    successPayload, odataMessages = checkPayloadConformance('', val)
+    successPayload, odataMessages = checkPayloadConformance('', val, ParentItem=name)
     complexMessages.update(odataMessages)
     if not successPayload:
         complexCounts['failComplexPayloadError'] += 1
-        rsvLogger.error('In complex {}:  payload error, @odata property noncompliant'.format(str(name)))
+        rsvLogger.error('{}: complex payload error, @odata property non-conformant'.format(str(name)))
     rsvLogger.info('\t***out of Complex')
     rsvLogger.info('complex {}'.format(str(complexCounts)))
-    if ":Actions" in name:
+    if name == 'Actions':
         aMsgs, aCounts = validateActions(name, val, propTypeObj, payloadType)
         complexMessages.update(aMsgs)
         complexCounts.update(aCounts)
@@ -242,10 +245,10 @@ def validateDynamicPropertyType(name, key, value, prop_type):
     elif prop_type == 'Edm.Guid':
         type_pass = validateGuid(key, value)
     else:
-        rsvLogger.debug('{}: Do not know how to validate type "{}" for the value of key "{}"'
-                        .format(name, prop_type, key))
+        rsvLogger.debug('{}: Do not know how to validate type {}'
+                        .format(name + '.' + key, prop_type))
     if not type_pass:
-        rsvLogger.error('{} key "{}" with value "{}" is not of type "{}"'.format(name, key, value, prop_type))
+        rsvLogger.error('{} with value {} is not of type {}'.format(name + '.' + key, value, prop_type))
     return type_pass
 
 
@@ -260,14 +263,14 @@ def validateAttributeRegistry(name, key, value, attr_reg):
     """
     fn = 'validateAttributeRegistry'
     if key in attr_reg:
-        rsvLogger.debug('{}: {}: found attribute registry entry for key "{}"'.format(fn, name, key))
+        rsvLogger.debug('{}: {}: found attribute registry entry for key {}'.format(fn, name, key))
         attr = attr_reg.get(key)
     else:
-        rsvLogger.debug('{}: {}: did not find attribute registry entry for key "{}"'.format(fn, name, key))
+        rsvLogger.debug('{}: {}: did not find attribute registry entry for key {}'.format(fn, name, key))
         return True, None
     type_prop = attr.get('Type')
     if type_prop is None:
-        rsvLogger.debug('{}: {}: no "Type" property found for key "{}"'.format(fn, name, key))
+        rsvLogger.debug('{}: {}: no Type property found for key {}'.format(fn, name, key))
         return True, None
     reg_pass = True
     if value is None:
@@ -281,18 +284,18 @@ def validateAttributeRegistry(name, key, value, attr_reg):
             reg_pass = value in val_list
             if not reg_pass:
                 rsvLogger.error(
-                    'Attribute "{}" has a value of "{}". This is not an expected value from the Enumeration: "{}"'
-                    .format(key, value, val_list))
+                    '{} has a value of {}. This is not an expected value from the Enumeration: {}'
+                    .format(name + '.' + key, value, val_list))
         else:
-            rsvLogger.debug('{}: {}: Expected "Value" property key "{}" to be a list, found "{}"'
-                            .format(fn, name, key, str(type(value)).strip('<>')))
+            rsvLogger.debug('{}: Expected Value property key {} to be a list, found type {}'
+                            .format(fn, name + '.' + key, str(type(value)).strip('<>')))
     elif type_prop == 'String':
         # validate type is string
         reg_pass = isinstance(value, str)
         if not reg_pass:
             rsvLogger.error(
-                'Attribute "{}" has a value of "{}". The expected type is String but the type found is "{}"'
-                .format(key, value, str(type(value)).strip('<>')))
+                '{} has a value of {}. The expected type is String but the type found is {}'
+                .format(name + '.' + key, value, str(type(value)).strip('<>')))
         else:
             # validate MaxLength
             max_len = attr.get('MaxLength')
@@ -301,24 +304,24 @@ def validateAttributeRegistry(name, key, value, attr_reg):
                     if len(value) > max_len:
                         reg_pass = False
                         rsvLogger.error(
-                            'The length of attribute "{}" is {}, which is greater than its MaxLength of {}'
-                            .format(key, len(value), max_len))
+                            '{} has a length of {}, which is greater than its MaxLength of {}'
+                            .format(name + '.' + key, len(value), max_len))
                 else:
                     reg_pass = False
-                    rsvLogger.error('The MaxLength property in "{}" should be an int but the type found is "{}"'
-                                    .format(key, str(type(max_len)).strip('<>')))
+                    rsvLogger.error('{} should have a MaxLength property that is an integer, but the type found is {}'
+                                    .format(name + '.' + key, str(type(max_len)).strip('<>')))
             # validate MinLength
             min_len = attr.get('MinLength')
             if min_len is not None:
                 if isinstance(min_len, int):
                     if len(value) < min_len:
                         reg_pass = False
-                        rsvLogger.error('The length of attribute "{}" is {}, which is less than its MinLength of {}'
-                                        .format(key, len(value), min_len))
+                        rsvLogger.error('{} has a length of {}, which is less than its MinLength of {}'
+                                        .format(name + '.' + key, len(value), min_len))
                 else:
                     reg_pass = False
-                    rsvLogger.error('The MinLength property in "{}" should be an int but the type found is "{}"'
-                                    .format(key, str(type(min_len)).strip('<>')))
+                    rsvLogger.error('{} should have a MinLength property that is an integer, but the type found is {}'
+                                    .format(name + '.' + key, str(type(min_len)).strip('<>')))
             # validate ValueExpression
             val_expr = attr.get('ValueExpression')
             if val_expr is not None:
@@ -327,58 +330,58 @@ def validateAttributeRegistry(name, key, value, attr_reg):
                     if regex.match(value) is None:
                         reg_pass = False
                         rsvLogger.error(
-                            'The value of attribute "{}" is "{}" which does not match ValueExpression regex "{}"'
-                            .format(key, value, val_expr))
+                            '{} has a value of {} which does not match the ValueExpression regex "{}"'
+                            .format(name + '.' + key, value, val_expr))
                 else:
                     reg_pass = False
                     rsvLogger.error(
-                        'The ValueExpression property in "{}" should be a string but the type found is "{}"'
-                        .format(key, str(type(val_expr)).strip('<>')))
+                        '{} should have a ValueExpression property that is a string, but the type found is {}'
+                        .format(name + '.' + key, str(type(val_expr)).strip('<>')))
     elif type_prop == 'Integer':
         # validate type is int
         reg_pass = isinstance(value, int)
         if not reg_pass:
             rsvLogger.error(
-                'Attribute "{}" has a value of "{}". The expected type is Integer but the type found is "{}"'
-                .format(key, value, str(type(value)).strip('<>')))
+                '{} has a value of {}. The expected type is Integer but the type found is {}'
+                .format(name + '.' + key, value, str(type(value)).strip('<>')))
         else:
             # validate LowerBound
             lower_bound = attr.get('LowerBound')
             if isinstance(lower_bound, int):
                 if value < lower_bound:
                     reg_pass = False
-                    rsvLogger.error('The value of attribute "{}" is {}, which is less than its LowerBound of {}'
-                                    .format(key, value, lower_bound))
+                    rsvLogger.error('{} has a value of {}, which is less than its LowerBound of {}'
+                                    .format(name + '.' + key, value, lower_bound))
             else:
                 reg_pass = False
-                rsvLogger.error('The LowerBound property in "{}" should be an int but the type found is "{}"'
-                                .format(key, str(type(lower_bound)).strip('<>')))
+                rsvLogger.error('{} should have a LowerBound property that is an integer, but the type found is {}'
+                                .format(name + '.' + key, str(type(lower_bound)).strip('<>')))
             # validate UpperBound
             upper_bound = attr.get('UpperBound')
             if isinstance(upper_bound, int):
                 if value > upper_bound:
                     reg_pass = False
-                    rsvLogger.error('The value of attribute "{}" is {}, which is greater than its UpperBound of {}'
-                                    .format(key, value, upper_bound))
+                    rsvLogger.error('{} has a value of {}, which is greater than its UpperBound of {}'
+                                    .format(name + '.' + key, value, upper_bound))
             else:
                 reg_pass = False
-                rsvLogger.error('The UpperBound property in "{}" should be an int but the type found is "{}"'
-                                .format(key, str(type(upper_bound)).strip('<>')))
+                rsvLogger.error('{} should have an UpperBound property that is an integer, but the type found is {}'
+                                .format(name + '.' + key, str(type(upper_bound)).strip('<>')))
     elif type_prop == 'Boolean':
         reg_pass = isinstance(value, bool)
         if not reg_pass:
             rsvLogger.error(
-                'Attribute "{}" has a value of "{}". The expected type is Boolean but the type found is "{}"'
-                .format(key, value, str(type(value)).strip('<>')))
+                '{} has a value of {}. The expected type is Boolean but the type found is {}'
+                .format(name + '.' + key, value, str(type(value)).strip('<>')))
     elif type_prop == 'Password':
         reg_pass = value is None
         if not reg_pass:
             rsvLogger.error(
-                'Attribute "{}" is a Password. The value returned from GET must be null, but was of type "{}"'
-                .format(key, str(type(value)).strip('<>')))
+                '{} is a Password. The value returned from GET must be null, but was of type {}'
+                .format(name + '.' + key, str(type(value)).strip('<>')))
     else:
-        rsvLogger.warning('Unexpected "Type" property "{}" found for key "{}".'
-                          .format(type_prop, key))
+        rsvLogger.warning('{} has an unexpected Type property of {}'
+                          .format(name + '.' + key, type_prop))
     return reg_pass, type_prop
 
 
@@ -427,7 +430,7 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
             rsvLogger.debug('{}: {}: Using default attribute registry for {}'.format(fn, name, attrRegistryId))
             attr_reg = attributeRegistries.get('default')
         else:
-            rsvLogger.warning('{}: {}: Attribute Registry with ID {} not found'.format(fn, name, attrRegistryId))
+            rsvLogger.warning('{}: Attribute Registry with ID {} not found'.format(name, attrRegistryId))
     else:
         rsvLogger.debug('{}: {}: No Attribute Registry ID found'.format(fn, name, attrRegistryId))
     # validate each property
@@ -438,11 +441,11 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
         if isinstance(key, str):
             if regex.match(key) is None:
                 pattern_pass = False
-                rsvLogger.error('{} key "{}" does not match pattern "{}"'.format(name, key, prop_pattern))
+                rsvLogger.error('{} does not match pattern "{}"'.format(name + '.' + key, prop_pattern))
         else:
             pattern_pass = False
-            rsvLogger.error('{} key "{}" is not a string, so cannot be validated against pattern "{}"'
-                            .format(name, key, prop_pattern))
+            rsvLogger.error('{} is not a string, so cannot be validated against pattern "{}"'
+                            .format(name + '.' + key, prop_pattern))
         if pattern_pass:
             counts['pass'] += 1
         else:
@@ -462,7 +465,7 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
                 counts['pass'] += 1
             else:
                 counts['failAttributeRegistry'] += 1
-        messages[key + ' '] = (
+        messages[name + '.' + key] = (
             displayValue(value), displayType('', prop_type if attr_reg_type is None else attr_reg_type),
             'Yes', 'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
 
@@ -562,17 +565,21 @@ def validateDeprecatedEnum(name, val, listEnum):
     """
     paramPass = True
     if isinstance(val, list):
+        display_val = []
         for enumItem in val:
+            display_val.append(dict(enumItem))
             for k, v in enumItem.items():
                 paramPass = paramPass and str(v) in listEnum
         if not paramPass:
-            rsvLogger.error("{}: Invalid DeprecatedEnum, expected {}".format(str(name), str(listEnum)))
+            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}"
+                            .format(str(name), display_val, str(listEnum)))
     elif isinstance(val, str):
         paramPass = str(val) in listEnum
         if not paramPass:
-            rsvLogger.error("{}: Invalid DeprecatedEnum, expected {}".format(str(name), str(listEnum)))
+            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}"
+                            .format(str(name), val, str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected list/str value for DeprecatedEnum, got {}".format(str(name), str(type(val)).strip('<>')))
+        rsvLogger.error("{}: Expected list or string value for DeprecatedEnum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -583,7 +590,7 @@ def validateEnum(name, val, listEnum):
         if not paramPass:
             rsvLogger.error("{}: Invalid Enum value '{}' found, expected {}".format(str(name), val, str(listEnum)))
     else:
-        rsvLogger.error("{}: Expected str value for Enum, got {}".format(str(name), str(type(val)).strip('<>')))
+        rsvLogger.error("{}: Expected string value for Enum, got {}".format(str(name), str(type(val)).strip('<>')))
     return paramPass
 
 
@@ -726,7 +733,7 @@ def loadAttributeRegDict(odata_type, json_data):
         rsvLogger.debug('{}: "{}" AttributeRegistry dict has zero entries; not adding'.format(fn, reg_id))
 
 
-def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, parentURI=""):
+def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, ParentItem=None, parentURI=""):
     # The biggest piece of code, but also mostly collabs info for other functions
     #   this part of the program should maybe do ALL setup for functions above, do not let them do requests?
     # info: what about this property is important (read/write, name, val, nullability, mandatory), 
@@ -752,14 +759,17 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, pa
 
     propExists = not (propValue == 'n/a')
 
+    if ParentItem is not None:
+        item = ParentItem + '.' + item
+
     if PropertyItem is None:
         if not propExists:
-            rsvLogger.info('\tItem is skipped, no schema')
+            rsvLogger.info('{}: Item is skipped, no schema'.format(item))
             counts['skipNoSchema'] += 1
             return {item: ('-', '-',
                                 'Yes' if propExists else 'No', 'NoSchema')}, counts
         else:
-            rsvLogger.error('\tItem is present, no schema found')
+            rsvLogger.error('{}: Item is present, but no schema found'.format(item))
             counts['failNoSchema'] += 1
             return {item: ('-', '-',
                                 'Yes' if propExists else 'No', 'FAIL')}, counts
@@ -816,7 +826,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, pa
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
     validDeprecated = PropertyItem.get('Redfish.Deprecated') 
     if validDeprecated is not None:
-        rsvLogger.error('{}: The given property is deprecated: {}'.format(PropertyName, validDeprecated.get('String','')))
+        rsvLogger.error('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String','')))
 
     validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
         int(validMaxAttr['Int']) if validMaxAttr is not None else None
@@ -829,8 +839,8 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, pa
     isCollection = propCollectionType is not None
     if isCollection and propValue is None:
         # illegal for a collection to be null
-        rsvLogger.error('Value of Collection property {} is null but Collections cannot be null, only their entries'
-                        .format(PropertyName))
+        rsvLogger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'
+                        .format(item))
         counts['failNullCollection'] += 1
         return {item: (
             '-', displayType(propType, propRealType, is_collection=True),
@@ -852,94 +862,87 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, pa
     # note: make sure we don't enter this on null values, some of which are
     # OK!
     for cnt, val in enumerate(propValueList):
-        appendStr = (('#' + str(cnt)) if isCollection else '')
+        appendStr = (('[' + str(cnt) + ']') if isCollection else '')
+        sub_item = item + appendStr
         if propRealType is not None and propExists:
             paramPass = propNullablePass = True
             if val is None:
                 if propNullable:
-                    rsvLogger.debug('Property {}{} is nullable and is null, so Nullable checking passes'
-                                    .format(PropertyName, '#' + str(cnt) if isCollection else ''))
+                    rsvLogger.debug('Property {} is nullable and is null, so Nullable checking passes'
+                                    .format(sub_item))
                 else:
                     propNullablePass = False
 
             elif propRealType == 'Edm.Boolean':
                 paramPass = isinstance(val, bool)
                 if not paramPass:
-                    rsvLogger.error("{}: Not a boolean".format(PropertyName))
+                    rsvLogger.error("{}: Not a boolean".format(sub_item))
 
             elif propRealType == 'Edm.DateTimeOffset':
-                paramPass = validateDatetime(PropertyName, val)
+                paramPass = validateDatetime(sub_item, val)
 
             elif propRealType == 'Edm.Int16' or propRealType == 'Edm.Int32' or\
                     propRealType == 'Edm.Int64' or propRealType == 'Edm.Int':
-                paramPass = validateInt(PropertyName, val, validMin, validMax)
+                paramPass = validateInt(sub_item, val, validMin, validMax)
 
             elif propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
-                paramPass = validateNumber(PropertyName, val, validMin, validMax)
+                paramPass = validateNumber(sub_item, val, validMin, validMax)
 
             elif propRealType == 'Edm.Guid':
-                paramPass = validateGuid(PropertyName, val)
+                paramPass = validateGuid(sub_item, val)
 
             elif propRealType == 'Edm.String':
-                paramPass = validateString(PropertyName, val, validPattern)
+                paramPass = validateString(sub_item, val, validPattern)
 
             elif propRealType == 'Edm.Primitive' or propRealType == 'Edm.PrimitiveType':
-                paramPass = validatePrimitive(PropertyName, val)
+                paramPass = validatePrimitive(sub_item, val)
 
             else:
                 if propRealType == 'complex':
                     innerPropType = PropertyItem['typeprops']
-                    success, complexCounts, complexMessages = validateComplex(PropertyName, val, innerPropType,
+                    success, complexCounts, complexMessages = validateComplex(sub_item, val, innerPropType,
                                                                               decoded.get('@odata.type'),
                                                                               decoded.get('AttributeRegistry'))
                     if not success:
                         counts['failComplex'] += 1
-                        resultList[item + appendStr] = (
+                        resultList[sub_item] = (
                                     '[JSON Object]', displayType(propType, propRealType),
                                     'Yes' if propExists else 'No',
                                     'FAIL')
                         continue
-                    resultList[item + appendStr] = (
+                    resultList[sub_item] = (
                                     '[JSON Object]', displayType(propType, propRealType),
                                     'Yes' if propExists else 'No',
                                     'complex')
 
                     counts.update(complexCounts)
-                    for complexKey in complexMessages:
-                        resultList[item + '.' + complexKey + appendStr] = complexMessages[complexKey]
-                    additionalComplex = innerPropType.additional 
+                    resultList.update(complexMessages)
+                    additionalComplex = innerPropType.additional
                     for key in val:
-                        if key not in complexMessages and not additionalComplex:
+                        if sub_item + '.' + key not in complexMessages and not additionalComplex:
                             rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
-                                            .format(item + '.' + key + appendStr, innerPropType.snamespace))
+                                            .format(sub_item + '.' + key, innerPropType.snamespace))
                             counts['failComplexAdditional'] += 1
-                            resultList[item + '.' + key + appendStr] = (
-                                    displayValue(val[key]), '-',
-                                    '-',
-                                    'FAIL')
-                        elif key not in complexMessages:
+                            resultList[sub_item + '.' + key] = (displayValue(val[key]), '-', '-', 'FAIL')
+                        elif sub_item + '.' + key not in complexMessages:
                             counts['unverifiedComplexAdditional'] += 1
-                            resultList[item + '.' + key + appendStr] = (displayValue(val[key]), '-',
-                                             '-',
-                                             'Additional')
+                            resultList[sub_item + '.' + key] = (displayValue(val[key]), '-', '-', 'Additional')
                     continue
 
                 elif propRealType == 'enum':
-                    paramPass = validateEnum(PropertyName, val, PropertyItem['typeprops'])
+                    paramPass = validateEnum(sub_item, val, PropertyItem['typeprops'])
 
                 elif propRealType == 'deprecatedEnum':
-                    paramPass = validateDeprecatedEnum(PropertyName, val, PropertyItem['typeprops'])
+                    paramPass = validateDeprecatedEnum(sub_item, val, PropertyItem['typeprops'])
 
                 elif propRealType == 'entity':
-                    appendStrEx = (('#' + str(cnt)) if isCollection else '')
-                    paramPass = validateEntity(item + appendStrEx, val, propType, propCollectionType, soup, refs, autoExpand, parentURI)
+                    paramPass = validateEntity(sub_item, val, propType, propCollectionType, soup, refs, autoExpand, parentURI)
                 else:
-                    rsvLogger.error("%s: This type is invalid %s" % (PropertyName, propRealType))  # Printout FORMAT
+                    rsvLogger.error("%s: This type is invalid %s" % (sub_item, propRealType))  # Printout FORMAT
                     paramPass = False
 
-        appendStrEx = (('#' + str(cnt)) if isCollection else '')
-        resultList[item + appendStr] = (
-                displayValue(val, (item + appendStrEx) if autoExpand else None), displayType(propType, propRealType),
+        resultList[sub_item] = (
+                displayValue(val, sub_item if autoExpand else None), displayType(propType, propRealType),
                 'Yes' if propExists else 'No',
                 'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
         if paramPass and propNullablePass and propMandatoryPass:
@@ -949,27 +952,26 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, pa
             counts['err.' + str(propType)] += 1
             if not paramPass:
                 if propMandatory:
-                    rsvLogger.error("%s: Mandatory prop has failed to check" % PropertyName)  # Printout FORMAT
                     counts['failMandatoryProp'] += 1
                 else:
                     counts['failProp'] += 1
             elif not propMandatoryPass:
-                rsvLogger.error("%s: Mandatory prop does not exist" % PropertyName)  # Printout FORMAT
+                rsvLogger.error("{}: Mandatory prop does not exist".format(sub_item))  # Printout FORMAT
                 counts['failMandatoryExist'] += 1
             elif not propNullablePass:
-                rsvLogger.error('Property {}{} is null but is not Nullable'
-                                .format(PropertyName, '#' + str(cnt) if isCollection else ''))
+                rsvLogger.error('{}: Property is null but is not Nullable'.format(sub_item))
                 counts['failNullable'] += 1
             rsvLogger.info("\tFAIL")  # Printout FORMAT
 
     return resultList, counts
 
 
-def checkPayloadConformance(uri, decoded):
+def checkPayloadConformance(uri, decoded, ParentItem=None):
     # Checks for @odata, generates "messages"
     #   largely not a lot of error potential
     # info: what did we get?  did it pass?
     # error: what went wrong?  do this per key
+    prefix = ParentItem + '.' if ParentItem is not None else ''
     messages = dict()
     success = True
     for key in [k for k in decoded if '@odata' in k]:
@@ -995,9 +997,9 @@ def checkPayloadConformance(uri, decoded):
         else:
             paramPass = True
         if not paramPass:
-            rsvLogger.error(key + "@odata item not compliant: " + decoded[key])  # Printout FORMAT
+            rsvLogger.error(prefix + key + " @odata item not conformant: " + decoded[key])  # Printout FORMAT
             success = False
-        messages[key] = (
+        messages[prefix + key] = (
                 decoded[key], display_type,
                 'Yes',
                 'PASS' if paramPass else 'FAIL')
@@ -1057,7 +1059,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     if not successPayload:
         counts['failPayloadError'] += 1
-        rsvLogger.error(str(URI) + ':  payload error, @odata property noncompliant',)  # Printout FORMAT
+        rsvLogger.error(str(URI) + ': payload error, @odata property non-conformant',)  # Printout FORMAT
         # rsvLogger.removeHandler(errh)  # Printout FORMAT
         # return False, counts, results, None, propResourceObj
     # Generate dictionary of property info
@@ -1101,7 +1103,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 counts.update(propCounts)
             except Exception as ex:
                 rsvLogger.exception("Something went wrong")  # Printout FORMAT
-                rsvLogger.error('%s:  Could not finish check on this property' % (prop.name))  # Printout FORMAT
+                rsvLogger.error('%s: Could not finish check on this property' % (prop.name))  # Printout FORMAT
                 counts['exceptionPropCheck'] += 1
         node = node.parent
 
@@ -1361,7 +1363,7 @@ def main(argv=None):
                 jsonData = json.load(f)
                 f.close()
         else:
-            rsvLogger.error('File not found {}'.format(ppath))
+            rsvLogger.error('File not found: {}'.format(ppath))
             return 1
     if 'Single' in pmode:
         success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
