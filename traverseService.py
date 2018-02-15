@@ -989,15 +989,17 @@ def enumerate_collection(items, cTypeName, linklimits, sample_size):
             if linklimits[cTypeName] < len(items):
                 uri = items[i].get('@odata.id')
                 if uri is not None:
-                    uri_sample_map[uri] = 'Collection limit {} of {}'.format(limit, len(items))
+                    uri_sample_map[uri] = 'Collection limit {} of {}'.format(i + 1, limit)
             yield i, items[i]
     elif 0 < sample_size < len(items):
         # "sample size" case
         traverseLogger.debug('Limiting "{}" to sample of {} links'.format(cTypeName, sample_size))
+        sample = 0
         for i in sorted(random.sample(range(len(items)), sample_size)):
+            sample += 1
             uri = items[i].get('@odata.id')
             if uri is not None:
-                uri_sample_map[uri] = 'Collection sample {} of {}'.format(sample_size, len(items))
+                uri_sample_map[uri] = 'Collection sample {} of {}'.format(sample, sample_size)
             yield i, items[i]
     else:
         # "all" case
