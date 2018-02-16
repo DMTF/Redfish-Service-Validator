@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.0.3] - 2018-02-15
+- Improved display of array members in the HTML report
+- Added text in the report to point to other payload reports when testing Referenceable Members
+
 ## [1.0.2] - 2018-02-09
 - Made fixes to proxy support
 - Added better handling for when incorrect namespaces are referenced
