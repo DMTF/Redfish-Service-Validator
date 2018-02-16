@@ -79,7 +79,7 @@ def validateActions(name, val, propTypeObj, payloadType):
     return actionMessages, actionCounts
 
 
-def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpand):
+def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpand, parentURI=""):
     # info: what are we looking for (the type), what are we getting (the uri), does the uri make sense based on type (does not do this yet)
     # error: this type is bad, could not get resource, could not find the type, no reference, cannot construct type (doesn't do this yet)
     # debug: what types do we have, what reference did we get back
@@ -89,10 +89,17 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
     rsvLogger.debug('validateEntity: name = {}'.format(name))
     # check for required @odata.id
     if '@odata.id' not in val:
-        rsvLogger.error("{}: EntityType resource does not contain required @odata.id property".format(name))
-        return False
+        if autoExpand:
+            default = parentURI + '#/{}'.format(name.replace('[','/').strip(']'))
+        else:
+            default = parentURI + '/{}'.format(name)
+        rsvLogger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, default))
+        if parentURI == "": 
+            return False
+        uri = default
+    else:
+        uri = val['@odata.id']
     # check if the entity is truly what it's supposed to be
-    uri = val['@odata.id']
     paramPass = False
     # if not autoexpand, we must grab the resource
     if not autoExpand:
@@ -530,10 +537,11 @@ def displayType(propType, propRealType, is_collection=False):
     return disp_type
 
 
-def displayValue(val):
+def displayValue(val, autoExpandName=None):
     """
     Convert input val to a simple, human readable value
     :param val: the value to be displayed
+    :param autoExpand: optional, name of JSON Object if it is a referenceable member 
     :return: the simplified value to display
     """
     if val is None:
@@ -542,6 +550,8 @@ def displayValue(val):
         disp_val = 'Link: {}'.format(val.get('@odata.id'))
     elif isinstance(val, (int, float, str, bool)):
         disp_val = val
+    elif autoExpandName is not None:
+        disp_val = 'Referenceable object - see report {} listed below'.format(autoExpandName)
     else:
         disp_val = '[JSON Object]'
 
@@ -723,7 +733,7 @@ def loadAttributeRegDict(odata_type, json_data):
         rsvLogger.debug('{}: "{}" AttributeRegistry dict has zero entries; not adding'.format(fn, reg_id))
 
 
-def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, ParentItem=None):
+def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, ParentItem=None, parentURI=""):
     # The biggest piece of code, but also mostly collabs info for other functions
     #   this part of the program should maybe do ALL setup for functions above, do not let them do requests?
     # info: what about this property is important (read/write, name, val, nullability, mandatory), 
@@ -926,13 +936,13 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
                     paramPass = validateDeprecatedEnum(sub_item, val, PropertyItem['typeprops'])
 
                 elif propRealType == 'entity':
-                    paramPass = validateEntity(sub_item, val, propType, propCollectionType, soup, refs, autoExpand)
+                    paramPass = validateEntity(sub_item, val, propType, propCollectionType, soup, refs, autoExpand, parentURI)
                 else:
                     rsvLogger.error("%s: This type is invalid %s" % (sub_item, propRealType))  # Printout FORMAT
                     paramPass = False
 
         resultList[sub_item] = (
-                displayValue(val), displayType(propType, propRealType),
+                displayValue(val, sub_item if autoExpand else None), displayType(propType, propRealType),
                 'Yes' if propExists else 'No',
                 'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
         if paramPass and propNullablePass and propMandatoryPass:
@@ -1034,6 +1044,12 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # check @odata.context instead of local.  Realize that @odata is NOT a "property"
 
     # Attempt to get a list of properties
+    if URI is None:
+        if parent is not None:
+            parentURI = parent.uri
+        else:
+            parentURI = '...'
+        URI = parentURI + '...'
     if expectedJson is None:
         successGet, jsondata, status, rtime = rst.callResourceURI(URI)
     else:
@@ -1082,7 +1098,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     while node is not None:
         for prop in node.propList:
             try:
-                propMessages, propCounts = checkPropertyConformance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs)
+                propMessages, propCounts = checkPropertyConformance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs, parentURI=URI)
                 messages.update(propMessages)
                 counts.update(propCounts)
             except Exception as ex:
