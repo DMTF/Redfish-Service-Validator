@@ -1055,17 +1055,18 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
             elif item == 'Uri' and ownerNS == 'MessageRegistryFile' and ownerType == 'Location':
                 # special handling for MessageRegistryFile Location Uri
                 insideItem = jsonData.get(item)
-                uriItem = {'@odata.id': insideItem}
-                cType = ownerNS + '.' + ownerNS
-                autoExpand = propDict.get('OData.AutoExpand', None) is not None or \
-                             propDict.get('OData.AutoExpand'.lower(), None) is not None
-                cSchema = refDict.get(getNamespace(cType), (None, None))[1]
-                if cSchema is None:
-                    cSchema = context
-                traverseLogger.debug('Registry Location Uri: resource = {}, type = {}, schema = {}'
-                                     .format(insideItem, cType, cSchema))
-                linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
-                    uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem)
+                if insideItem is not None and isinstance(insideItem, str) and len(insideItem) > 0:
+                    uriItem = {'@odata.id': insideItem}
+                    cType = ownerNS + '.' + ownerNS
+                    autoExpand = propDict.get('OData.AutoExpand', None) is not None or \
+                                 propDict.get('OData.AutoExpand'.lower(), None) is not None
+                    cSchema = refDict.get(getNamespace(cType), (None, None))[1]
+                    if cSchema is None:
+                        cSchema = context
+                    traverseLogger.debug('Registry Location Uri: resource = {}, type = {}, schema = {}'
+                                         .format(insideItem, cType, cSchema))
+                    linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
+                        uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem)
         for propx in propList:
             propDict = propx.propDict
             key = propx.name
