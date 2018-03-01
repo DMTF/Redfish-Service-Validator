@@ -1083,7 +1083,13 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         rsvLogger.removeHandler(errh)  # Printout FORMAT
         return False, counts, results, None, None
     counts['passGet'] += 1
-    results[uriName] = (str(URI) + ' (response time: {}s)'.format(propResourceObj.rtime), success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
+
+    # if URI was sampled, get the notation text from rst.uri_sample_map
+    sample_string = rst.uri_sample_map.get(URI)
+    sample_string = sample_string + ', ' if sample_string is not None else ''
+
+    results[uriName] = (str(URI) + ' ({}response time: {}s)'.format(sample_string, propResourceObj.rtime),
+                        success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
 
     # If this is an AttributeRegistry, load it for later use
     if isinstance(propResourceObj.jsondata, dict):

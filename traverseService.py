@@ -30,7 +30,11 @@ proxies = {'http': None, 'https': None}
 
 currentSession = rfSession()
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
- 
+
+# dictionary to hold sampling notation strings for URIs
+uri_sample_map = dict()
+
+
 def getLogger():
     """
     Grab logger for tools that might use this lib
@@ -982,11 +986,20 @@ def enumerate_collection(items, cTypeName, linklimits, sample_size):
         limit = min(linklimits[cTypeName], len(items))
         traverseLogger.debug('Limiting "{}" to first {} links'.format(cTypeName, limit))
         for i in range(limit):
+            if linklimits[cTypeName] < len(items):
+                uri = items[i].get('@odata.id')
+                if uri is not None:
+                    uri_sample_map[uri] = 'Collection limit {} of {}'.format(i + 1, limit)
             yield i, items[i]
     elif 0 < sample_size < len(items):
         # "sample size" case
         traverseLogger.debug('Limiting "{}" to sample of {} links'.format(cTypeName, sample_size))
+        sample = 0
         for i in sorted(random.sample(range(len(items)), sample_size)):
+            sample += 1
+            uri = items[i].get('@odata.id')
+            if uri is not None:
+                uri_sample_map[uri] = 'Collection sample {} of {}'.format(sample, sample_size)
             yield i, items[i]
     else:
         # "all" case
