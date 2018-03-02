@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.0.4] - 2018-03-02
+- Enhanced URI handling in MessageRegistryFile validation
+
 ## [1.0.3] - 2018-02-15
 - Improved display of array members in the HTML report
 - Added text in the report to point to other payload reports when testing Referenceable Members
