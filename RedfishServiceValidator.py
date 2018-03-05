@@ -823,15 +823,18 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
     validMinAttr = PropertyItem.get('Validation.Minimum')
     validMaxAttr = PropertyItem.get('Validation.Maximum')
 
+    paramPass = propNullablePass = deprecatedPass = True
+
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
     validDeprecated = PropertyItem.get('Redfish.Deprecated') 
     if validDeprecated is not None:
-        rsvLogger.error('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String','')))
+        deprecatedPass = False
+        counts['warnDeprecated'] += 1
+        rsvLogger.warning('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String','')))
 
     validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
         int(validMaxAttr['Int']) if validMaxAttr is not None else None
     validPattern = validPatternAttr.get('String', '') if validPatternAttr is not None else None
-    paramPass = propNullablePass = True
 
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
@@ -941,10 +944,15 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
                     rsvLogger.error("%s: This type is invalid %s" % (sub_item, propRealType))  # Printout FORMAT
                     paramPass = False
 
+        if not paramPass or not propMandatoryPass or not propNullablePass:
+            result_str = 'FAIL'
+        elif not deprecatedPass:
+            result_str = 'Deprecated'
+        else:
+            result_str = 'PASS'
         resultList[sub_item] = (
                 displayValue(val, sub_item if autoExpand else None), displayType(propType, propRealType),
-                'Yes' if propExists else 'No',
-                'PASS' if paramPass and propMandatoryPass and propNullablePass else 'FAIL')
+                'Yes' if propExists else 'No', result_str)
         if paramPass and propNullablePass and propMandatoryPass:
             counts['pass'] += 1
             rsvLogger.info("\tSuccess")  # Printout FORMAT
@@ -1475,10 +1483,16 @@ def main(argv=None):
             if 'problem' in countType or 'fail' in countType or 'exception' in countType:
                 rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, str(results[item][0]).split(' ')[0]))  # Printout FORMAT
             innerCounts[countType] += 0
+            if 'fail' in countType or 'exception' in countType:
+                style = 'class="fail log"'
+            elif 'warn' in countType:
+                style = 'class="warn log"'
+            else:
+                style = 'class=log'
             htmlStr += '<div {style}>{p}: {q}</div>'.format(
                     p=countType,
                     q=innerCounts.get(countType, 0),
-                    style='class="fail log"' if 'fail' in countType or 'exception' in countType else 'class=log')
+                    style=style)
         htmlStr += '</td></tr>'
         htmlStr += '</table></td></tr>'
         htmlStr += '<tr><td class="results" id=\'resNum{}\'><table><tr><td><table><tr><th style="width:15%">Property Name</th> <th>Value</th> <th>Type</th> <th style="width:10%">Exists?</th> <th style="width:10%">Result</th> <tr>'.format(cnt)
