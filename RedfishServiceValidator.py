@@ -16,7 +16,7 @@ import logging
 import json
 import traverseService as rst
 
-tool_version = '1.0.4'
+tool_version = '1.0.5'
 
 rsvLogger = rst.getLogger()
 
