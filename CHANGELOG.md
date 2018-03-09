@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.0.5] - 2018-03-09
+- Changed deprecated property reporting from error to warning
+
 ## [1.0.4] - 2018-03-02
 - Enhanced URI handling in MessageRegistryFile validation
 
