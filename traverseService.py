@@ -1080,6 +1080,22 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
                                          .format(insideItem, cType, cSchema))
                     linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
                         uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem)
+            elif item == 'Actions':
+                # special handling for @Redfish.ActionInfo payload annotations
+                insideItem = jsonData.get(item)
+                if isinstance(insideItem, dict):
+                    cType = 'ActionInfo.ActionInfo'
+                    autoExpand = propDict.get('OData.AutoExpand', None) is not None or \
+                                 propDict.get('OData.AutoExpand'.lower(), None) is not None
+                    cSchema = refDict.get(getNamespace(cType), (None, None))[1]
+                    for k, v in insideItem.items():
+                        uri = v.get('@Redfish.ActionInfo')
+                        if isinstance(uri, str):
+                            uriItem = {'@odata.id': uri}
+                            traverseLogger.debug('{}{}: @Redfish.ActionInfo annotation uri = {}'.format(item, k, uri))
+                            linkList[prefix + str(item) + k + '.' + cType] = (
+                                uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem)
+
         for propx in propList:
             propDict = propx.propDict
             key = propx.name
