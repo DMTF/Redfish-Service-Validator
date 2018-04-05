@@ -14,6 +14,7 @@ from collections import Counter, OrderedDict
 import logging
 import json
 import traverseService as rst
+import metadata as md
 
 tool_version = '1.0.5'
 
@@ -1378,12 +1379,17 @@ def main(argv=None):
         else:
             rsvLogger.error('File not found: {}'.format(ppath))
             return 1
+
+    metadata = md.Metadata(rsvLogger)
+
     if 'Single' in pmode:
         success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
     elif 'Tree' in pmode:
        success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
     else:
         success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
+
+    rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(metadata.get_missing_namespaces()))
 
     finalCounts = Counter()
     nowTick = datetime.now()
@@ -1538,6 +1544,10 @@ def main(argv=None):
 
     success = success and not (fails > 0)
     rsvLogger.info(finalCounts)
+
+    # dump cache info to debug log
+    rsvLogger.debug('getSchemaDetails() -> {}'.format(rst.getSchemaDetails.cache_info()))
+    rsvLogger.debug('callResourceURI() -> {}'.format(rst.callResourceURI.cache_info()))
 
     if not success:
         rsvLogger.info("Validation has failed: {} problems found".format(fails))
