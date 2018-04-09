@@ -1451,7 +1451,7 @@ def main(argv=None):
         '</th></tr>' \
         ''
 
-    htmlStr = ''
+    htmlStr = rst.metadata.to_html()
 
     rsvLogger.info(len(results))
     for cnt, item in enumerate(results):

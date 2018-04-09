@@ -332,6 +332,10 @@ def getSchemaDetails(SchemaType, SchemaURI):
                 else:
                     traverseLogger.error(
                         "SchemaURI missing reference link {} inside {}".format(frag, SchemaURI))
+                    # error reported; assume likely schema uri to allow continued validation
+                    uri = 'http://redfish.dmtf.org/schemas/v1/{}_v1.xml'.format(frag)
+                    traverseLogger.info("Continue assuming schema URI for {} is {}".format(SchemaType, uri))
+                    return getSchemaDetails(SchemaType, uri)
             else:
                 return True, soup, SchemaURI
         if isNonService(SchemaURI) and ServiceOnly:

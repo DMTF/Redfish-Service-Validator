@@ -2,6 +2,8 @@
 # Copyright 2018 Distributed Management Task Force, Inc. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
+import time
+from collections import Counter, OrderedDict
 import traverseService as rst
 
 EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
@@ -29,8 +31,10 @@ class Metadata(object):
     schema_type = '$metadata'
 
     def __init__(self, logger):
+        self.success_get = False
         self.soup = None
         self.service_refs = dict()
+        self.elapsed_secs = 0
         self.metadata_namespaces = set()
         self.service_namespaces = set()
         self.bad_tags = dict()
@@ -38,8 +42,11 @@ class Metadata(object):
         self.logger = logger
         self.redfish_extensions_alias_ok = False
 
+        start = time.time()
         success, soup, uri = rst.getSchemaDetails(Metadata.schema_type, Metadata.metadata_uri)
+        self.elapsed_secs = time.time() - start
         if success:
+            self.success_get = True
             self.soup = soup
             self.service_refs = rst.getReferenceDetails(soup, name=Metadata.schema_type)
             self.metadata_namespaces = {k for k in self.service_refs.keys()}
@@ -104,3 +111,52 @@ class Metadata(object):
             #     <edmx:Include Namespace="RedfishExtensions.v1_0_0" Alias="Redfish"/>
         except Exception as e:
             self.logger.warning('Error parsing document with BeautifulSoup4, error: {}'.format(e))
+
+    def to_html(self):
+        time_str = 'response time {0:.6f}s'.format(self.elapsed_secs)
+        section_title = '{} ({}) ({})'.format(Metadata.metadata_uri, time_str, Metadata.schema_type)
+
+        counter = OrderedCounter()
+        counter['metadataNamespaces'] = len(self.metadata_namespaces)
+        counter['serviceNamespaces'] = len(self.service_namespaces)
+        counter['missingNamespaces'] = len(self.service_namespaces - self.metadata_namespaces)
+        counter['badTags'] = len(self.bad_tags)
+        counter['badTagNamespaces'] = len(self.bad_tag_ns)
+
+        html_str = ''
+        html_str += '<tr><th class="titlerow bluebg"><b>{}</b></th></tr>'\
+            .format(section_title)
+        html_str += '<tr><td class="titlerow"><table class="titletable"><tr>'
+        html_str += '<td class="title" style="width:40%"><div>{}</div>\
+                        <div class="button warn" onClick="document.getElementById(\'resMetadata\').classList.toggle(\'resultsShow\');">Show results</div>\
+                        </td>'.format(section_title)
+        html_str += '<td class="titlesub log" style="width:30%"><div><b>Schema File:</b> {}</div><div><b>Resource Type:</b> {}</div></td>'\
+            .format(Metadata.metadata_uri, Metadata.schema_type)
+        html_str += '<td style="width:10%"' + \
+            ('class="pass"> GET Success' if self.success_get else 'class="fail"> GET Failure') + '</td>'
+        html_str += '<td style="width:10%">'
+
+        for count_type in counter.keys():
+            style = 'class=log'
+            if 'bad' in count_type or 'missing' in count_type:
+                if counter[count_type] > 0:
+                    style = 'class="fail log"'
+            html_str += '<div {style}>{p}: {q}</div>'.format(
+                    p=count_type, q=counter.get(count_type, 0), style=style)
+
+        html_str += '</td></tr>'
+        html_str += '</table></td></tr>'
+        html_str += '<tr><td class="results" id=\'resMetadata\'><table><tr><td>'
+        # TODO: output results here
+        html_str += '</table></td></tr>'
+        return html_str
+
+
+class OrderedCounter(Counter, OrderedDict):
+    """Counter that remembers the order elements are first encountered"""
+
+    def __repr__(self):
+        return '%s(%r)' % (self.__class__.__name__, OrderedDict(self))
+
+    def __reduce__(self):
+        return self.__class__, (OrderedDict(self),)
