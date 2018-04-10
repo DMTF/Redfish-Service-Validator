@@ -114,12 +114,12 @@ class Metadata(object):
 
     def to_html(self):
         time_str = 'response time {0:.6f}s'.format(self.elapsed_secs)
-        section_title = '{} ({}) ({})'.format(Metadata.metadata_uri, time_str, Metadata.schema_type)
+        section_title = '{} ({})'.format(Metadata.metadata_uri, time_str)
 
         counter = OrderedCounter()
         counter['metadataNamespaces'] = len(self.metadata_namespaces)
         counter['serviceNamespaces'] = len(self.service_namespaces)
-        counter['missingNamespaces'] = len(self.service_namespaces - self.metadata_namespaces)
+        counter['missingNamespaces'] = len(self.get_missing_namespaces())
         counter['badTags'] = len(self.bad_tags)
         counter['badTagNamespaces'] = len(self.bad_tag_ns)
 
@@ -136,19 +136,45 @@ class Metadata(object):
             ('class="pass"> GET Success' if self.success_get else 'class="fail"> GET Failure') + '</td>'
         html_str += '<td style="width:10%">'
 
+        errors_found = False
         for count_type in counter.keys():
             style = 'class=log'
             if 'bad' in count_type or 'missing' in count_type:
                 if counter[count_type] > 0:
+                    errors_found = True
                     style = 'class="fail log"'
             html_str += '<div {style}>{p}: {q}</div>'.format(
                     p=count_type, q=counter.get(count_type, 0), style=style)
 
         html_str += '</td></tr>'
         html_str += '</table></td></tr>'
-        html_str += '<tr><td class="results" id=\'resMetadata\'><table><tr><td>'
-        # TODO: output results here
-        html_str += '</table></td></tr>'
+        html_str += '<tr><td class="results" id=\'resMetadata\'><table><tr><th>$metadata validation results</th></tr>'
+        if self.success_get and not errors_found:
+            html_str += '<tr><td class="pass log">Validation successful</td></tr>'
+        else:
+            if not self.success_get:
+                html_str += '<tr><td class="fail log">Error: Unable to retrieve $metadata resource at {}</td></tr>'.format(Metadata.metadata_uri)
+            if len(self.get_missing_namespaces()) > 0:
+                html_str += '<tr><td class="fail log">Error: The following namespaces are referenced by the service, but are not included in $metadata:</td></tr>'
+                html_str += '<tr><td class="fail log"><ul>'
+                for ns in self.get_missing_namespaces():
+                    html_str += '<li>{}</li>'.format(ns)
+                html_str += '</ul></td></tr>'
+            if len(self.bad_tags) > 0:
+                html_str += '<tr><td class="fail log">Error: The following tag names in $metadata are unrecognized (check spelling or case):</td></tr>'
+                html_str += '<tr><td class="fail log"><ul>'
+                for tag in self.bad_tags:
+                    html_str += '<li>{} ({} occurrence{})</li>'\
+                        .format(tag, self.bad_tags[tag], 's' if self.bad_tags[tag] > 1 else '')
+                html_str += '</ul></td></tr>'
+            if len(self.bad_tag_ns) > 0:
+                html_str += '<tr><td class="fail log">Error: The following tags in $metadata have an unexpected namespace:</td></tr>'
+                html_str += '<tr><td class="fail log"><ul>'
+                for tag in self.bad_tag_ns:
+                    html_str += '<li>{} ({} occurrence{})</li>'\
+                        .format(tag, self.bad_tag_ns[tag], 's' if self.bad_tag_ns[tag] > 1 else '')
+                html_str += '</ul></td></tr>'
+        html_str += '</table>'
         return html_str
 
 
