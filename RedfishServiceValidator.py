@@ -54,7 +54,8 @@ def validateActions(name, val, propTypeObj, payloadType):
             # validate target
             target = actionDecoded.get('target')
             if target is None:
-                rsvLogger.warn('{}: target for action is missing'.format(name + '.' + k))
+                actPass = False
+                rsvLogger.error('{}: target for action is missing'.format(name + '.' + k))
             elif not isinstance(target, str):
                 actPass = False
                 rsvLogger.error('{}: target for action is malformed; expected string, got {}'
