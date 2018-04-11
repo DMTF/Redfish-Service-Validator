@@ -999,7 +999,9 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
                 paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None or\
                     re.match('(\/.*)+#(\/.*)+[/]$entity', decoded[key]) is not None
             # add the namespace to the set of namespaces referenced by this service
-            rst.metadata.add_service_namespace(rst.getNamespace(decoded[key]))
+            ns = rst.getNamespace(decoded[key])
+            if '/' not in ns and not ns.endswith('$entity'):
+                rst.metadata.add_service_namespace(ns)
         elif key == '@odata.type':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
@@ -1388,7 +1390,7 @@ def main(argv=None):
     if 'Single' in pmode:
         success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
     elif 'Tree' in pmode:
-       success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
+        success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
     else:
         success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
 
@@ -1452,6 +1454,7 @@ def main(argv=None):
         ''
 
     htmlStr = rst.metadata.to_html()
+    finalCounts.update(rst.metadata.get_counter())
 
     rsvLogger.info(len(results))
     for cnt, item in enumerate(results):
