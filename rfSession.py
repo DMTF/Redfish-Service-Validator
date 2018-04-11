@@ -29,9 +29,9 @@ def getLogger():
 
 class rfSession:
     def __init__(self):
-        self.user, self.pwd, self.server = None, None, None
+        self.user, self.pwd, self.server, self.proxies = None, None, None, None
         self.key, self.loc = None, None
-        self.timeout, self.tick = 0, 0
+        self.timeout, self.tick = None, None
         self.started, self.chkCert = False, False
 
     def startSession(self, user, password, server, chkCert=True, proxies=None):
@@ -62,6 +62,8 @@ class rfSession:
         statusCode = response.status_code
         ourSessionKey = response.headers.get("X-Auth-Token")
         ourSessionLocation = response.headers.get("Location", "/None")
+        if ourSessionLocation.startswith('/'):
+            ourSessionLocation = server + ourSessionLocation
         success = statusCode in range(200, 204) and ourSessionKey is not None
 
         self.user, self.pwd, self.server = user, None, server
@@ -93,6 +95,6 @@ class rfSession:
         if self.started and not self.isSessionOld():
             headers = {"X-Auth-Token": self.getSessionKey()}
             headers.update(commonHeader)
-            response = requests.delete(str(self.server) + str(self.loc), verify=self.chkCert, headers=headers, proxies=self.proxies)
+            response = requests.delete(self.loc, verify=self.chkCert, headers=headers, proxies=self.proxies)
         self.started = False
         return True
