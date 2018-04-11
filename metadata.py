@@ -26,6 +26,23 @@ def other_ns_tags(tag):
     return tag.namespace != EDM_NAMESPACE and tag.namespace != EDMX_NAMESPACE
 
 
+def reference_missing_uri_attr(tag):
+    return tag.name == 'Reference' and tag.get('Uri') is None
+
+
+def include_missing_namespace_attr(tag):
+    return tag.name == 'Include' and tag.get('Namespace') is None
+
+
+def format_tag_name(tag):
+    tag_name = tag.name if tag.prefix is None else tag.prefix + ':' + tag.name
+    tag_attr = ''
+    for attr in tag.attrs:
+        tag_attr += '{}="{}" '.format(attr, tag.attrs[attr])
+    tag_name = (tag_name + ' ' + tag_attr).strip()
+    return tag_name
+
+
 class Metadata(object):
     metadata_uri = '/redfish/v1/$metadata'
     schema_type = '$metadata'
@@ -39,6 +56,8 @@ class Metadata(object):
         self.service_namespaces = set()
         self.bad_tags = dict()
         self.bad_tag_ns = dict()
+        self.refs_missing_uri = dict()
+        self.includes_missing_ns = dict()
         self.logger = logger
         self.redfish_extensions_alias_ok = False
 
@@ -61,6 +80,8 @@ class Metadata(object):
             self.check_tags(soup)
             logger.debug('Metadata: bad_tags = {}'.format(self.bad_tags))
             logger.debug('Metadata: bad_tag_ns = {}'.format(self.bad_tag_ns))
+            logger.debug('Metadata: refs_missing_uri = {}'.format(self.refs_missing_uri))
+            logger.debug('Metadata: includes_missing_ns = {}'.format(self.includes_missing_ns))
         else:
             logger.debug('Metadata: getSchemaDetails() did not return success')
 
@@ -95,20 +116,22 @@ class Metadata(object):
     def check_tags(self, soup):
         try:
             for tag in soup.find_all(bad_edm_tags):
-                tag_name = tag.name if tag.prefix is None else tag.prefix + ':' + tag.name
+                tag_name = format_tag_name(tag)
                 self.bad_tags[tag_name] = self.bad_tags.get(tag_name, 0) + 1
             for tag in soup.find_all(bad_edmx_tags):
-                tag_name = tag.name if tag.prefix is None else tag.prefix + ':' + tag.name
+                tag_name = format_tag_name(tag)
                 self.bad_tags[tag_name] = self.bad_tags.get(tag_name, 0) + 1
             for tag in soup.find_all(other_ns_tags):
                 tag_name = tag.name if tag.prefix is None else tag.prefix + ':' + tag.name
                 tag_ns = 'xmlns{}="{}"'.format(':' + tag.prefix if tag.prefix is not None else '', tag.namespace)
                 tag_name = tag_name + ' ' + tag_ns
                 self.bad_tag_ns[tag_name] = self.bad_tag_ns.get(tag_name, 0) + 1
-            # TODO: add check for misspelled/missing attributes:
-            #     <edmx:Reference Uri="/redfish/v1/Schemas/ServiceRoot_v1.xml">
-            #     <edmx:Include Namespace="ServiceRoot.v1_0_0"/>
-            #     <edmx:Include Namespace="RedfishExtensions.v1_0_0" Alias="Redfish"/>
+            for tag in soup.find_all(reference_missing_uri_attr):
+                tag_name = format_tag_name(tag)
+                self.refs_missing_uri[tag_name] = self.refs_missing_uri.get(tag_name, 0) + 1
+            for tag in soup.find_all(include_missing_namespace_attr):
+                tag_name = format_tag_name(tag)
+                self.includes_missing_ns[tag_name] = self.includes_missing_ns.get(tag_name, 0) + 1
         except Exception as e:
             self.logger.warning('Error parsing document with BeautifulSoup4, error: {}'.format(e))
 
@@ -121,6 +144,8 @@ class Metadata(object):
         counter['serviceNamespaces'] = len(self.service_namespaces)
         counter['missingNamespaces'] = len(self.get_missing_namespaces())
         counter['badTags'] = len(self.bad_tags)
+        counter['missingUriAttr'] = len(self.refs_missing_uri)
+        counter['missingNamespaceAttr'] = len(self.includes_missing_ns)
         counter['badTagNamespaces'] = len(self.bad_tag_ns)
 
         html_str = ''
@@ -166,6 +191,20 @@ class Metadata(object):
                 for tag in self.bad_tags:
                     html_str += '<li>{} ({} occurrence{})</li>'\
                         .format(tag, self.bad_tags[tag], 's' if self.bad_tags[tag] > 1 else '')
+                html_str += '</ul></td></tr>'
+            if len(self.refs_missing_uri) > 0:
+                html_str += '<tr><td class="fail log">Error: The following Reference tags in $metadata are missing the expected Uri attribute (check spelling or case):</td></tr>'
+                html_str += '<tr><td class="fail log"><ul>'
+                for tag in self.refs_missing_uri:
+                    html_str += '<li>{} ({} occurrence{})</li>' \
+                        .format(tag, self.refs_missing_uri[tag], 's' if self.refs_missing_uri[tag] > 1 else '')
+                html_str += '</ul></td></tr>'
+            if len(self.includes_missing_ns) > 0:
+                html_str += '<tr><td class="fail log">Error: The following Include tags in $metadata are missing the expected Namespace attribute (check spelling or case):</td></tr>'
+                html_str += '<tr><td class="fail log"><ul>'
+                for tag in self.includes_missing_ns:
+                    html_str += '<li>{} ({} occurrence{})</li>' \
+                        .format(tag, self.includes_missing_ns[tag], 's' if self.includes_missing_ns[tag] > 1 else '')
                 html_str += '</ul></td></tr>'
             if len(self.bad_tag_ns) > 0:
                 html_str += '<tr><td class="fail log">Error: The following tags in $metadata have an unexpected namespace:</td></tr>'
