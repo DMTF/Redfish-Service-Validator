@@ -42,12 +42,12 @@ def format_tag_string(tag):
     return (tag_name + ' ' + tag_attr).strip()
 
 
-def tag_table_html(tags):
-    html_str = '<tr><td class="fail log"><ul>'
-    for tag in tags:
+def tag_list_html(tags_dict):
+    html_str = '<ul>'
+    for tag in tags_dict:
         html_str += '<li>{} {}</li>' \
-            .format(tag, '(' + str(tags[tag]) + ' occurrences)' if tags[tag] > 1 else '')
-    html_str += '</ul></td></tr>'
+            .format(tag, '(' + str(tags_dict[tag]) + ' occurrences)' if tags_dict[tag] > 1 else '')
+    html_str += '</ul>'
     return html_str
 
 
@@ -190,30 +190,33 @@ class Metadata(object):
 
         if self.success_get and not errors_found:
             html_str += '<tr><td class="pass log">Validation successful</td></tr>'
+        elif not self.success_get:
+            html_str += '<tr><td class="fail log">ERROR - Unable to retrieve $metadata resource at {}</td></tr>'\
+                .format(Metadata.metadata_uri)
         else:
-            if not self.success_get:
-                html_str += '<tr><td class="fail log">ERROR - Unable to retrieve $metadata resource at {}</td></tr>'\
-                    .format(Metadata.metadata_uri)
-            elif not self.redfish_extensions_alias_ok:
+            if not self.redfish_extensions_alias_ok:
                 html_str += '<tr><td class="fail log">ERROR - $metadata does not include the required "RedfishExtensions.v1_0_0" namespace with an alias of "Redfish"</td></tr>'
             if len(self.get_missing_namespaces()) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following namespaces are referenced by the service, but are not included in $metadata:</td></tr>'
-                html_str += '<tr><td class="fail log"><ul>'
+                html_str += '<tr><td class="fail log">ERROR - The following namespaces are referenced by the service, but are not included in $metadata:<ul>'
                 for ns in self.get_missing_namespaces():
                     html_str += '<li>{}</li>'.format(ns)
                 html_str += '</ul></td></tr>'
             if len(self.bad_tags) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following tag names in $metadata are unrecognized (check spelling or case):</td></tr>'
-                html_str += tag_table_html(self.bad_tags)
+                html_str += '<tr><td class="fail log">ERROR - The following tag names in $metadata are unrecognized (check spelling or case):'
+                html_str += tag_list_html(self.bad_tags)
+                html_str += '</td></tr>'
             if len(self.refs_missing_uri) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following Reference tags in $metadata are missing the expected Uri attribute (check spelling or case):</td></tr>'
-                html_str += tag_table_html(self.refs_missing_uri)
+                html_str += '<tr><td class="fail log">ERROR - The following Reference tags in $metadata are missing the expected Uri attribute (check spelling or case):'
+                html_str += tag_list_html(self.refs_missing_uri)
+                html_str += '</td></tr>'
             if len(self.includes_missing_ns) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following Include tags in $metadata are missing the expected Namespace attribute (check spelling or case):</td></tr>'
-                html_str += tag_table_html(self.includes_missing_ns)
+                html_str += '<tr><td class="fail log">ERROR - The following Include tags in $metadata are missing the expected Namespace attribute (check spelling or case):'
+                html_str += tag_list_html(self.includes_missing_ns)
+                html_str += '</td></tr>'
             if len(self.bad_tag_ns) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following tags in $metadata have an unexpected namespace:</td></tr>'
-                html_str += tag_table_html(self.bad_tag_ns)
+                html_str += '<tr><td class="fail log">ERROR - The following tags in $metadata have an unexpected namespace:'
+                html_str += tag_list_html(self.bad_tag_ns)
+                html_str += '</td></tr>'
         html_str += '</table>'
 
         return html_str
