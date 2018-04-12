@@ -33,6 +33,9 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 # dictionary to hold sampling notation strings for URIs
 uri_sample_map = dict()
 
+# holds instance of Metadata class for $metadata processing and validation
+metadata = None
+
 
 def getLogger():
     """
@@ -273,11 +276,15 @@ def callResourceURI(URILink):
 # note: Use some sort of re expression to parse SchemaType
 # ex: #Power.1.1.1.Power , #Power.v1_0_0.Power
 def getNamespace(string):
-    return string.replace('#', '').rsplit('.', 1)[0]
+    if '#' in string:
+        string = string.rsplit('#', 1)[1]
+    return string.rsplit('.', 1)[0]
 
 
 def getType(string):
-    return string.replace('#', '').rsplit('.', 1)[-1]
+    if '#' in string:
+        string = string.rsplit('#', 1)[1]
+    return string.rsplit('.', 1)[-1]
 
 
 @lru_cache(maxsize=64)
@@ -325,6 +332,10 @@ def getSchemaDetails(SchemaType, SchemaURI):
                 else:
                     traverseLogger.error(
                         "SchemaURI missing reference link {} inside {}".format(frag, SchemaURI))
+                    # error reported; assume likely schema uri to allow continued validation
+                    uri = 'http://redfish.dmtf.org/schemas/v1/{}_v1.xml'.format(frag)
+                    traverseLogger.info("Continue assuming schema URI for {} is {}".format(SchemaType, uri))
+                    return getSchemaDetails(SchemaType, uri)
             else:
                 return True, soup, SchemaURI
         if isNonService(SchemaURI) and ServiceOnly:
@@ -604,13 +615,11 @@ class ResourceObj:
 
         self.additionalList = []
         self.initiated = True
-        idtag = (fullType, self.context)  # 🔫
+        idtag = (fullType, self.context)
 
-        serviceRefs = None
-        successService, serviceSchemaSoup, SchemaServiceURI = getSchemaDetails(
-            '$metadata', '/redfish/v1/$metadata')
-        if successService:
-            serviceRefs = getReferenceDetails(serviceSchemaSoup, name=SchemaServiceURI)
+        serviceRefs = metadata.get_service_refs()
+        serviceSchemaSoup = metadata.get_soup()
+        if serviceSchemaSoup is not None:
             successService, additionalProps = getAnnotations(
                 serviceSchemaSoup, serviceRefs, self.jsondata)
             for prop in additionalProps:
@@ -1141,6 +1150,9 @@ def getAnnotations(soup, refs, decoded, prefix=''):
         if getNamespace(fullItem) not in allowed_annotations:
             traverseLogger.error("getAnnotations: {} is not an allowed annotation namespace, please check spelling/capitalization.".format(fullItem))
             continue
+        else:
+            # add the namespace to the set of namespaces referenced by this service
+            metadata.add_service_namespace(getNamespace(fullItem))
         realType, refLink = refs.get(getNamespace(fullItem), (None, None))
         success, annotationSoup, uri = getSchemaDetails(realType, refLink)
         traverseLogger.debug('{}, {}, {}, {}, {}'.format(

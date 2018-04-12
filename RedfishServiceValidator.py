@@ -13,7 +13,9 @@ from datetime import datetime
 from collections import Counter, OrderedDict
 import logging
 import json
+import html
 import traverseService as rst
+import metadata as md
 
 tool_version = '1.0.5'
 
@@ -177,9 +179,9 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
     complexCounts = Counter()
     propList = list()
 
-    successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails('$metadata', '/redfish/v1/$metadata')
-    if successService:
-        serviceRefs = rst.getReferenceDetails(serviceSchemaSoup)
+    serviceRefs = rst.metadata.get_service_refs()
+    serviceSchemaSoup = rst.metadata.get_soup()
+    if serviceSchemaSoup is not None:
         successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
         propSoup, propRefs = serviceSchemaSoup, serviceRefs
         for prop in additionalProps:
@@ -1001,11 +1003,16 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
             if paramPass:
                 paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None or\
                     re.match('(\/.*)+#(\/.*)+[/]$entity', decoded[key]) is not None
+            # add the namespace to the set of namespaces referenced by this service
+            ns = rst.getNamespace(decoded[key])
+            if '/' not in ns and not ns.endswith('$entity'):
+                rst.metadata.add_service_namespace(ns)
         elif key == '@odata.type':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
-            pass
+            # add the namespace to the set of namespaces referenced by this service
+            rst.metadata.add_service_namespace(rst.getNamespace(decoded[key]))
         else:
             paramPass = True
         if not paramPass:
@@ -1125,10 +1132,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 counts['exceptionPropCheck'] += 1
         node = node.parent
 
-    successService, serviceSchemaSoup, SchemaServiceURI = rst.getSchemaDetails(
-        '$metadata', '/redfish/v1/$metadata')
-    if successService:
-        serviceRefs = rst.getReferenceDetails(serviceSchemaSoup, name="$metadata")
+    serviceRefs = rst.metadata.get_service_refs()
+    serviceSchemaSoup = rst.metadata.get_soup()
+    if serviceSchemaSoup is not None:
         for prop in propResourceObj.additionalList:
             propMessages, propCounts = checkPropertyConformance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
             messages.update(propMessages)
@@ -1383,12 +1389,18 @@ def main(argv=None):
         else:
             rsvLogger.error('File not found: {}'.format(ppath))
             return 1
+
+    rst.metadata = md.Metadata(rsvLogger)
+
     if 'Single' in pmode:
         success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
     elif 'Tree' in pmode:
-       success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
+        success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
     else:
         success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
+
+    rsvLogger.debug('Metadata: Namespaces referenced in service: {}'.format(rst.metadata.get_service_namespaces()))
+    rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(rst.metadata.get_missing_namespaces()))
 
     finalCounts = Counter()
     nowTick = datetime.now()
@@ -1446,7 +1458,8 @@ def main(argv=None):
         '</th></tr>' \
         ''
 
-    htmlStr = ''
+    htmlStr = rst.metadata.to_html()
+    finalCounts.update(rst.metadata.get_counter())
 
     rsvLogger.info(len(results))
     for cnt, item in enumerate(results):
@@ -1519,7 +1532,7 @@ def main(argv=None):
                 htmlStr += '</tr>'
         htmlStr += '</table></td></tr>'
         if results[item][4] is not None:
-            htmlStr += '<tr><td class="fail log">' + str(results[item][4].getvalue()).replace('\n', '<br />') + '</td></tr>'
+            htmlStr += '<tr><td class="fail log">' + html.escape(results[item][4].getvalue()).replace('\n', '<br />') + '</td></tr>'
             results[item][4].close()
         htmlStr += '<tr><td>---</td></tr></table></td></tr>'
 
@@ -1543,6 +1556,10 @@ def main(argv=None):
 
     success = success and not (fails > 0)
     rsvLogger.info(finalCounts)
+
+    # dump cache info to debug log
+    rsvLogger.debug('getSchemaDetails() -> {}'.format(rst.getSchemaDetails.cache_info()))
+    rsvLogger.debug('callResourceURI() -> {}'.format(rst.callResourceURI.cache_info()))
 
     if not success:
         rsvLogger.info("Validation has failed: {} problems found".format(fails))
