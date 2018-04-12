@@ -439,8 +439,12 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
         pattern_pass = True
         if isinstance(key, str):
             if regex.match(key) is None:
-                pattern_pass = False
-                rsvLogger.error('{} does not match pattern "{}"'.format(name + '.' + key, prop_pattern))
+                if key.startswith('@odata') or key.startswith('@Redfish'):
+                    #Redfish or odata metadata are acceptable as well
+                    pattern_pass = True
+                else:
+                    pattern_pass = False
+                    rsvLogger.error('{} does not match pattern "{}"'.format(name + '.' + key, prop_pattern))
         else:
             pattern_pass = False
             rsvLogger.error('{} is not a string, so cannot be validated against pattern "{}"'
