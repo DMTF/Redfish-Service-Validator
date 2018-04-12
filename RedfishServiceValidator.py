@@ -48,24 +48,29 @@ def validateActions(name, val, propTypeObj, payloadType):
     # (should check for viable parameters)
     for k in actionsDict:
         actionDecoded = val.get(k, 'n/a')
-        actPass = False
+        actPass = True
         if actionDecoded != 'n/a':
+            # validate target
             target = actionDecoded.get('target')
-            if target is not None and isinstance(target, str):
-                actPass = True
-            elif target is None:
-                rsvLogger.warn('{}: target for action is missing'.format(name + '.' + k))
-                actPass = True
-            else:
+            if target is None:
+                actPass = False
+                rsvLogger.error('{}: target for action is missing'.format(name + '.' + k))
+            elif not isinstance(target, str):
+                actPass = False
                 rsvLogger.error('{}: target for action is malformed; expected string, got {}'
-                                .format(name + '.' + k, str(type(target))))
+                                .format(name + '.' + k, str(type(target)).strip('<>')))
+            # check for unexpected properties
+            for prop in actionDecoded:
+                if prop not in ['target', '@Redfish.ActionInfo'] and '@Redfish.AllowableValues' not in prop:
+                    actPass = False
+                    rsvLogger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}" and "{}"'
+                                    .format(name + '.' + k, prop, 'target', '@Redfish.ActionInfo', '*@Redfish.AllowableValues'))
         else:
             # <Annotation Term="Redfish.Required"/>
             if actionsDict[k].find('annotation', {'term': 'Redfish.Required'}):
-
+                actPass = False
                 rsvLogger.error('{}: action not found, is mandatory'.format(name + '.' + k))
             else:
-                actPass = True
                 rsvLogger.warn('{}: action not found, is not mandatory'.format(name + '.' + k))
         actionMessages[name + '.' + k] = (
                     'Action', '-',
