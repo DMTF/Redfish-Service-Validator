@@ -17,7 +17,7 @@ import html
 import traverseService as rst
 import metadata as md
 
-tool_version = '1.0.5'
+tool_version = '1.0.6'
 
 rsvLogger = rst.getLogger()
 
