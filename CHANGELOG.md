@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.0.6] - 2018-04-13
+- Enhanced validation of Action objects; allow for annotations and Action Info resources, and require the target property
+- Added $metadata validation report
+- Fixed handling of the Location header when creating a Session to allow for both absolute and relative URIs
+
 ## [1.0.5] - 2018-03-09
 - Changed deprecated property reporting from error to warning
 
