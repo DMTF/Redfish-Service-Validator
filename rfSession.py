@@ -83,10 +83,10 @@ class rfSession:
                 self.logger.info('{}'.format(response.text))
             self.logger.debug('Headers: {}'.format(response.headers))
             if statusCode in [400, 401]:
-                self.logger.error('Error creating session. Response status "{} {}". Check supplied username and password.'
+                self.logger.error('Error creating session. Status code "{} {}". Check supplied username and password.'
                                   .format(statusCode, responses[statusCode]))
             else:
-                self.logger.error('Error creating session. Response status "{} {}".'
+                self.logger.error('Error creating session. Status code "{} {}".'
                                   .format(statusCode, responses[statusCode]))
 
         return success
