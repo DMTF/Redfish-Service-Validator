@@ -15,6 +15,7 @@ import logging
 import json
 import html
 import traverseService as rst
+from traverseService import AuthenticationError
 import metadata as md
 
 tool_version = '1.0.6'
@@ -1093,6 +1094,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                                 errorMessages, None, None)
             rsvLogger.removeHandler(errh)  # Printout FORMAT
             return False, counts, results, None, None
+    except AuthenticationError as e:
+        raise  # re-raise exception
     except Exception as e:
         rsvLogger.exception("")  # Printout FORMAT
         counts['exceptionResource'] += 1
@@ -1126,6 +1129,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 propMessages, propCounts = checkPropertyConformance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs, parentURI=URI)
                 messages.update(propMessages)
                 counts.update(propCounts)
+            except AuthenticationError as e:
+                raise  # re-raise exception
             except Exception as ex:
                 rsvLogger.exception("Something went wrong")  # Printout FORMAT
                 rsvLogger.error('%s: Could not finish check on this property' % (prop.name))  # Printout FORMAT
@@ -1390,14 +1395,27 @@ def main(argv=None):
             rsvLogger.error('File not found: {}'.format(ppath))
             return 1
 
+    # start session if using Session auth
+    if rst.currentSession is not None:
+        success = rst.currentSession.startSession()
+        if not success:
+            # terminate program on start session error (error logged in startSession() call above)
+            return 1
+
+    # read $metadata into Metadata object
     rst.metadata = md.Metadata(rsvLogger)
 
-    if 'Single' in pmode:
-        success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
-    elif 'Tree' in pmode:
-        success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
-    else:
-        success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
+    try:
+        if 'Single' in pmode:
+            success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
+        elif 'Tree' in pmode:
+            success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
+        else:
+            success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
+    except AuthenticationError as e:
+        # log authentication error and terminate program
+        rsvLogger.error('{}'.format(e))
+        return 1
 
     rsvLogger.debug('Metadata: Namespaces referenced in service: {}'.format(rst.metadata.get_service_namespaces()))
     rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(rst.metadata.get_missing_namespaces()))
@@ -1405,7 +1423,9 @@ def main(argv=None):
     finalCounts = Counter()
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))  # Printout FORMAT
-    if rst.currentSession.started:
+
+    # terminate session
+    if rst.currentSession is not None and rst.currentSession.started:
         rst.currentSession.killSession()
 
     # Render html
