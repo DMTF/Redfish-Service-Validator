@@ -143,6 +143,16 @@ The test result for each GET operation will be reported as follows:
 ## Limitations
 
 Redfish Service Validator covers all the GET execution on the service. Below are certain points which are not in this scope.
-* 1.	Patch/Post/Skip/Top/Head is not covered as part of Redfish Service Validator due to dependency on internal factor of the service.
-* 2.	Redfish Service Validator does not cover testing of multiple service at once. To execute this, we have to re-run the tool by running it separately.
-* 3.    Tool doesn't support @odata.context which use complex $entity path
+* Patch/Post/Skip/Top/Head is not covered as part of Redfish Service Validator due to dependency on internal factor of the service.
+* Redfish Service Validator does not cover testing of multiple service at once. To execute this, we have to re-run the tool by running it separately.
+* Tool doesn't support @odata.context which use complex $entity path
+
+## Building a Standalone Windows Executable
+
+The module pyinstaller is used to package the environment as a standlone executable file; this can be installed with the following command:
+
+pip3 install pyinstaller
+
+From a Windows system, the following command can be used to build a Windows executable file named RedfishServiceValidator.exe, which will be found in dist folder:
+
+pyinstaller -F -i redfish.ico RedfishServiceValidator.py
