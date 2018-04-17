@@ -1296,6 +1296,10 @@ def main(argv=None):
         rst.ch.setLevel(logging.DEBUG)
     cdict = {}
     try:
+        # If no arguments are specified, simply try the default configuration file location
+        if len(argv) == 1:
+            args.config = "config.ini"
+
         if args.config is not None:
             configpsr = configparser.ConfigParser()
             configpsr.read(args.config)
@@ -1445,7 +1449,7 @@ def main(argv=None):
         '<br>(Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + ')' \
         '' \
         '<h4>This tool is provided and maintained by the DMTF. ' \
-        'For feedback, please open issues<br>in the tool’s Github repository: ' \
+        'For feedback, please open issues<br>in the tool\'s Github repository: ' \
         '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">' \
         'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>' \
         '</th></tr>' \
