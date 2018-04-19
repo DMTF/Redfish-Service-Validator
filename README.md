@@ -105,6 +105,10 @@ In order to run without a configuration file, the option --ip must be specified.
 
     python3 RedfishServiceValidator.py --ip host:port [...]
 
+A GUI is also available to let a user fill in configuration options using a form, and then press a button to execute the test.  The following command will launch the GUI for the tool.
+
+    python3 RedfishServiceValidatorGui.py
+
 ## Execution flow
 
 1. Redfish Service Validator starts with the Service root Resource Schema by querying the service with the service root URI and getting all the device information, the resources supported and their links. Once the response of the Service root query is verified against its schema, the tool traverses through all the collections and Navigation properties returned by the service.
@@ -155,4 +159,4 @@ The module pyinstaller is used to package the environment as a standlone executa
 
 From a Windows system, the following command can be used to build a Windows executable file named RedfishServiceValidator.exe, which will be found in dist folder:
 
-    pyinstaller -F -i redfish.ico RedfishServiceValidator.py
+    pyinstaller -F -w -i redfish.ico -n RedfishServiceValidator.exe RedfishServiceValidatorGui.py

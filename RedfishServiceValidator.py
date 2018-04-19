@@ -1,4 +1,3 @@
-
 # Copyright Notice:
 # Copyright 2016 Distributed Management Task Force, Inc. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
@@ -1251,15 +1250,12 @@ argparse2configparser = {
 
 validatorconfig = {'payloadmode': 'Default', 'payloadfilepath': None, 'logpath': './logs'}
 
-def main(argv=None):
+def main(configpsr=None):
     # this should be surface level, does no execution (should maybe move html rendering to its own function
     # Only worry about configuring, executing and exiting circumstances, printout setup
     # info: config information (without password), time started/finished, individual problems, pass/fail
     # error: config is not good (catch, success), traverse is not good (should never happen)
     # warn: what's missing that we can work around (local files?)
-    # debug:    
-    if argv is None:
-        argv = sys.argv
 
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
@@ -1296,13 +1292,11 @@ def main(argv=None):
         rst.ch.setLevel(logging.DEBUG)
     cdict = {}
     try:
-        # If no arguments are specified, simply try the default configuration file location
-        if len(argv) == 1:
-            args.config = "config.ini"
-
-        if args.config is not None:
-            configpsr = configparser.ConfigParser()
-            configpsr.read(args.config)
+        if (args.config is not None) or (configpsr is not None):
+            if configpsr is None:
+                # Configuration not provided; read in the config file
+                configpsr = configparser.ConfigParser()
+                configpsr.read(args.config)
             for x in configpsr:
                 for y in configpsr[x]:
                     val = configpsr[x][y]
@@ -1394,6 +1388,8 @@ def main(argv=None):
             rsvLogger.error('File not found: {}'.format(ppath))
             return 1
 
+    rst.callResourceURI.cache_clear()
+    rst.getSchemaDetails.cache_clear()
     rst.metadata = md.Metadata(rsvLogger)
 
     if 'Single' in pmode:
@@ -1550,7 +1546,8 @@ def main(argv=None):
 
     htmlPage = htmlStrTop + htmlStrBodyHeader + htmlStrTotal + htmlStr
 
-    with open(datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html")), 'w', encoding='utf-8') as f:
+    lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
+    with open(lastResultsPage, 'w', encoding='utf-8') as f:
         f.write(htmlPage)
 
     fails = 0
@@ -1571,8 +1568,9 @@ def main(argv=None):
         rsvLogger.info("Validation has succeeded.")
         status_code = 0
 
-    return status_code
+    return status_code, lastResultsPage
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    status_code, lastResultsPage = main()
+    sys.exit(status_code)
