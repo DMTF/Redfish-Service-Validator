@@ -97,7 +97,7 @@ Once the above details are updated for the system under test, the Redfish Servic
 
     python3 RedfishServiceValidator.py -c config/config.ini (-v)
 
-Alternatively, all of these options are available through the command line. __A configuration file overrides every option specified in the command line, such that -c should not be specified.__  If no arguments are provided with the tool, it will assume to use the file "config.ini".  In order to review these options, please run the command:
+Alternatively, all of these options are available through the command line. __A configuration file overrides every option specified in the command line, such that -c should not be specified.__  In order to review these options, please run the command:
 
     python3 RedfishServiceValidator.py -h (-v)
 
