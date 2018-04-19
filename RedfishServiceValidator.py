@@ -521,7 +521,7 @@ def displayType(propType, propRealType, is_collection=False):
         if propType.startswith('Collection('):
             member_type = propType.replace('Collection(', '').replace(')', '')
             if is_collection:
-                disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+                disp_type = 'array of: {}'.format(member_type.rsplit('.', 1)[-1])
             else:
                 disp_type = member_type.rsplit('.', 1)[-1]
         else:
@@ -531,7 +531,7 @@ def displayType(propType, propRealType, is_collection=False):
         if propType.startswith('Collection('):
             member_type = propType.replace('Collection(', '').replace(')', '')
             if is_collection:
-                disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+                disp_type = 'array of: {}'.format(member_type.rsplit('.', 1)[-1])
             else:
                 disp_type = member_type.rsplit('.', 1)[-1]
         else:
@@ -866,7 +866,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
         rsvLogger.info("\tis Collection")
-        resultList[item] = ('Collection, size: ' + str(len(propValue)),
+        resultList[item] = ('Array (size: {})'.format(len(propValue)),
                             displayType(propType, propRealType, is_collection=True),
                             'Yes' if propExists else 'No', '...')
         propValueList = propValue
