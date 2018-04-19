@@ -8,74 +8,86 @@ import requests
 import logging
 import sys
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+from http.client import responses
 
 commonHeader = {'OData-Version': '4.0'}
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-sessionLogger = logging.getLogger(__name__)
-sessionLogger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.INFO)
-sessionLogger.addHandler(ch)
-
-
-def getLogger():
-    """
-    Grab logger for tools that might use this lib
-    """
-    return sessionLogger
-
 
 class rfSession:
-    def __init__(self):
-        self.user, self.pwd, self.server, self.proxies = None, None, None, None
-        self.key, self.loc = None, None
-        self.timeout, self.tick = None, None
-        self.started, self.chkCert = False, False
+    def __init__(self, user, password, server, logger=None, chkCert=True, proxies=None):
+        self.user = user
+        self.pwd = password
+        self.server = server
+        self.chkCert = chkCert
+        self.proxies = {} if proxies is None else proxies
+        self.key = None
+        self.loc = None
+        self.timeout = None
+        self.tick = None
+        self.started = False
+        self.chkCert = False
 
-    def startSession(self, user, password, server, chkCert=True, proxies=None):
+        if logger is None:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.DEBUG)
+            ch = logging.StreamHandler(sys.stdout)
+            ch.setLevel(logging.INFO)
+            self.logger.addHandler(ch)
+        else:
+            self.logger = logger
+
+    def startSession(self):
         payload = {
-                "UserName": user,
-                "Password": password
+                'UserName': self.user,
+                'Password': self.pwd
         }
-        if proxies is None:
-            proxies = {}
-        sr = requests.get(server + '/redfish/v1/', verify=chkCert, headers=commonHeader, proxies=proxies)
+        sr = requests.get(self.server + '/redfish/v1/', verify=self.chkCert, headers=commonHeader, proxies=self.proxies)
         success = sr.status_code in [200, 204] and sr.json() is not None
         if not success:
-            sessionLogger.error("Could not retrieve serviceroot to start Session")
+            self.logger.error('Could not retrieve service root to start Session')
             return False
         links = sr.json().get('Links')
         if links is not None:
             sessionsObj = links.get('Sessions')
             if sessionsObj is None:
                 sessionsURI = '/redfish/v1/SessionService/Sessions'
-                sessionLogger.info('using default URI', sessionsURI)
+                self.logger.info('using default URI', sessionsURI)
             else:
                 sessionsURI = sessionsObj.get('@odata.id', '/redfish/v1/SessionService/Sessions')
         else:
-            sessionLogger.error("Could not retrieve serviceroot.links to start Session")
+            self.logger.error('Could not retrieve service root link to start Session')
             return False
 
-        response = requests.post(server + sessionsURI, json=payload, verify=chkCert, headers=commonHeader, proxies=proxies)
+        response = requests.post(self.server + sessionsURI, json=payload, verify=self.chkCert,
+                                 headers=commonHeader, proxies=self.proxies)
         statusCode = response.status_code
-        ourSessionKey = response.headers.get("X-Auth-Token")
-        ourSessionLocation = response.headers.get("Location", "/None")
+        ourSessionKey = response.headers.get('X-Auth-Token')
+        ourSessionLocation = response.headers.get('Location', '/None')
         if ourSessionLocation.startswith('/'):
-            ourSessionLocation = server + ourSessionLocation
+            ourSessionLocation = self.server + ourSessionLocation
         success = statusCode in range(200, 204) and ourSessionKey is not None
 
-        self.user, self.pwd, self.server = user, None, server
-        self.key, self.loc = ourSessionKey, ourSessionLocation
-        self.timeout, self.tick = timedelta(minutes=30), datetime.now()
-        self.started, self.chkCert = success, chkCert
-        self.proxies = proxies
+        self.key = ourSessionKey
+        self.loc = ourSessionLocation
+        self.timeout = timedelta(minutes=30)
+        self.tick = datetime.now()
+        self.started = success
 
         if success:
-            sessionLogger.info("Session successfully started")
+            self.logger.info('Session successfully created')
         else:
-            sessionLogger.info("Session failed to start {}".format(statusCode))
+            if response.text is not None:
+                self.logger.info('Response body from session creation:')
+                self.logger.info('{}'.format(response.text))
+            self.logger.debug('Headers: {}'.format(response.headers))
+            if statusCode in [400, 401]:
+                self.logger.error('Error creating session. Status code "{} {}". Check supplied username and password.'
+                                  .format(statusCode, responses[statusCode]))
+            else:
+                self.logger.error('Error creating session. Status code "{} {}".'
+                                  .format(statusCode, responses[statusCode]))
 
         return success
 
@@ -84,17 +96,26 @@ class rfSession:
 
     def getSessionKey(self):
         if not self.started:
-            sessionLogger.error("This session is not started")
+            self.logger.error('This session is not started')
             return None
         if self.isSessionOld():
-            sessionLogger.error("This session is old")
+            self.logger.warning('This session is old')
         self.tick = datetime.now()
         return self.key
 
     def killSession(self):
         if self.started and not self.isSessionOld():
-            headers = {"X-Auth-Token": self.getSessionKey()}
+            headers = {'X-Auth-Token': self.getSessionKey()}
             headers.update(commonHeader)
-            response = requests.delete(self.loc, verify=self.chkCert, headers=headers, proxies=self.proxies)
+            try:
+                requests.delete(self.loc, verify=self.chkCert, headers=headers, proxies=self.proxies)
+            except Exception as e:
+                self.logger.warning('Error deleting current session: {}'.format(e))
         self.started = False
         return True
+
+    def getLogger(self):
+        """
+        Grab logger for tools that might use this lib
+        """
+        return self.logger
