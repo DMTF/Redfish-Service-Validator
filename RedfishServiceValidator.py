@@ -439,7 +439,7 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
         pattern_pass = True
         if isinstance(key, str):
             if regex.match(key) is None:
-                if '@odata' in key or '@Redfish' in key or '@Message' in key:
+                if '@odata.' in key or '@Redfish.' in key or '@Message.' in key:
                     # @odata, @Redfish and @Message properties are acceptable as well
                     pattern_pass = True
                 else:
