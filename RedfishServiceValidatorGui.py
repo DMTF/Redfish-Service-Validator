@@ -136,7 +136,8 @@ class RSVGui:
             rsv_config = configparser.ConfigParser()
             rsv_config.read( config_file_name )
             status_code, last_results_page = rsv.main( rsv_config )
-            webbrowser.open_new( last_results_page )
+            if last_results_page != None:
+                webbrowser.open_new( last_results_page )
         except:
             oops_window = tk.Toplevel()
             oops_label = tk.Label( oops_window, text = "Please copy the info below and file an issue on GitHub!", width = 64, anchor = "center" )

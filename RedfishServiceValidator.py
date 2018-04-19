@@ -1329,7 +1329,7 @@ def main(configpsr=None):
         else:
             rsvLogger.info('No ip or config specified.')
             argget.print_help()
-            return 1
+            return None, 1
         # Send config only with keys supported by program
         linklimitdict = {}
         if cdict.get('linklimit') is not None:
@@ -1346,7 +1346,7 @@ def main(configpsr=None):
 
     except Exception as ex:
         rsvLogger.exception("Something went wrong")  # Printout FORMAT
-        return 1
+        return None, 1
 
     config_str = ""
     for cnt, item in enumerate(sorted(list(cdict.keys() - set(['systeminfo', 'configuri', 'targetip', 'configset', 'password', 'description']))), 1):
@@ -1386,7 +1386,7 @@ def main(configpsr=None):
                 f.close()
         else:
             rsvLogger.error('File not found: {}'.format(ppath))
-            return 1
+            return None, 1
 
     rst.callResourceURI.cache_clear()
     rst.getSchemaDetails.cache_clear()
