@@ -1,4 +1,3 @@
-
 # Copyright Notice:
 # Copyright 2016 Distributed Management Task Force, Inc. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
@@ -1260,15 +1259,12 @@ argparse2configparser = {
 
 validatorconfig = {'payloadmode': 'Default', 'payloadfilepath': None, 'logpath': './logs'}
 
-def main(argv=None):
+def main(configpsr=None):
     # this should be surface level, does no execution (should maybe move html rendering to its own function
     # Only worry about configuring, executing and exiting circumstances, printout setup
     # info: config information (without password), time started/finished, individual problems, pass/fail
     # error: config is not good (catch, success), traverse is not good (should never happen)
     # warn: what's missing that we can work around (local files?)
-    # debug:    
-    if argv is None:
-        argv = sys.argv
 
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
@@ -1305,9 +1301,11 @@ def main(argv=None):
         rst.ch.setLevel(logging.DEBUG)
     cdict = {}
     try:
-        if args.config is not None:
-            configpsr = configparser.ConfigParser()
-            configpsr.read(args.config)
+        if (args.config is not None) or (configpsr is not None):
+            if configpsr is None:
+                # Configuration not provided; read in the config file
+                configpsr = configparser.ConfigParser()
+                configpsr.read(args.config)
             for x in configpsr:
                 for y in configpsr[x]:
                     val = configpsr[x][y]
@@ -1340,7 +1338,7 @@ def main(argv=None):
         else:
             rsvLogger.info('No ip or config specified.')
             argget.print_help()
-            return 1
+            return None, 1
         # Send config only with keys supported by program
         linklimitdict = {}
         if cdict.get('linklimit') is not None:
@@ -1357,7 +1355,7 @@ def main(argv=None):
 
     except Exception as ex:
         rsvLogger.exception("Something went wrong")  # Printout FORMAT
-        return 1
+        return None, 1
 
     config_str = ""
     for cnt, item in enumerate(sorted(list(cdict.keys() - set(['systeminfo', 'configuri', 'targetip', 'configset', 'password', 'description']))), 1):
@@ -1397,16 +1395,18 @@ def main(argv=None):
                 f.close()
         else:
             rsvLogger.error('File not found: {}'.format(ppath))
-            return 1
+            return None, 1
 
     # start session if using Session auth
     if rst.currentSession is not None:
         success = rst.currentSession.startSession()
         if not success:
             # terminate program on start session error (error logged in startSession() call above)
-            return 1
+            return None, 1
 
     # read $metadata into Metadata object
+    rst.callResourceURI.cache_clear()
+    rst.getSchemaDetails.cache_clear()
     rst.metadata = md.Metadata(rsvLogger)
 
     try:
@@ -1419,7 +1419,7 @@ def main(argv=None):
     except AuthenticationError as e:
         # log authentication error and terminate program
         rsvLogger.error('{}'.format(e))
-        return 1
+        return None, 1
 
     rsvLogger.debug('Metadata: Namespaces referenced in service: {}'.format(rst.metadata.get_service_namespaces()))
     rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(rst.metadata.get_missing_namespaces()))
@@ -1469,7 +1469,7 @@ def main(argv=None):
         '<br>(Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + ')' \
         '' \
         '<h4>This tool is provided and maintained by the DMTF. ' \
-        'For feedback, please open issues<br>in the tool’s Github repository: ' \
+        'For feedback, please open issues<br>in the tool\'s Github repository: ' \
         '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">' \
         'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>' \
         '</th></tr>' \
@@ -1570,7 +1570,8 @@ def main(argv=None):
 
     htmlPage = htmlStrTop + htmlStrBodyHeader + htmlStrTotal + htmlStr
 
-    with open(datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html")), 'w', encoding='utf-8') as f:
+    lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
+    with open(lastResultsPage, 'w', encoding='utf-8') as f:
         f.write(htmlPage)
 
     fails = 0
@@ -1591,8 +1592,9 @@ def main(argv=None):
         rsvLogger.info("Validation has succeeded.")
         status_code = 0
 
-    return status_code
+    return status_code, lastResultsPage
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    status_code, lastResultsPage = main()
+    sys.exit(status_code)
