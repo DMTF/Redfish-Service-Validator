@@ -14,6 +14,7 @@ import logging
 import json
 import html
 import traverseService as rst
+from traverseService import AuthenticationError
 import metadata as md
 
 tool_version = '1.0.6'
@@ -62,10 +63,10 @@ def validateActions(name, val, propTypeObj, payloadType):
                                 .format(name + '.' + k, str(type(target)).strip('<>')))
             # check for unexpected properties
             for prop in actionDecoded:
-                if prop not in ['target', '@Redfish.ActionInfo'] and '@Redfish.AllowableValues' not in prop:
+                if prop not in ['target', 'title', '@Redfish.ActionInfo'] and '@Redfish.AllowableValues' not in prop:
                     actPass = False
-                    rsvLogger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}" and "{}"'
-                                    .format(name + '.' + k, prop, 'target', '@Redfish.ActionInfo', '*@Redfish.AllowableValues'))
+                    rsvLogger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}", "{}" and "{}"'
+                                    .format(name + '.' + k, prop, 'target', 'title', '@Redfish.ActionInfo', '*@Redfish.AllowableValues'))
         else:
             # <Annotation Term="Redfish.Required"/>
             if actionsDict[k].find('annotation', {'term': 'Redfish.Required'}):
@@ -445,8 +446,12 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
         pattern_pass = True
         if isinstance(key, str):
             if regex.match(key) is None:
-                pattern_pass = False
-                rsvLogger.error('{} does not match pattern "{}"'.format(name + '.' + key, prop_pattern))
+                if '@odata.' in key or '@Redfish.' in key or '@Message.' in key:
+                    # @odata, @Redfish and @Message properties are acceptable as well
+                    pattern_pass = True
+                else:
+                    pattern_pass = False
+                    rsvLogger.error('{} does not match pattern "{}"'.format(name + '.' + key, prop_pattern))
         else:
             pattern_pass = False
             rsvLogger.error('{} is not a string, so cannot be validated against pattern "{}"'
@@ -515,7 +520,7 @@ def displayType(propType, propRealType, is_collection=False):
         if propType.startswith('Collection('):
             member_type = propType.replace('Collection(', '').replace(')', '')
             if is_collection:
-                disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+                disp_type = 'array of: {}'.format(member_type.rsplit('.', 1)[-1])
             else:
                 disp_type = member_type.rsplit('.', 1)[-1]
         else:
@@ -525,7 +530,7 @@ def displayType(propType, propRealType, is_collection=False):
         if propType.startswith('Collection('):
             member_type = propType.replace('Collection(', '').replace(')', '')
             if is_collection:
-                disp_type = 'collection of: {}'.format(member_type.rsplit('.', 1)[-1])
+                disp_type = 'array of: {}'.format(member_type.rsplit('.', 1)[-1])
             else:
                 disp_type = member_type.rsplit('.', 1)[-1]
         else:
@@ -860,7 +865,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
         rsvLogger.info("\tis Collection")
-        resultList[item] = ('Collection, size: ' + str(len(propValue)),
+        resultList[item] = ('Array (size: {})'.format(len(propValue)),
                             displayType(propType, propRealType, is_collection=True),
                             'Yes' if propExists else 'No', '...')
         propValueList = propValue
@@ -1092,6 +1097,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                                 errorMessages, None, None)
             rsvLogger.removeHandler(errh)  # Printout FORMAT
             return False, counts, results, None, None
+    except AuthenticationError as e:
+        raise  # re-raise exception
     except Exception as e:
         rsvLogger.exception("")  # Printout FORMAT
         counts['exceptionResource'] += 1
@@ -1125,6 +1132,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 propMessages, propCounts = checkPropertyConformance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs, parentURI=URI)
                 messages.update(propMessages)
                 counts.update(propCounts)
+            except AuthenticationError as e:
+                raise  # re-raise exception
             except Exception as ex:
                 rsvLogger.exception("Something went wrong")  # Printout FORMAT
                 rsvLogger.error('%s: Could not finish check on this property' % (prop.name))  # Printout FORMAT
@@ -1388,16 +1397,29 @@ def main(configpsr=None):
             rsvLogger.error('File not found: {}'.format(ppath))
             return None, 1
 
+    # start session if using Session auth
+    if rst.currentSession is not None:
+        success = rst.currentSession.startSession()
+        if not success:
+            # terminate program on start session error (error logged in startSession() call above)
+            return None, 1
+
+    # read $metadata into Metadata object
     rst.callResourceURI.cache_clear()
     rst.getSchemaDetails.cache_clear()
     rst.metadata = md.Metadata(rsvLogger)
 
-    if 'Single' in pmode:
-        success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
-    elif 'Tree' in pmode:
-        success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
-    else:
-        success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
+    try:
+        if 'Single' in pmode:
+            success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
+        elif 'Tree' in pmode:
+            success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
+        else:
+            success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
+    except AuthenticationError as e:
+        # log authentication error and terminate program
+        rsvLogger.error('{}'.format(e))
+        return None, 1
 
     rsvLogger.debug('Metadata: Namespaces referenced in service: {}'.format(rst.metadata.get_service_namespaces()))
     rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(rst.metadata.get_missing_namespaces()))
@@ -1405,7 +1427,9 @@ def main(configpsr=None):
     finalCounts = Counter()
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))  # Printout FORMAT
-    if rst.currentSession.started:
+
+    # terminate session
+    if rst.currentSession is not None and rst.currentSession.started:
         rst.currentSession.killSession()
 
     # Render html

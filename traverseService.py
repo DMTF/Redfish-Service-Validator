@@ -15,6 +15,7 @@ from functools import lru_cache
 import logging
 from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+from http.client import responses
 import copy
 
 
@@ -27,7 +28,7 @@ traverseLogger.addHandler(ch)
 commonHeader = {'OData-Version': '4.0'}
 proxies = {'http': None, 'https': None}
 
-currentSession = rfSession()
+currentSession = None
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # dictionary to hold sampling notation strings for URIs
@@ -35,6 +36,12 @@ uri_sample_map = dict()
 
 # holds instance of Metadata class for $metadata processing and validation
 metadata = None
+
+
+class AuthenticationError(Exception):
+    """Exception used for failed basic auth or token auth"""
+    def __init__(self, msg=None):
+        super(AuthenticationError, self).__init__(msg)
 
 
 def getLogger():
@@ -106,10 +113,11 @@ def setConfig(cdict):
 
     if AuthType == 'Session':
         certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
+        global currentSession
         # no proxy for system under test
-        success = currentSession.startSession(User, Passwd, config['configuri'], certVal, proxies=None)
-        if not success:
-            raise RuntimeError("Session could not start")
+        currentSession = rfSession(User, Passwd, config['configuri'], logger=traverseLogger,
+                                   chkCert=certVal, proxies=None)
+
 
 def isNonService(uri):
     """
@@ -161,6 +169,8 @@ def callResourceURI(URILink):
     payload = None
     statusCode = ''
     elapsed = 0
+    auth = None
+    noauthchk = True
 
     isXML = False
     if "$metadata" in URILink or ".xml" in URILink:
@@ -251,6 +261,14 @@ def callResourceURI(URILink):
                         "This URI did NOT return XML or Json, this is not a Redfish resource (is this redirected?): {}".format(URILink))
                 return False, response.text, statusCode, elapsed
             return decoded is not None, decoded, statusCode, elapsed
+        elif statusCode == 401:
+            if not nonService and AuthType in ['Basic', 'Token']:
+                if AuthType == 'Token':
+                    cred_type = 'token'
+                else:
+                    cred_type = 'username and password'
+                raise AuthenticationError('Error accessing URI {}. Status code "{} {}". Check {} supplied for "{}" authentication.'
+                                          .format(URILink, statusCode, responses[statusCode], cred_type, AuthType))
 
     except requests.exceptions.SSLError as e:
         traverseLogger.error("SSLError on {}".format(URILink))
@@ -264,6 +282,8 @@ def callResourceURI(URILink):
     except requests.exceptions.RequestException as e:
         traverseLogger.error("Request has encounted a problem when getting resource {}".format(URILink))
         traverseLogger.warn("output: ", exc_info=True)
+    except AuthenticationError as e:
+        raise  # re-raise exception
     except Exception as ex:
         traverseLogger.error("A problem when getting resource has occurred {}".format(URILink))
         traverseLogger.warn("output: ", exc_info=True)
