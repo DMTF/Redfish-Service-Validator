@@ -17,7 +17,7 @@ import traverseService as rst
 from traverseService import AuthenticationError
 import metadata as md
 
-tool_version = '1.0.6'
+tool_version = '1.0.7'
 
 rsvLogger = rst.getLogger()
 

@@ -1,5 +1,12 @@
 # Change Log
 
+## [1.0.7] - 2018-04-20
+- Enhanced authentication error handling for basic and session authentication
+- Changed term "collection" in the report to say "array"
+- Added method for running the tool via a GUI
+- Fixed the Action object validation to allow for the "title" property
+- Added support for allowing dynamic properties with @Redfish, @Message, and @odata terms
+
 ## [1.0.6] - 2018-04-13
 - Enhanced validation of Action objects; allow for annotations and Action Info resources, and require the target property
 - Added $metadata validation report
