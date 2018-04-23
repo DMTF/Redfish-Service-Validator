@@ -46,8 +46,7 @@ def format_tag_string(tag):
 def list_html(entries):
     html_str = '<ul>'
     for entry in entries:
-        html_str += '<li>{}</li>' \
-            .format(entry)
+        html_str += '<li>{}</li>'.format(entry)
     html_str += '</ul>'
     return html_str
 
@@ -140,6 +139,10 @@ class Metadata(object):
             return None
 
     def check_tags(self):
+        """
+        Perform some checks on the tags in the $metadata XML looking for unrecognized tags,
+        tags missing required attributes, etc.
+        """
         try:
             for tag in self.md_soup.find_all(bad_edm_tags):
                 tag_str = format_tag_string(tag)
@@ -162,6 +165,9 @@ class Metadata(object):
             self.logger.warning('Metadata: Problem parsing $metadata document: {}'.format(e))
 
     def check_namespaces_in_schemas(self):
+        """
+        Check that all namespaces included from a schema URI are actually in that schema
+        """
         for k in self.uri_to_namespaces.keys():
             schema_uri = k
             if '#' in schema_uri:
@@ -179,6 +185,9 @@ class Metadata(object):
                 self.bad_schema_uris.add(schema_uri)
 
     def get_counter(self):
+        """
+        Create a Counter instance containing the counts of any errors found
+        """
         counter = OrderedCounter()
         # informational counters
         counter['metadataNamespaces'] = len(self.metadata_namespaces)
@@ -196,6 +205,9 @@ class Metadata(object):
         return self.counter
 
     def to_html(self):
+        """
+        Convert the $metadata validation results to HTML
+        """
         time_str = 'response time {0:.6f}s'.format(self.elapsed_secs)
         section_title = '{} ({})'.format(Metadata.metadata_uri, time_str)
 
