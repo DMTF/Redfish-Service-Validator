@@ -16,6 +16,7 @@ import html
 import traverseService as rst
 from traverseService import AuthenticationError
 import metadata as md
+import RedfishLogo as logo
 
 tool_version = '1.0.7'
 
@@ -1460,7 +1461,7 @@ def main(configpsr=None):
         '<h2>##### Redfish Conformance Test Report #####</h2>' \
         '<br>' \
         '<h4><img align="center" alt="DMTF Redfish Logo" height="203" width="288"' \
-        'src="http://redfish.dmtf.org/sites/default/files/DMTF_Redfish_logo_R.jpg"></h4>' \
+        'src="data:image/gif;base64,' + logo.logo + '"></h4>' \
         '<br>' \
         '<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
         'https://github.com/DMTF/Redfish-Service-Validator</a>' \
