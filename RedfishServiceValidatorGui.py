@@ -11,9 +11,11 @@ Brief : This file contains the GUI to interact with the RedfishServiceValidator
 """
 
 import configparser
+import os
 import sys
 import threading
 import tkinter as tk
+from tkinter import filedialog as tkFileDialog
 import traceback
 import webbrowser
 
@@ -23,33 +25,109 @@ import RedfishServiceValidator as rsv
 g_config_file_name = "config.ini"
 g_config_defaults = {
     "SystemInformation": {
-        "TargetIP": { "value": "127.0.0.1:8000", "description": "The IPv4 address of the system under test" },
-        "SystemInfo": { "value": "Test Config, place your own description of target system here", "description": "A string to describe the system" },
-        "UserName": { "value": "xuser", "description": "The user ID of the administrator on the system" },
-        "Password": { "value": "xpasswd", "description": "The password of the administrator on the system" },
-        "AuthType": { "value": "Basic", "description": "The type of authorization to use while testing (None, Basic, Session, Token)" },
-        "Token": { "value": "", "description": "The token to use when AuthType is set to Token" },
-        "UseSSL": { "value": "True", "description": "If SSL should be used while testing (True, False)" },
-        "CertificateCheck": { "value": "False", "description": "If validation of the SSL certificate should be performed (True, False)" },
-        "CertificateBundle": { "value": "", "description": "The location (file or directory) with certificates of trusted CAs" }
+        "TargetIP": {
+            "value": "127.0.0.1:8000",
+            "description": "The IPv4 address of the system under test"
+        },
+        "SystemInfo": {
+            "value": "Test Config, place your own description of target system here",
+            "description": "A string to describe the system"
+        },
+        "UserName": {
+            "value": "xuser",
+            "description": "The user ID of the administrator on the system"
+        },
+        "Password": {
+            "value": "xpasswd",
+            "description": "The password of the administrator on the system"
+        },
+        "AuthType": {
+            "value": "Basic",
+            "description": "The type of authorization to use while testing",
+            "options": ( "None", "Basic", "Session", "Token" )
+        },
+        "Token": {
+            "value": "",
+            "description": "The token to use when AuthType is set to Token"
+        },
+        "UseSSL": {
+            "value": "True",
+            "description": "If SSL should be used while testing",
+            "options": ( "True", "False" )
+        },
+        "CertificateCheck": {
+            "value": "False",
+            "description": "If validation of the SSL certificate should be performed",
+            "options": ( "True", "False" )
+        },
+        "CertificateBundle": {
+            "value": "",
+            "description": "The location (file or directory) with certificates of trusted CAs"
+        }
     },
     "Options": {
-        "MetadataFilePath": { "value": "./SchemaFiles/metadata", "description": "Points to the local location of the DMTF schema files" },
-        "CacheMode": { "value": "Off", "description": "Cache options for overriding or falling back to a file (Off, Prefer, Fallback)" },
-        "CacheFilePath": { "value": "", "description": "The path to the cache directory" },
-        "SchemaSuffix": { "value": "_v1.xml", "description": "The file suffix to append when searching for schema files" },
-        "Timeout": { "value": "30", "description": "Interval of time before timing out on an HTTP request" },
-        "HttpProxy": { "value": "", "description": "The proxy for HTTP requests to external URLs (not for the system under test)" },
-        "HttpsProxy": { "value": "", "description": "The proxy for HTTPS requests to external URLs (not for the system under test)" },
-        "LocalOnlyMode": { "value": "False", "description": "Only test properties against schema placed in the root of MetadataFilePath (True, False)" },
-        "ServiceMode": { "value": "False", "description": "Only test properties against resources/schema that exist on the service (True, False)" },
-        "LinkLimit": { "value": "LogEntry:20", "description": "Limits the amount of links accepted from collections" },
-        "Sample": { "value": "0", "description": "The number of random members from large collections to validate; 0 = validate everything" }
+        "MetadataFilePath": {
+            "value": "./SchemaFiles/metadata",
+            "description": "Points to the local location of the DMTF schema files"
+        },
+        "CacheMode": {
+            "value": "Off",
+            "description": "Cache options for overriding or falling back to a file",
+            "options": ( "Off", "Prefer", "Fallback" )
+        },
+        "CacheFilePath": {
+            "value": "",
+            "description": "The path to the cache directory"
+        },
+        "SchemaSuffix": {
+            "value": "_v1.xml",
+            "description": "The file suffix to append when searching for schema files"
+        },
+        "Timeout": {
+            "value": "30",
+            "description": "Interval of time before timing out on an HTTP request"
+        },
+        "HttpProxy": {
+            "value": "",
+            "description": "The proxy for HTTP requests to external URLs (not for the system under test)"
+        },
+        "HttpsProxy": {
+            "value": "",
+            "description": "The proxy for HTTPS requests to external URLs (not for the system under test)"
+        },
+        "LocalOnlyMode": {
+            "value": "False",
+            "description": "Only test properties against schema placed in the root of MetadataFilePath",
+            "options": ( "True", "False" )
+        },
+        "ServiceMode": {
+            "value": "False",
+            "description": "Only test properties against resources/schema that exist on the service",
+            "options": ( "True", "False" )
+        },
+        "LinkLimit": {
+            "value": "LogEntry:20",
+            "description": "Limits the amount of links accepted from collections"
+        },
+        "Sample": {
+            "value": "0",
+            "description": "The number of random members from large collections to validate; 0 = validate everything"
+        }
     },
     "Validator": {
-        "PayloadMode": { "value": "Default", "description": "Specify a file or specific URL and traversal behavior (Default, Tree, Single, TreeFile, SingleFile)" },
-        "PayloadFilePath": { "value": "", "description": "The path to URI/file" },
-        "LogPath": { "value": "./logs", "description": "The folder where to place the output log files" }
+        "PayloadMode": {
+            "value": "Default",
+            "description": "Controls traversal of the service, or if local files are to be used",
+            "options": ( "Default", "Tree", "Single", "TreeFile", "SingleFile" )
+        },
+        "PayloadFilePath": {
+            "value": "",
+            "description": "The path to a specific URI or file to validate"
+        },
+        "LogPath": {
+            "value": "./logs",
+            "description": "The folder where to place the output log files"
+        }
     }
 }
 
@@ -70,18 +148,24 @@ class RSVGui:
                 self.config[section][option] = g_config_defaults[section][option]
 
         # Read in the config file, and apply any valid settings
-        config_parser = configparser.ConfigParser()
-        config_parser.optionxform = str
-        config_parser.read( g_config_file_name )
-        for section in config_parser.sections():
-            for option in config_parser.options( section ):
-                if section in self.config:
-                    if option in self.config[section]:
-                        self.config[section][option]["value"] = config_parser.get( section, option )
+        self.config_file = g_config_file_name
+        self.parse_config()
 
         # Initialize the window
         self.parent = parent
         self.parent.title( "Redfish Service Validator {}".format( rsv.tool_version ) )
+
+        # Add the menubar
+        menu_bar = tk.Menu( self.parent )
+        file_menu = tk.Menu( menu_bar, tearoff = 0 )
+        file_menu.add_command( label = "Open Config", command = self.open_config )
+        file_menu.add_command( label = "Save Config", command = self.save_config )
+        file_menu.add_command( label = "Save Config As", command = self.save_config_as )
+        file_menu.add_command( label = "Edit Config", command = self.edit_config )
+        file_menu.add_separator()
+        file_menu.add_command( label = "Exit", command = self.parent.destroy )
+        menu_bar.add_cascade( label = "File", menu = file_menu )
+        self.parent.config( menu = menu_bar )
 
         # Add the logo
         image = tk.PhotoImage( data = logo.logo )
@@ -92,8 +176,6 @@ class RSVGui:
         # Add the buttons
         button_frame = tk.Frame( self.parent )
         button_frame.pack( side = tk.TOP, fill = tk.X )
-        tk.Button( button_frame, text = "Edit Config", command = self.edit_config ).pack( side = tk.LEFT )
-        tk.Button( button_frame, text = "Save Config", command = self.save_config ).pack( side = tk.LEFT )
         self.run_button_text = tk.StringVar()
         self.run_button_text.set( "Run Test" )
         self.run_button = tk.Button( button_frame, textvariable = self.run_button_text, command = self.run )
@@ -103,16 +185,59 @@ class RSVGui:
         tk.Label( button_frame, textvariable = self.run_label_text ).pack( side = tk.LEFT )
         tk.Button( button_frame, text = "Exit", command = self.parent.destroy ).pack( side = tk.RIGHT )
 
+    def parse_config( self ):
+        """
+        Parses the configuration settings from a file
+        """
+        config_parser = configparser.ConfigParser()
+        config_parser.optionxform = str
+        config_parser.read( self.config_file )
+        for section in config_parser.sections():
+            for option in config_parser.options( section ):
+                if section in self.config:
+                    if option in self.config[section]:
+                        self.config[section][option]["value"] = config_parser.get( section, option )
+
+    def build_config_parser( self, preserve_case ):
+        """
+        Builds a config parser element from the existing configuration
+
+        Args:
+            preserve_case (bool): True if the casing of the options is to be preserved
+
+        Returns:
+            ConfigParser: A ConfigParser object generated from the configuration data
+        """
+        config_parser = configparser.ConfigParser()
+        if preserve_case == True:
+            config_parser.optionxform = str
+        for section in self.config:
+            config_parser.add_section( section )
+            for option in self.config[section]:
+                config_parser.set( section, option, self.config[section][option]["value"] )
+        return config_parser
+
+    def open_config( self ):
+        """
+        Opens the configuration settings from a file
+        """
+        filename = tkFileDialog.askopenfilename( initialdir = os.getcwd(), title = "Open", filetypes = ( ( "INI", "*.ini" ), ( "All Files", "*.*" ) ) )
+        if filename == "":
+            # User closed the box; just return
+            return
+        self.config_file = filename
+        self.parse_config()
+
     def edit_config( self ):
         """
         Edits the configuration settings
         """
         option_win = tk.Toplevel()
-        self.config_item_box = {}
+        config_values = {}
 
         # Iterate through the config file options to build the window
         for section in self.config:
-            self.config_item_box[section] = {}
+            config_values[section] = {}
             section_frame = tk.Frame( option_win )
             section_frame.pack( side = tk.TOP )
             tk.Label( section_frame, text = section, anchor = "center", font = ( None, 16 ) ).pack( side = tk.LEFT )
@@ -120,46 +245,57 @@ class RSVGui:
                 option_frame = tk.Frame( option_win )
                 option_frame.pack( side = tk.TOP, fill = tk.X )
                 tk.Label( option_frame, text = option, width = 16, anchor = "w" ).pack( side = tk.LEFT )
-                self.config_item_box[section][option] = tk.Entry( option_frame, width = 32 )
-                self.config_item_box[section][option].insert( tk.END, self.config[section][option]["value"] )
-                self.config_item_box[section][option].pack( side = tk.LEFT )
+                config_values[section][option] = tk.StringVar()
+                config_values[section][option].set( self.config[section][option]["value"] )
+                if "options" in self.config[section][option]:
+                    option_menu = tk.OptionMenu( option_frame, config_values[section][option], *self.config[section][option]["options"] )
+                    option_menu.configure( width = 26 )    # Need a better way to fine tune this so it lines up nicely with the text boxes
+                    option_menu.pack( side = tk.LEFT )
+                else:
+                    tk.Entry( option_frame, width = 32, textvariable = config_values[section][option] ).pack( side = tk.LEFT )
                 tk.Label( option_frame, text = self.config[section][option]["description"], anchor = "w" ).pack( side = tk.LEFT )
-        tk.Button( option_win, text = "Apply", command = lambda: self.apply_config( option_win ) ).pack( side = tk.BOTTOM )
+        tk.Button( option_win, text = "Apply", command = lambda: self.apply_config( option_win, config_values ) ).pack( side = tk.BOTTOM )
 
-    def apply_config( self, window ):
+    def apply_config( self, window, config_values ):
         """
         Applies the configation settings from the edit window
 
         Args:
             window (Toplevel): Tkinter Toplevel object with text boxes to apply
+            config_values (Array): An array of StringVar objects with the user input
         """
         for section in self.config:
             for option in self.config[section]:
-                self.config[section][option]["value"] = self.config_item_box[section][option].get()
+                self.config[section][option]["value"] = config_values[section][option].get()
         window.destroy()
 
     def save_config( self ):
         """
         Saves the config file
         """
-        config_parser = configparser.ConfigParser()
-        config_parser.optionxform = str
-        for section in self.config:
-            config_parser.add_section( section )
-            for option in self.config[section]:
-                config_parser.set( section, option, self.config[section][option]["value"] )
-        with open( g_config_file_name, "w" ) as config_file:
+        config_parser = self.build_config_parser( True )
+        with open( self.config_file, "w" ) as config_file:
             config_parser.write( config_file )
+
+    def save_config_as( self ):
+        """
+        Saves the config file as a new file
+        """
+        filename = tkFileDialog.asksaveasfilename( initialdir = os.getcwd(), title = "Save As", filetypes = ( ( "INI", "*.ini" ), ( "All Files", "*.*" ) ) )
+        if filename == "":
+            # User closed the box; just return
+            return
+        self.config_file = filename
+        if self.config_file.lower().endswith( ".ini" ) == False:
+            self.config_file = self.config_file + ".ini"
+        self.save_config()
 
     def run( self ):
         """
         Runs the service validator
         """
-        # Save the config file
-        self.save_config()
         self.run_button_text.set( "Running" )
         self.run_button.config( state = tk.DISABLED )
-
         run_thread = threading.Thread( target = self.run_imp )
         run_thread.daemon = True
         run_thread.start()
@@ -172,15 +308,13 @@ class RSVGui:
 
         # Launch the validator
         try:
-            rsv_config = configparser.ConfigParser()
-            rsv_config.read( g_config_file_name )
+            rsv_config = self.build_config_parser( False )
             status_code, last_results_page = rsv.main( rsv_config )
             if last_results_page != None:
                 webbrowser.open_new( last_results_page )
         except:
             oops_window = tk.Toplevel()
-            oops_label = tk.Label( oops_window, text = "Please copy the info below and file an issue on GitHub!", width = 64, anchor = "center" )
-            oops_label.pack( side = tk.TOP )
+            tk.Label( oops_window, text = "Please copy the info below and file an issue on GitHub!", width = 64, anchor = "center" ).pack( side = tk.TOP )
             oops_text_frame = tk.Frame( oops_window )
             oops_text_frame.pack( side = tk.TOP )
             oops_scroll = tk.Scrollbar( oops_text_frame )
@@ -190,10 +324,8 @@ class RSVGui:
             oops_text.pack( side = tk.TOP )
             oops_button_frame = tk.Frame( oops_window )
             oops_button_frame.pack( side = tk.BOTTOM )
-            oops_ok = tk.Button( oops_button_frame, text = "OK", command = oops_window.destroy )
-            oops_ok.pack( side = tk.LEFT )
-            oops_copy = tk.Button( oops_button_frame, text = "Copy", command = lambda: self.copy_text( oops_text ) )
-            oops_copy.pack( side = tk.RIGHT )
+            tk.Button( oops_button_frame, text = "OK", command = oops_window.destroy ).pack( side = tk.LEFT )
+            tk.Button( oops_button_frame, text = "Copy", command = lambda: self.copy_text( oops_text ) ).pack( side = tk.RIGHT )
         self.run_button.config( state = tk.NORMAL )
         self.run_button_text.set( "Run Test" )
         self.run_label_text.set( "Test Complete" )
