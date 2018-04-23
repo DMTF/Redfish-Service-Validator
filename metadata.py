@@ -2,8 +2,9 @@
 # Copyright 2018 Distributed Management Task Force, Inc. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
+import os
 import time
-from collections import Counter, OrderedDict
+from collections import Counter, OrderedDict, defaultdict
 import traverseService as rst
 
 EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
@@ -42,6 +43,15 @@ def format_tag_string(tag):
     return (tag_name + ' ' + tag_attr).strip()
 
 
+def list_html(entries):
+    html_str = '<ul>'
+    for entry in entries:
+        html_str += '<li>{}</li>' \
+            .format(entry)
+    html_str += '</ul>'
+    return html_str
+
+
 def tag_list_html(tags_dict):
     html_str = '<ul>'
     for tag in tags_dict:
@@ -57,8 +67,9 @@ class Metadata(object):
 
     def __init__(self, logger):
         self.success_get = False
-        self.soup = None
+        self.md_soup = None
         self.service_refs = dict()
+        self.uri_to_namespaces = defaultdict(list)
         self.elapsed_secs = 0
         self.metadata_namespaces = set()
         self.service_namespaces = set()
@@ -66,35 +77,45 @@ class Metadata(object):
         self.bad_tag_ns = dict()
         self.refs_missing_uri = dict()
         self.includes_missing_ns = dict()
+        self.bad_schema_uris = set()
+        self.bad_namespace_include = set()
         self.counter = OrderedCounter()
         self.logger = logger
         self.redfish_extensions_alias_ok = False
 
         start = time.time()
-        success, soup, uri = rst.getSchemaDetails(Metadata.schema_type, Metadata.metadata_uri)
+        self.success_get, self.md_soup, uri = rst.getSchemaDetails(Metadata.schema_type, Metadata.metadata_uri)
         self.elapsed_secs = time.time() - start
-        if success:
-            self.success_get = True
-            self.soup = soup
-            self.service_refs = rst.getReferenceDetails(soup, name=Metadata.schema_type)
+        if self.success_get:
+            self.service_refs = rst.getReferenceDetails(self.md_soup, name=Metadata.schema_type)
+            # set of namespaces included in $metadata
             self.metadata_namespaces = {k for k in self.service_refs.keys()}
+            # create map of schema URIs to namespaces from $metadata
+            for k in self.service_refs.keys():
+                self.uri_to_namespaces[self.service_refs[k][1]].append(self.service_refs[k][0])
             logger.debug('Metadata: uri = {}'.format(uri))
             logger.debug('Metadata: metadata_namespaces: {} = {}'
                          .format(type(self.metadata_namespaces), self.metadata_namespaces))
+            # check for Redfish alias for RedfishExtensions.v1_0_0
             ref = self.service_refs.get('Redfish')
             if ref is not None and ref[0] == 'RedfishExtensions.v1_0_0':
                 self.redfish_extensions_alias_ok = True
             logger.debug('Metadata: redfish_extensions_alias_ok = {}'.format(self.redfish_extensions_alias_ok))
-            self.check_tags(soup)
+            # check for XML tag problems
+            self.check_tags()
+            # check that all namespace includes are found in the referenced schema
+            self.check_namespaces_in_schemas()
             logger.debug('Metadata: bad_tags = {}'.format(self.bad_tags))
             logger.debug('Metadata: bad_tag_ns = {}'.format(self.bad_tag_ns))
             logger.debug('Metadata: refs_missing_uri = {}'.format(self.refs_missing_uri))
             logger.debug('Metadata: includes_missing_ns = {}'.format(self.includes_missing_ns))
+            logger.debug('Metadata: bad_schema_uris = {}'.format(self.bad_schema_uris))
+            logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
         else:
             logger.warning('Metadata: getSchemaDetails() did not return success')
 
     def get_soup(self):
-        return self.soup
+        return self.md_soup
 
     def get_service_refs(self):
         return self.service_refs
@@ -118,27 +139,44 @@ class Metadata(object):
         else:
             return None
 
-    def check_tags(self, soup):
+    def check_tags(self):
         try:
-            for tag in soup.find_all(bad_edm_tags):
+            for tag in self.md_soup.find_all(bad_edm_tags):
                 tag_str = format_tag_string(tag)
                 self.bad_tags[tag_str] = self.bad_tags.get(tag_str, 0) + 1
-            for tag in soup.find_all(bad_edmx_tags):
+            for tag in self.md_soup.find_all(bad_edmx_tags):
                 tag_str = format_tag_string(tag)
                 self.bad_tags[tag_str] = self.bad_tags.get(tag_str, 0) + 1
-            for tag in soup.find_all(reference_missing_uri_attr):
+            for tag in self.md_soup.find_all(reference_missing_uri_attr):
                 tag_str = format_tag_string(tag)
                 self.refs_missing_uri[tag_str] = self.refs_missing_uri.get(tag_str, 0) + 1
-            for tag in soup.find_all(include_missing_namespace_attr):
+            for tag in self.md_soup.find_all(include_missing_namespace_attr):
                 tag_str = format_tag_string(tag)
                 self.includes_missing_ns[tag_str] = self.includes_missing_ns.get(tag_str, 0) + 1
-            for tag in soup.find_all(other_ns_tags):
+            for tag in self.md_soup.find_all(other_ns_tags):
                 tag_str = tag.name if tag.prefix is None else tag.prefix + ':' + tag.name
                 tag_ns = 'xmlns{}="{}"'.format(':' + tag.prefix if tag.prefix is not None else '', tag.namespace)
                 tag_str = tag_str + ' ' + tag_ns
                 self.bad_tag_ns[tag_str] = self.bad_tag_ns.get(tag_str, 0) + 1
         except Exception as e:
             self.logger.warning('Metadata: Problem parsing $metadata document: {}'.format(e))
+
+    def check_namespaces_in_schemas(self):
+        for k in self.uri_to_namespaces.keys():
+            schema_uri = k
+            if '#' in schema_uri:
+                schema_uri, frag = k.split('#', 1)
+            schema_type = os.path.basename(os.path.normpath(k)).strip('.xml').strip('_v1')
+            success, soup, _ = rst.getSchemaDetails(schema_type, schema_uri)
+            if success:
+                for namespace in self.uri_to_namespaces[k]:
+                    if soup.find('Schema', attrs={'Namespace': namespace}) is None:
+                        msg = 'Namespace {} not found in schema {}'.format(namespace, k)
+                        self.logger.debug('Metadata: {}'.format(msg))
+                        self.bad_namespace_include.add(msg)
+            else:
+                self.logger.debug('Metadata: failure opening schema {} of type {}'.format(schema_uri, schema_type))
+                self.bad_schema_uris.add(schema_uri)
 
     def get_counter(self):
         counter = OrderedCounter()
@@ -152,6 +190,8 @@ class Metadata(object):
         counter['missingUriAttr'] = len(self.refs_missing_uri)
         counter['missingNamespaceAttr'] = len(self.includes_missing_ns)
         counter['badTagNamespaces'] = len(self.bad_tag_ns)
+        counter['badSchemaUris'] = len(self.bad_schema_uris)
+        counter['badNamespaceInclude'] = len(self.bad_namespace_include)
         self.counter = counter
         return self.counter
 
@@ -216,6 +256,14 @@ class Metadata(object):
             if len(self.bad_tag_ns) > 0:
                 html_str += '<tr><td class="fail log">ERROR - The following tags in $metadata have an unexpected namespace:'
                 html_str += tag_list_html(self.bad_tag_ns)
+                html_str += '</td></tr>'
+            if len(self.bad_schema_uris) > 0:
+                html_str += '<tr><td class="fail log">ERROR - The following schema URIs referenced from $metadata could not be retrieved:'
+                html_str += list_html(self.bad_schema_uris)
+                html_str += '</td></tr>'
+            if len(self.bad_namespace_include) > 0:
+                html_str += '<tr><td class="fail log">ERROR - The following namespaces included in $metadata could not be found in the referenced schema URI:'
+                html_str += list_html(self.bad_namespace_include)
                 html_str += '</td></tr>'
         html_str += '</table>'
 
