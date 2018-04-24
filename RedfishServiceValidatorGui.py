@@ -149,6 +149,7 @@ class RSVGui:
 
         # Read in the config file, and apply any valid settings
         self.config_file = g_config_file_name
+        self.system_under_test = tk.StringVar()
         self.parse_config()
 
         # Initialize the window
@@ -173,6 +174,9 @@ class RSVGui:
         label.image = image
         label.pack( side = tk.TOP )
 
+        # Add the system under test label
+        tk.Label( self.parent, textvariable = self.system_under_test, font = ( None, 12 ) ).pack( side = tk.TOP )
+
         # Add the buttons
         button_frame = tk.Frame( self.parent )
         button_frame.pack( side = tk.TOP, fill = tk.X )
@@ -184,6 +188,12 @@ class RSVGui:
         self.run_label_text.set( "" )
         tk.Label( button_frame, textvariable = self.run_label_text ).pack( side = tk.LEFT )
         tk.Button( button_frame, text = "Exit", command = self.parent.destroy ).pack( side = tk.RIGHT )
+
+    def update_sut( self ):
+        """
+        Updates the System Under Test string
+        """
+        self.system_under_test.set( "System Under Test: " + self.config["SystemInformation"]["TargetIP"]["value"] )
 
     def parse_config( self ):
         """
@@ -197,6 +207,7 @@ class RSVGui:
                 if section in self.config:
                     if option in self.config[section]:
                         self.config[section][option]["value"] = config_parser.get( section, option )
+        self.update_sut()
 
     def build_config_parser( self, preserve_case ):
         """
@@ -267,6 +278,7 @@ class RSVGui:
         for section in self.config:
             for option in self.config[section]:
                 self.config[section][option]["value"] = config_values[section][option].get()
+        self.update_sut()
         window.destroy()
 
     def save_config( self ):
