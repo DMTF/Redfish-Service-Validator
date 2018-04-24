@@ -309,9 +309,14 @@ class RSVGui:
         # Launch the validator
         try:
             rsv_config = self.build_config_parser( False )
-            status_code, last_results_page = rsv.main( rsv_config )
+            status_code, last_results_page, exit_string = rsv.main( rsv_config )
             if last_results_page != None:
                 webbrowser.open_new( last_results_page )
+            else:
+                # The validation could not take place (for a controlled reason)
+                notification_window = tk.Toplevel()
+                tk.Label( notification_window, text = "Test aborted: " + exit_string, anchor = "center" ).pack( side = tk.TOP )
+                tk.Button( notification_window, text = "OK", command = notification_window.destroy ).pack( side = tk.BOTTOM )
         except:
             oops_window = tk.Toplevel()
             tk.Label( oops_window, text = "Please copy the info below and file an issue on GitHub!", width = 64, anchor = "center" ).pack( side = tk.TOP )

@@ -1339,7 +1339,7 @@ def main(configpsr=None):
         else:
             rsvLogger.info('No ip or config specified.')
             argget.print_help()
-            return None, 1
+            return 1, None, 'No configuration given'
         # Send config only with keys supported by program
         linklimitdict = {}
         if cdict.get('linklimit') is not None:
@@ -1356,7 +1356,7 @@ def main(configpsr=None):
 
     except Exception as ex:
         rsvLogger.exception("Something went wrong")  # Printout FORMAT
-        return None, 1
+        return 1, None, 'Unexpected exception while parsing inputs'
 
     config_str = ""
     for cnt, item in enumerate(sorted(list(cdict.keys() - set(['systeminfo', 'configuri', 'targetip', 'configset', 'password', 'description']))), 1):
@@ -1396,14 +1396,14 @@ def main(configpsr=None):
                 f.close()
         else:
             rsvLogger.error('File not found: {}'.format(ppath))
-            return None, 1
+            return 1, None, 'File not found: {}'.format(ppath)
 
     # start session if using Session auth
     if rst.currentSession is not None:
         success = rst.currentSession.startSession()
         if not success:
             # terminate program on start session error (error logged in startSession() call above)
-            return None, 1
+            return 1, None, 'Could not establish a session with the service'
 
     # read $metadata into Metadata object
     rst.callResourceURI.cache_clear()
@@ -1420,7 +1420,7 @@ def main(configpsr=None):
     except AuthenticationError as e:
         # log authentication error and terminate program
         rsvLogger.error('{}'.format(e))
-        return None, 1
+        return 1, None, 'Failed to authenticate with the service'
 
     rsvLogger.debug('Metadata: Namespaces referenced in service: {}'.format(rst.metadata.get_service_namespaces()))
     rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(rst.metadata.get_missing_namespaces()))
@@ -1593,9 +1593,9 @@ def main(configpsr=None):
         rsvLogger.info("Validation has succeeded.")
         status_code = 0
 
-    return status_code, lastResultsPage
+    return status_code, lastResultsPage, 'Validation done'
 
 
 if __name__ == '__main__':
-    status_code, lastResultsPage = main()
+    status_code, lastResultsPage, exit_string = main()
     sys.exit(status_code)
