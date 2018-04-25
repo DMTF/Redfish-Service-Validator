@@ -987,9 +987,8 @@ def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='En
             break
 
         else:
-            traverseLogger.error("type doesn't exist? {}".format(propertyFullType))
-            raise Exception(
-                "getPropertyDetails: problem grabbing type: " + propertyFullType)
+            traverseLogger.error('Type {} not found under namespace {} in schema {}'
+                                 .format(PropertyType, PropertyNamespace, uri))
             break
 
     return propEntry
