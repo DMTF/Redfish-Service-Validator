@@ -741,8 +741,14 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     innerschema = soup.find('Schema', attrs={'Namespace': SchemaNamespace})
 
     if innerschema is None:
-        traverseLogger.error("Got XML, but expected schema doesn't exist...? {}, {}\n... we will be unable to generate properties".format(
-                             SchemaNamespace, SchemaType))
+        uri = metadata.get_schema_uri(SchemaNamespace)
+        if uri is None:
+            if '.' in SchemaNamespace:
+                uri = metadata.get_schema_uri(SchemaNamespace.split('.', 1)[0])
+            else:
+                uri = metadata.get_schema_uri(SchemaType)
+        traverseLogger.error('Schema namespace {} not found in schema file {}. Will not be able to gather type details.'
+                             .format(SchemaNamespace, uri if uri is not None else SchemaType))
         return False, PropertyList, PropertyPattern
 
     element = innerschema.find(tagType, attrs={'Name': SchemaType}, recursive=False)
@@ -987,9 +993,8 @@ def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='En
             break
 
         else:
-            traverseLogger.error("type doesn't exist? {}".format(propertyFullType))
-            raise Exception(
-                "getPropertyDetails: problem grabbing type: " + propertyFullType)
+            traverseLogger.error('Type {} not found under namespace {} in schema {}'
+                                 .format(PropertyType, PropertyNamespace, uri))
             break
 
     return propEntry
