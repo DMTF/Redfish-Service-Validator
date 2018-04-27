@@ -18,7 +18,7 @@ from traverseService import AuthenticationError
 import metadata as md
 import RedfishLogo as logo
 
-tool_version = '1.0.7'
+tool_version = '1.0.8'
 
 rsvLogger = rst.getLogger()
 
