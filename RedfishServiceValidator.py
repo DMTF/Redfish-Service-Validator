@@ -12,11 +12,11 @@ from datetime import datetime
 from collections import Counter, OrderedDict
 import logging
 import json
-import html
-import traverseService as rst
+
+from simpletypes import *
 from traverseService import AuthenticationError
-import metadata as md
-import RedfishLogo as logo
+from tohtml import renderHtml, writeHtml
+import traverseService as rst
 
 tool_version = '1.0.8'
 
@@ -570,120 +570,6 @@ def displayValue(val, autoExpandName=None):
     return disp_val
 
 
-def validateDeprecatedEnum(name, val, listEnum):
-    """
-    Validates a DeprecatedEnum
-    """
-    paramPass = True
-    if isinstance(val, list):
-        display_val = []
-        for enumItem in val:
-            display_val.append(dict(enumItem))
-            for k, v in enumItem.items():
-                paramPass = paramPass and str(v) in listEnum
-        if not paramPass:
-            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}"
-                            .format(str(name), display_val, str(listEnum)))
-    elif isinstance(val, str):
-        paramPass = str(val) in listEnum
-        if not paramPass:
-            rsvLogger.error("{}: Invalid DeprecatedEnum value '{}' found, expected {}"
-                            .format(str(name), val, str(listEnum)))
-    else:
-        rsvLogger.error("{}: Expected list or string value for DeprecatedEnum, got {}".format(str(name), str(type(val)).strip('<>')))
-    return paramPass
-
-
-def validateEnum(name, val, listEnum):
-    paramPass = isinstance(val, str)
-    if paramPass:
-        paramPass = val in listEnum
-        if not paramPass:
-            rsvLogger.error("{}: Invalid Enum value '{}' found, expected {}".format(str(name), val, str(listEnum)))
-    else:
-        rsvLogger.error("{}: Expected string value for Enum, got {}".format(str(name), str(type(val)).strip('<>')))
-    return paramPass
-
-
-def validateString(name, val, pattern=None):
-    """
-    Validates a string, given a value and a pattern
-    """
-    paramPass = isinstance(val, str)
-    if paramPass:
-        if pattern is not None:
-            match = re.fullmatch(pattern, val)
-            paramPass = match is not None
-            if not paramPass:
-                rsvLogger.error("{}: String '{}' does not match pattern '{}'".format(name, str(val), str(pattern)))
-        else:
-            paramPass = True
-    else:
-        rsvLogger.error("{}: Expected string value, got type {}".format(name, str(type(val)).strip('<>')))
-    return paramPass
-
-
-def validateDatetime(name, val):
-    """
-    Validates a Datetime, given a value (pattern predetermined)
-    """
-    paramPass = validateString(name, val, '.*(Z|(\+|-)[0-9][0-9]:[0-9][0-9])')
-    if not paramPass:
-        rsvLogger.error("\t...: Malformed DateTimeOffset")
-    return paramPass
-
-
-def validateGuid(name, val):
-    """
-    Validates a Guid, given a value (pattern predetermined)
-    """
-    paramPass = validateString(name, val, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-    if not paramPass:
-        rsvLogger.error("\t...: Malformed Guid")
-    return paramPass
-
-
-def validateInt(name, val, minVal=None, maxVal=None):
-    """
-    Validates a Int, then passes info to validateNumber
-    """
-    if not isinstance(val, int):
-        rsvLogger.error("{}: Expected integer, got type {}".format(name, str(type(val)).strip('<>')))
-        return False
-    else:
-        return validateNumber(name, val, minVal, maxVal)
-
-
-def validateNumber(name, val, minVal=None, maxVal=None):
-    """
-    Validates a Number and its min/max values
-    """
-    paramPass = isinstance(val, (int, float))
-    if paramPass:
-        if minVal is not None:
-            paramPass = paramPass and minVal <= val
-            if not paramPass:
-                rsvLogger.error("{}: Value out of assigned min range, {} < {}".format(name, str(val), str(minVal)))
-        if maxVal is not None:
-            paramPass = paramPass and maxVal >= val
-            if not paramPass:
-                rsvLogger.error("{}: Value out of assigned max range, {} > {}".format(name, str(val), str(maxVal)))
-    else:
-        rsvLogger.error("{}: Expected integer or float, got type {}".format(name, str(type(val)).strip('<>')))
-    return paramPass
-
-
-def validatePrimitive(name, val):
-    """
-    Validates a Primitive
-    """
-    if isinstance(val, (int, float, str, bool)):
-        return True
-    else:
-        rsvLogger.error("{}: Expected primitive type, got type {}".format(name, str(type(val)).strip('<>')))
-        return False
-
-
 def loadAttributeRegDict(odata_type, json_data):
     """
     Load the attribute registry from the json payload into a dictionary and store it in global attributeRegistries dict
@@ -1062,6 +948,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     messages = OrderedDict()
     success = True
 
+    results[uriName] = {'uri':URI, 'success':False, 'counts':counts, 'messages':messages, 'errors':errorMessages,\
+            'rtime':'', 'context':'', 'fulltype':''}
+
     # check for @odata mandatory stuff
     # check for version numbering problems
     # check id if its the same as URI
@@ -1093,9 +982,6 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             uriName, URI, expectedType, expectedSchema, expectedJson, parent)
         if not propResourceObj.initiated:
             counts['problemResource'] += 1
-            success = False
-            results[uriName] = (URI, success, counts, messages,
-                                errorMessages, None, None)
             rsvLogger.removeHandler(errh)  # Printout FORMAT
             return False, counts, results, None, None
     except AuthenticationError as e:
@@ -1103,9 +989,6 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     except Exception as e:
         rsvLogger.exception("")  # Printout FORMAT
         counts['exceptionResource'] += 1
-        success = False
-        results[uriName] = (URI, success, counts, messages,
-                            errorMessages, None, None)
         rsvLogger.removeHandler(errh)  # Printout FORMAT
         return False, counts, results, None, None
     counts['passGet'] += 1
@@ -1114,8 +997,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     sample_string = rst.uri_sample_map.get(URI)
     sample_string = sample_string + ', ' if sample_string is not None else ''
 
-    results[uriName] = (str(URI) + ' ({}response time: {}s)'.format(sample_string, propResourceObj.rtime),
-                        success, counts, messages, errorMessages, propResourceObj.context, propResourceObj.typeobj.fulltype)
+    results[uriName]['uri'] = (str(URI) + ' ({}response time: {}s)'.format(sample_string, propResourceObj.rtime))
+    results[uriName]['rtime'] = propResourceObj.rtime
+    results[uriName]['context'] = propResourceObj.context
+    results[uriName]['fulltype'] = propResourceObj.typeobj.fulltype
+    results[uriName]['success'] = True
 
     # If this is an AttributeRegistry, load it for later use
     if isinstance(propResourceObj.jsondata, dict):
@@ -1250,31 +1136,39 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
 
     return validateSuccess, counts, results, refLinks, thisobj
 
-argparse2configparser = {
-        'user': 'username', 'nochkcert': '!certificatecheck', 'ca_bundle': 'certificatebundle', 'schemamode': 'schemamode',
-        'suffix': 'schemasuffix', 'schemadir': 'metadatafilepath', 'nossl': '!usessl', 'timeout': 'timeout', 'service': 'servicemode',
-        'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
-        'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
-        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
-        'linklimit': 'linklimit', 'sample': 'sample'}
-
 validatorconfig = {'payloadmode': 'Default', 'payloadfilepath': None, 'logpath': './logs'}
 
-def main(configpsr=None):
-    # this should be surface level, does no execution (should maybe move html rendering to its own function
-    # Only worry about configuring, executing and exiting circumstances, printout setup
-    # info: config information (without password), time started/finished, individual problems, pass/fail
-    # error: config is not good (catch, success), traverse is not good (should never happen)
-    # warn: what's missing that we can work around (local files?)
+def main(argv=None, direct_parser=None):
+    """
+    Main program
+    """
+
+    print(rsvLogger)
+    rsvLogger.info('ok')
+    
+    if argv is None:
+        argv = sys.argv
 
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
+    
+    # config
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
+
+    # tool
+    argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
+    argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
+    argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
+    argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
+    argget.add_argument('--sample', type=int, default=0, help='sample this number of members from large collections for validation; default is to validate all members')
+    argget.add_argument('--linklimit', type=str, help='Limit the amount of links in collections, formatted TypeName:## TypeName:## ..., default LogEntry:20 ', nargs='*')
+    argget.add_argument('-v', action='store_true', help='verbose log output to stdout')
+    argget.add_argument('--debug_logging', action="store_const", const=logging.DEBUG, default=logging.INFO,
+            help='Output debug statements to text log, otherwise it only uses INFO')
+
+    # service
     argget.add_argument('-i', '--ip', type=str, help='ip to test on [host:port]')
     argget.add_argument('-u', '--user', default='', type=str, help='user for basic auth')
     argget.add_argument('-p', '--passwd', default='', type=str, help='pass for basic auth')
-    argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
-    argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
-    argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
     argget.add_argument('--timeout', type=int, default=30, help='requests timeout in seconds')
     argget.add_argument('--nochkcert', action='store_true', help='ignore check for certificate')
     argget.add_argument('--nossl', action='store_true', help='use http instead of https')
@@ -1286,86 +1180,39 @@ def main(configpsr=None):
     argget.add_argument('--token', default="", type=str, help='bearer token for authtype Token')
     argget.add_argument('--http_proxy', type=str, default='', help='URL for the HTTP proxy')
     argget.add_argument('--https_proxy', type=str, default='', help='URL for the HTTPS proxy')
-    argget.add_argument('-v', action='store_true', help='verbose log output to stdout')
-    argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
-    argget.add_argument('--linklimit', type=str, help='Limit the amount of links in collections, formatted TypeName:## TypeName:## ..., default LogEntry:20 ', nargs='*')
-    argget.add_argument('--sample', type=int, default=0, help='sample this number of members from large collections for validation; default is to validate all members')
-    argget.add_argument('--debug_logging', action="store_const", const=logging.DEBUG, default=logging.INFO,
-            help='Output debug statements to text log, otherwise it only uses INFO')
-
 
     args = argget.parse_args()
+    
+    # clear cache from any other runs
+    rst.callResourceURI.cache_clear()
+    rst.getSchemaDetails.cache_clear()
+
+    # set up config (which creates service)
+    if direct_parser is not None:
+        try:
+            cdict = rst.convertConfigParserToDict(direct_parser)
+            rst.setConfig(cdict)
+        except Exception as ex:
+            rsvLogger.exception("Something went wrong")  # Printout FORMAT
+            return 1, None, 'Config Parser Exception'
+    elif args.config is None and args.ip is None:
+        rsvLogger.info('No ip or config specified.')
+        argget.print_help()
+        return 1, None, 'Config Incomplete'
+    else:
+        try:
+            rst.setByArgparse(args)
+        except Exception as ex:
+            rsvLogger.exception("Something went wrong")  # Printout FORMAT
+            return 1, None, 'Config Exception'
 
 
-    if args.v:
-        rst.ch.setLevel(logging.DEBUG)
-    cdict = {}
-    try:
-        if (args.config is not None) or (configpsr is not None):
-            if configpsr is None:
-                # Configuration not provided; read in the config file
-                configpsr = configparser.ConfigParser()
-                configpsr.read(args.config)
-            for x in configpsr:
-                for y in configpsr[x]:
-                    val = configpsr[x][y]
-                    if y not in rst.configset.keys() and x not in ['Information', 'Validator']:
-                        rsvLogger.error('Config option {} in {} unsupported!'.format(y, x))
-                    if val in ['', None]:
-                        continue
-                    if val.isdigit():
-                        val = int(val)
-                    elif y == 'linklimit':
-                        val = re.findall('[A-Za-z_]+:[0-9]+', val)
-                    elif str(val).lower() in ['on', 'true', 'yes']:
-                        val = True
-                    elif str(val).lower() in ['off', 'false', 'no']:
-                        val = False
-                    cdict[y] = val
-        elif args.ip is not None:
-            for param in args.__dict__:
-                if param in argparse2configparser:
-                    if isinstance(args.__dict__[param], list):
-                        for cnt, item in enumerate(argparse2configparser[param].split('+')):
-                            cdict[item] = args.__dict__[param][cnt]
-                    elif '+' not in argparse2configparser[param]:
-                        if '!' in argparse2configparser[param]:
-                            cdict[argparse2configparser[param].replace('!','')] = not args.__dict__[param]
-                        else:
-                            cdict[argparse2configparser[param]] = args.__dict__[param]
-                else:
-                    cdict[param] = args.__dict__[param]
-        else:
-            rsvLogger.info('No ip or config specified.')
-            argget.print_help()
-            return 1, None, 'No configuration given'
-        # Send config only with keys supported by program
-        linklimitdict = {}
-        if cdict.get('linklimit') is not None:
-            for item in cdict.get('linklimit'):
-                if re.match('[A-Za-z_]+:[0-9]+', item) is not None:
-                    typename, count = tuple(item.split(':')[:2])
-                    if typename not in linklimitdict:
-                        linklimitdict[typename] = int(count)
-                    else:
-                        rsvLogger.error('Limit already exists for {}'.format(typename))
-        cdict['linklimit'] = linklimitdict
-
-        rst.setConfig({key: cdict[key] for key in cdict.keys() if key in rst.configset.keys()})
-
-    except Exception as ex:
-        rsvLogger.exception("Something went wrong")  # Printout FORMAT
-        return 1, None, 'Unexpected exception while parsing inputs'
-
-    config_str = ""
-    for cnt, item in enumerate(sorted(list(cdict.keys() - set(['systeminfo', 'configuri', 'targetip', 'configset', 'password', 'description']))), 1):
-        config_str += "{}: {},  ".format(str(item), str(cdict[item] if cdict[item] != '' else 'None'))
-        if cnt % 6 == 0:
-            config_str += '\n'
-
-    sysDescription, ConfigURI = (cdict['systeminfo'], rst.config['configuri'])
-    logpath = cdict['logpath']
+    currentService = rst.currentService
+    metadata = rst.metadata
+    config = rst.config
+    sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
+    logpath = config['logpath']
 
     # Logging config
     startTick = datetime.now()
@@ -1376,16 +1223,19 @@ def main(configpsr=None):
     fh.setLevel(args.debug_logging)
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)  # Printout FORMAT
+
+    # start printing
     rsvLogger.info('ConfigURI: ' + ConfigURI)
     rsvLogger.info('System Info: ' + sysDescription)  # Printout FORMAT
-    rsvLogger.info(config_str)
+    rsvLogger.info(rst.configToStr())
     rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))  # Printout FORMAT
 
     # Start main
     status_code = 1
     jsonData = None
-    
-    pmode, ppath = cdict.get('payloadmode'), cdict.get('payloadfilepath')
+   
+    # Determine runner
+    pmode, ppath = config.get('payloadmode'), config.get('payloadfilepath')
     if pmode not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
         pmode = 'Default'
         rsvLogger.error('PayloadMode or path invalid, using Default behavior')
@@ -1397,18 +1247,12 @@ def main(configpsr=None):
         else:
             rsvLogger.error('File not found: {}'.format(ppath))
             return 1, None, 'File not found: {}'.format(ppath)
-
-    # start session if using Session auth
-    if rst.currentSession is not None:
-        success = rst.currentSession.startSession()
-        if not success:
-            # terminate program on start session error (error logged in startSession() call above)
-            return 1, None, 'Could not establish a session with the service'
-
-    # read $metadata into Metadata object
-    rst.callResourceURI.cache_clear()
-    rst.getSchemaDetails.cache_clear()
-    rst.metadata = md.Metadata(rsvLogger)
+        # start session if using Session auth
+        if currentService.currentSession is not None:
+            success = currentService.currentSession.startSession()
+            if not success:
+                # terminate program on start session error (error logged in startSession() call above)
+                return 1, None, 'Could not establish a session with the service'
 
     try:
         if 'Single' in pmode:
@@ -1422,6 +1266,8 @@ def main(configpsr=None):
         rsvLogger.error('{}'.format(e))
         return 1, None, 'Failed to authenticate with the service'
 
+    currentService.close()
+
     rsvLogger.debug('Metadata: Namespaces referenced in service: {}'.format(rst.metadata.get_service_namespaces()))
     rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(rst.metadata.get_missing_namespaces()))
 
@@ -1429,157 +1275,38 @@ def main(configpsr=None):
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))  # Printout FORMAT
 
-    # terminate session
-    if rst.currentSession is not None and rst.currentSession.started:
-        rst.currentSession.killSession()
-
-    # Render html
-    htmlStrTop = '<html><head><title>Conformance Test Summary</title>\
-            <style>\
-            .pass {background-color:#99EE99}\
-            .fail {background-color:#EE9999}\
-            .warn {background-color:#EEEE99}\
-            .bluebg {background-color:#BDD6EE}\
-            .button {padding: 12px; display: inline-block}\
-            .center {text-align:center;}\
-            .log {text-align:left; white-space:pre-wrap; word-wrap:break-word; font-size:smaller}\
-            .title {background-color:#DDDDDD; border: 1pt solid; font-height: 30px; padding: 8px}\
-            .titlesub {padding: 8px}\
-            .titlerow {border: 2pt solid}\
-            .results {transition: visibility 0s, opacity 0.5s linear; display: none; opacity: 0}\
-            .resultsShow {display: block; opacity: 1}\
-            body {background-color:lightgrey; border: 1pt solid; text-align:center; margin-left:auto; margin-right:auto}\
-            th {text-align:center; background-color:beige; border: 1pt solid}\
-            td {text-align:left; background-color:white; border: 1pt solid; word-wrap:break-word;}\
-            table {width:90%; margin: 0px auto; table-layout:fixed;}\
-            .titletable {width:100%}\
-            </style>\
-            </head>'
-
-    htmlStrBodyHeader = \
-        '<body><table><tr><th>' \
-        '<h2>##### Redfish Conformance Test Report #####</h2>' \
-        '<br>' \
-        '<h4><img align="center" alt="DMTF Redfish Logo" height="203" width="288"' \
-        'src="data:image/gif;base64,' + logo.logo + '"></h4>' \
-        '<br>' \
-        '<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
-        'https://github.com/DMTF/Redfish-Service-Validator</a>' \
-        '<br>Tool Version: ' + tool_version + \
-        '<br>' + startTick.strftime('%c') + \
-        '<br>(Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + ')' \
-        '' \
-        '<h4>This tool is provided and maintained by the DMTF. ' \
-        'For feedback, please open issues<br>in the tool\'s Github repository: ' \
-        '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">' \
-        'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>' \
-        '</th></tr>' \
-        '<tr><th>' \
-        '<h4>System: <a href="' + ConfigURI + '">' + ConfigURI + '</a> Description: ' + sysDescription + '</h4>' \
-        '</th></tr>' \
-        '<tr><th>' \
-        '<h4>Configuration:</h4>' \
-        '<h4>' + str(config_str.replace('\n', '<br>')) + '</h4>' \
-        '</th></tr>' \
-        ''
-
-    htmlStr = rst.metadata.to_html()
     finalCounts.update(rst.metadata.get_counter())
-
-    rsvLogger.info(len(results))
-    for cnt, item in enumerate(results):
-        type_name = ''
-        prop_type = results[item][6]
-        if prop_type is not None:
-            namespace = prop_type.replace('#', '').rsplit('.', 1)[0]
-            type_name = prop_type.replace('#', '').rsplit('.', 1)[-1]
-            if '.' in namespace:
-                type_name += ' ' + namespace.split('.', 1)[-1]
-        htmlStr += '<tr><th class="titlerow bluebg"><b>{}</b> ({})</th></tr>'.format(results[item][0], type_name)
-        htmlStr += '<tr><td class="titlerow"><table class="titletable"><tr>'
-        htmlStr += '<td class="title" style="width:40%"><div>{}</div>\
-                <div class="button warn" onClick="document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');">Show results</div>\
-                </td>'.format(results[item][0], cnt, cnt)
-        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>Schema File:</b> {}</div><div><b>Resource Type:</b> {}</div></td>'.format(results[item][5], type_name)
-        htmlStr += '<td style="width:10%"' + \
-            ('class="pass"> GET Success' if results[item]
-             [1] else 'class="fail"> GET Failure') + '</td>'
-        htmlStr += '<td style="width:10%">'
-
-        innerCounts = results[item][2]
-        finalCounts.update(innerCounts)
+    for item in results:
+        innerCounts = results[item]['counts']
 
         # detect if there are error messages for this resource, but no failure counts; if so, add one to the innerCounts
         counters_all_pass = True
         for countType in sorted(innerCounts.keys()):
-            if 'problem' in countType or 'fail' in countType or 'exception' in countType:
+            if any(x in countType for x in ['problem', 'fail', 'bad', 'exception']):
                 counters_all_pass = False
                 break
         error_messages_present = False
-        if results[item][4] is not None and len(results[item][4].getvalue()) > 0:
+        if results[item]['errors'] is not None and len(results[item]['errors'].getvalue()) > 0:
             error_messages_present = True
         if counters_all_pass and error_messages_present:
             innerCounts['failSchema'] = 1
 
-        for countType in sorted(innerCounts.keys()):
-            if 'problem' in countType or 'fail' in countType or 'exception' in countType:
-                rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, str(results[item][0]).split(' ')[0]))  # Printout FORMAT
-            innerCounts[countType] += 0
-            if 'fail' in countType or 'exception' in countType:
-                style = 'class="fail log"'
-            elif 'warn' in countType:
-                style = 'class="warn log"'
-            else:
-                style = 'class=log'
-            htmlStr += '<div {style}>{p}: {q}</div>'.format(
-                    p=countType,
-                    q=innerCounts.get(countType, 0),
-                    style=style)
-        htmlStr += '</td></tr>'
-        htmlStr += '</table></td></tr>'
-        htmlStr += '<tr><td class="results" id=\'resNum{}\'><table><tr><td><table><tr><th style="width:15%">Property Name</th> <th>Value</th> <th>Type</th> <th style="width:10%">Exists?</th> <th style="width:10%">Result</th> <tr>'.format(cnt)
-        if results[item][3] is not None:
-            for i in results[item][3]:
-                htmlStr += '<tr>'
-                htmlStr += '<td>' + str(i) + '</td>'
-                for j in results[item][3][i][:-1]:
-                    htmlStr += '<td >' + str(j) + '</td>'
-                # only color-code the last ("Success") column
-                success_col = results[item][3][i][-1]
-                if 'FAIL' in str(success_col).upper():
-                    htmlStr += '<td class="fail center">' + str(success_col) + '</td>'
-                elif 'DEPRECATED' in str(success_col).upper():
-                    htmlStr += '<td class="warn center">' + str(success_col) + '</td>'
-                elif 'PASS' in str(success_col).upper():
-                    htmlStr += '<td class="pass center">' + str(success_col) + '</td>'
-                else:
-                    htmlStr += '<td class="center">' + str(success_col) + '</td>'
-                htmlStr += '</tr>'
-        htmlStr += '</table></td></tr>'
-        if results[item][4] is not None:
-            htmlStr += '<tr><td class="fail log">' + html.escape(results[item][4].getvalue()).replace('\n', '<br />') + '</td></tr>'
-            results[item][4].close()
-        htmlStr += '<tr><td>---</td></tr></table></td></tr>'
-
-    htmlStr += '</table></body></html>'
-
-    htmlStrTotal = '<tr><td><div>Final counts: '
-    for countType in sorted(finalCounts.keys()):
-        htmlStrTotal += '{p}: {q},   '.format(p=countType, q=finalCounts.get(countType, 0))
-    htmlStrTotal += '</div><div class="button warn" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results resultsShow\'};">Expand All</div>'
-    htmlStrTotal += '</div><div class="button fail" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results\'};">Collapse All</div>'
-
-    htmlPage = htmlStrTop + htmlStrBodyHeader + htmlStrTotal + htmlStr
-
-    lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
-    with open(lastResultsPage, 'w', encoding='utf-8') as f:
-        f.write(htmlPage)
+        finalCounts.update(results[item]['counts'])
 
     fails = 0
-    for key in finalCounts:
-        if 'problem' in key or 'fail' in key or 'exception' in key:
+    for key in [key for key in finalCounts.keys()]:
+        if finalCounts[key] == 0:
+            del finalCounts[key]
+            continue
+        if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             fails += finalCounts[key]
+        
+    html_str = renderHtml(results, finalCounts, tool_version, startTick, nowTick)
+    
+    lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
 
+    writeHtml(html_str, lastResultsPage)
+    
     success = success and not (fails > 0)
     rsvLogger.info(finalCounts)
 
@@ -1594,7 +1321,6 @@ def main(configpsr=None):
         status_code = 0
 
     return status_code, lastResultsPage, 'Validation done'
-
 
 if __name__ == '__main__':
     status_code, lastResultsPage, exit_string = main()
