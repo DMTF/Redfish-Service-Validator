@@ -1142,8 +1142,6 @@ def main(argv=None, direct_parser=None):
     """
     Main program
     """
-
-    print(rsvLogger)
     rsvLogger.info('ok')
     
     if argv is None:

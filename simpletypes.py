@@ -7,7 +7,6 @@ import re
 import traverseService as rst
 
 rsvLogger = rst.getLogger()
-rsvLogger.disabled = True
 
 def validateDeprecatedEnum(name, val, listEnum):
     """

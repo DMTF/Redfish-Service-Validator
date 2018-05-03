@@ -14,6 +14,10 @@ import sys
 sys.path.append('../')
 
 from simpletypes import *
+import traverseService as rst
+
+rsvLogger = rst.getLogger()
+rsvLogger.disabled = True
 
 class ValidatorTest(TestCase):
 

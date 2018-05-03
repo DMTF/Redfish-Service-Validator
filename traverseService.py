@@ -23,7 +23,6 @@ import metadata as md
 
 traverseLogger = logging.getLogger(__name__)
 traverseLogger.setLevel(logging.DEBUG)
-traverseLogger.disabled = False
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.INFO)
 traverseLogger.addHandler(ch)
