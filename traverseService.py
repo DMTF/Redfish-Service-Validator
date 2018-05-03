@@ -18,6 +18,8 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from http.client import responses
 import copy
 
+import metadata as md
+
 
 traverseLogger = logging.getLogger(__name__)
 traverseLogger.setLevel(logging.DEBUG)
@@ -26,17 +28,13 @@ ch.setLevel(logging.INFO)
 traverseLogger.addHandler(ch)
 
 commonHeader = {'OData-Version': '4.0'}
-proxies = {'http': None, 'https': None}
-
-currentSession = None
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # dictionary to hold sampling notation strings for URIs
 uri_sample_map = dict()
 
-# holds instance of Metadata class for $metadata processing and validation
+currentService = None
 metadata = None
-
 
 class AuthenticationError(Exception):
     """Exception used for failed basic auth or token auth"""
@@ -51,73 +49,176 @@ def getLogger():
     return traverseLogger
 
 # default config
-configset = {
-        "targetip": type(""), "username": type(""), "password": type(""), "authtype": type(""), "usessl": type(True), "certificatecheck": type(True), "certificatebundle": type(""),
-        "metadatafilepath": type(""), "cachemode": (type(False),type("")), "cachefilepath": type(""), "schemasuffix": type(""), "timeout": type(0), "httpproxy": type(""), "httpsproxy": type(""),
-        "systeminfo": type(""), "localonlymode": type(True), "servicemode": type(True), "token": type(""), 'linklimit': dict, 'sample': type(0), 'extrajsonheaders': dict, 'extraxmlheaders': dict
+argparse2configparser = {
+        'user': 'username', 'nochkcert': '!certificatecheck', 'ca_bundle': 'certificatebundle', 'schemamode': 'schemamode',
+        'suffix': 'schemasuffix', 'schemadir': 'metadatafilepath', 'nossl': '!usessl', 'timeout': 'timeout', 'service': 'servicemode',
+        'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
+        'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
+        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
+        'linklimit': 'linklimit', 'sample': 'sample'
         }
-config = {
+
+configset = {
+        "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
+        "metadatafilepath": str, "cachemode": (bool, str), "cachefilepath": str, "schemasuffix": str, "timeout": int, "httpproxy": str, "httpsproxy": str,
+        "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': dict, 'extraxmlheaders': dict
+        }
+
+defaultconfig = {
         'authtype': 'basic', 'username': "", 'password': "", 'token': '',
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
         'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}, 'sample': 0
         }
 
+config = dict(defaultconfig)
+
+proxies = {}
+
+configSet = False
+
+def configToStr():
+    config_str = ""
+    for cnt, item in enumerate(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))), 1):
+        config_str += "{}: {},  ".format(str(item), str(config[item] if config[item] != '' else 'None'))
+        if cnt % 6 == 0:
+            config_str += '\n'
+    return config_str
+
+def convertConfigParserToDict(configpsr):
+    cdict = {}
+    for category in configpsr:
+        for option in configpsr[category]:
+            val = configpsr[category][option]
+            if option not in configset.keys() and category not in ['Information', 'Validator']:
+                traverseLogger.error('Config option {} in {} unsupported!'.format(option, category))
+            if val in ['', None]:
+                continue
+            if val.isdigit():
+                val = int(val)
+            elif option == 'linklimit':
+                val = re.findall('[A-Za-z_]+:[0-9]+', val)
+            elif str(val).lower() in ['on', 'true', 'yes']:
+                val = True
+            elif str(val).lower() in ['off', 'false', 'no']:
+                val = False
+            cdict[option] = val
+    return cdict
+
+def setByArgparse(args):
+    ch.setLevel(args.verbose_checks)
+    if args.v:
+        ch.setLevel(logging.DEBUG)
+    if args.config is not None:
+        configpsr = configparser.ConfigParser()
+        configpsr.read(args.config)
+        cdict = convertConfigParserToDict(configpsr)
+    else:
+        cdict = {}
+        for param in args.__dict__:
+            if param in argparse2configparser:
+                if isinstance(args.__dict__[param], list):
+                    for cnt, item in enumerate(argparse2configparser[param].split('+')):
+                        cdict[item] = args.__dict__[param][cnt]
+                elif '+' not in argparse2configparser[param]:
+                    if '!' in argparse2configparser[param]:
+                        cdict[argparse2configparser[param].replace('!','')] = not args.__dict__[param]
+                    else:
+                        cdict[argparse2configparser[param]] = args.__dict__[param]
+            else:
+                cdict[param] = args.__dict__[param]
+
+    setConfig(cdict)
+
+
 def setConfig(cdict):
     """
     Set config based on configurable dictionary
     """
+    # Send config only with keys supported by program
+    linklimitdict = {}
+    if cdict.get('linklimit') is not None:
+        for item in cdict.get('linklimit'):
+            if re.match('[A-Za-z_]+:[0-9]+', item) is not None:
+                typename, count = tuple(item.split(':')[:2])
+                if typename not in linklimitdict:
+                    linklimitdict[typename] = int(count)
+                else:
+                    traverseLogger.error('Limit already exists for {}'.format(typename))
+    cdict['linklimit'] = linklimitdict
+
     for item in cdict:
         if item not in configset:
-            traverseLogger.error('Unsupported {}'.format(item))
+            traverseLogger.debug('Unsupported {}'.format(item))
         elif not isinstance(cdict[item], configset[item]):
-            traverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
-    
-    # Always keep LogEntry: 20
+            traversetraverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
+
+    global config
+    config = dict(defaultconfig)
+
+    # set linklimit
     defaultlinklimit = config['linklimit']
 
     config.update(cdict)
+
+    config['configuri'] = ('https' if config.get('usessl', True) else 'http') + '://' + config['targetip']
+    config['certificatecheck'] = config.get('certificatecheck', True) and config.get('usessl', True)
     
     defaultlinklimit.update(config['linklimit'])
     config['linklimit'] = defaultlinklimit
 
-    User, Passwd, Ip, ChkCert, UseSSL = config['username'], config['password'], config['targetip'], config['certificatecheck'], config['usessl']
-    
-    config['configuri'] = ('https' if UseSSL else 'http') + '://' + Ip
-
-    config['certificatecheck'] = ChkCert and UseSSL
-
-    # Convert list of strings to dict
-    chkcertbundle = config['certificatebundle']
-    if chkcertbundle not in [None, ""] and config['certificatecheck']:
-        if not os.path.isfile(chkcertbundle) and not os.path.isdir(chkcertbundle):
-            chkcertbundle = None
-            traverseLogger.error('ChkCertBundle is not found, defaulting to None')
-    else:
-        config['certificatebundle'] = None
-
-    httpprox = config['httpproxy']
-    httpsprox = config['httpsproxy']
-    proxies['http'] = httpprox if httpprox != "" else None
-    proxies['https'] = httpsprox if httpsprox != "" else None
-
     if config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
         if config['cachemode'] is not False:
-            traverseLogger.error('CacheMode or path invalid, defaulting to Off')
+            traversetraverseLogger.error('CacheMode or path invalid, defaulting to Off')
         config['cachemode'] = 'Off'
 
     AuthType = config['authtype']
     if AuthType not in ['None', 'Basic', 'Session', 'Token']:
         config['authtype'] = 'Basic'
-        traverseLogger.error('AuthType invalid, defaulting to Basic')
+        traversetraverseLogger.error('AuthType invalid, defaulting to Basic')
 
-    if AuthType == 'Session':
-        certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
-        global currentSession
-        # no proxy for system under test
-        currentSession = rfSession(User, Passwd, config['configuri'], logger=traverseLogger,
-                                   chkCert=certVal, proxies=None)
+    global currentService
+    if currentService is not None:
+        currentService.close()
+    currentService = rfService(config)
 
+
+class rfService():
+    def __init__(self, config):
+        self.config = config
+        self.proxies = dict()
+
+        config['configuri'] = ('https' if config.get('usessl', True) else 'http') + '://' + config['targetip']
+        httpprox = config['httpproxy']
+        httpsprox = config['httpsproxy']
+        proxies['http'] = httpprox if httpprox != "" else None
+        proxies['https'] = httpsprox if httpsprox != "" else None
+
+        # Convert list of strings to dict
+        self.chkcertbundle = config['certificatebundle']
+        chkcertbundle = self.chkcertbundle
+        if chkcertbundle not in [None, ""] and config['certificatecheck']:
+            if not os.path.isfile(chkcertbundle) and not os.path.isdir(chkcertbundle):
+                self.chkcertbundle = None
+                traverseLogger.error('ChkCertBundle is not found, defaulting to None')
+        else:
+            config['certificatebundle'] = None
+
+        ChkCert = config['certificatecheck']
+        AuthType = config['authtype']
+        self.currentSession = None
+        if AuthType == 'Session':
+            certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
+            # no proxy for system under test
+            self.currentSession = rfSession(config['user'], config['password'], config['configuri'], None, certVal, proxies)
+        
+        global metadata
+        metadata = md.Metadata(traverseLogger)
+
+    def close(self):
+        if self.currentSession is not None and self.currentSession.started:
+            self.currentSession.killSession()
+            
 
 def isNonService(uri):
     """
@@ -476,14 +577,6 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     cntref = len(refDict)
     if metadata_dict is not None:
         refDict.update(metadata_dict)
-        if len(refDict.keys()) > len(metadata_dict.keys()):
-            diff_keys = [key for key in refDict if key not in metadata_dict]
-            traverseLogger.log(
-                    logging.ERROR if ServiceOnly else logging.DEBUG,
-                    "Reference in a Schema {} not in metadata, this may not be compatible with ServiceMode".format(name))
-            traverseLogger.log(
-                    logging.ERROR if ServiceOnly else logging.DEBUG,
-                    "References missing in metadata: {}".format(str(diff_keys)))
     traverseLogger.debug("References generated from {}: {} out of {}".format(name, cntref, len(refDict)))
     return refDict
 
@@ -1122,6 +1215,8 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
                                  propDict.get('OData.AutoExpand'.lower(), None) is not None
                     cSchema = refDict.get(getNamespace(cType), (None, None))[1]
                     for k, v in insideItem.items():
+                        if not isinstance(v, dict):
+                            continue
                         uri = v.get('@Redfish.ActionInfo')
                         if isinstance(uri, str):
                             uriItem = {'@odata.id': uri}
@@ -1195,5 +1290,5 @@ def getAnnotations(soup, refs, decoded, prefix=''):
                 tagtype = 'Term'
             additionalProps.append(
                 PropItem(annotationSoup, annotationRefs, realItem, key, tagtype, None))
-    traverseLogger.info("Annotations generated: {} out of {}".format(len(additionalProps), annotationsFound))
+    traverseLogger.debug("Annotations generated: {} out of {}".format(len(additionalProps), annotationsFound))
     return True, additionalProps
