@@ -129,6 +129,9 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
         if results[item]['errors'] is not None:
             htmlStr += '<tr><td class="fail log">' + html.escape(results[item]['errors'].getvalue()).replace('\n', '<br />') + '</td></tr>'
             results[item]['errors'].close()
+        if results[item]['warns'] is not None:
+            htmlStr += '<tr><td class="warn log">' + html.escape(results[item]['warns'].getvalue()).replace('\n', '<br />') + '</td></tr>'
+            results[item]['warns'].close()
         htmlStr += '<tr><td>---</td></tr></table></td></tr>'
 
     htmlStr += '</table></body></html>'

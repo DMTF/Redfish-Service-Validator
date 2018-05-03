@@ -106,8 +106,9 @@ def convertConfigParserToDict(configpsr):
     return cdict
 
 def setByArgparse(args):
+    ch.setLevel(args.verbose_checks)
     if args.v:
-        lg.stdOutHandler.setLevel(logging.DEBUG)
+        ch.setLevel(logging.DEBUG)
     if args.config is not None:
         configpsr = configparser.ConfigParser()
         configpsr.read(args.config)
@@ -576,14 +577,6 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     cntref = len(refDict)
     if metadata_dict is not None:
         refDict.update(metadata_dict)
-        if len(refDict.keys()) > len(metadata_dict.keys()):
-            diff_keys = [key for key in refDict if key not in metadata_dict]
-            traverseLogger.log(
-                    logging.ERROR if ServiceOnly else logging.DEBUG,
-                    "Reference in a Schema {} not in metadata, this may not be compatible with ServiceMode".format(name))
-            traverseLogger.log(
-                    logging.ERROR if ServiceOnly else logging.DEBUG,
-                    "References missing in metadata: {}".format(str(diff_keys)))
     traverseLogger.debug("References generated from {}: {} out of {}".format(name, cntref, len(refDict)))
     return refDict
 
@@ -1297,5 +1290,5 @@ def getAnnotations(soup, refs, decoded, prefix=''):
                 tagtype = 'Term'
             additionalProps.append(
                 PropItem(annotationSoup, annotationRefs, realItem, key, tagtype, None))
-    traverseLogger.info("Annotations generated: {} out of {}".format(len(additionalProps), annotationsFound))
+    traverseLogger.debug("Annotations generated: {} out of {}".format(len(additionalProps), annotationsFound))
     return True, additionalProps
