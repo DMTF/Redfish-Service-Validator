@@ -328,10 +328,10 @@ def getSchemaDetails(SchemaType, SchemaURI):
         # if success, generate Soup, then check for frags to parse
         #   start by parsing references, then check for the refLink
         if '#' in SchemaURI:
-            SchemaURI, frag = tuple(SchemaURI.rsplit('#', 1))
+            base_schema_uri, frag = tuple(SchemaURI.rsplit('#', 1))
         else:
-            frag = None
-        success, data, status, elapsed = callResourceURI(SchemaURI)
+            base_schema_uri, frag = SchemaURI, None
+        success, data, status, elapsed = callResourceURI(base_schema_uri)
         if success:
             soup = BeautifulSoup(data, "xml")
             # if frag, look inside xml for real target as a reference
@@ -341,27 +341,27 @@ def getSchemaDetails(SchemaType, SchemaURI):
                 frag = getNamespace(SchemaType)
                 frag = frag.split('.', 1)[0]
                 refType, refLink = getReferenceDetails(
-                    soup, name=SchemaURI).get(frag, (None, None))
+                    soup, name=base_schema_uri).get(frag, (None, None))
                 if refLink is not None:
                     success, linksoup, newlink = getSchemaDetails(refType, refLink)
                     if success:
                         return True, linksoup, newlink
                     else:
                         traverseLogger.error(
-                            "SchemaURI couldn't call reference link {} inside {}".format(frag, SchemaURI))
+                            "SchemaURI couldn't call reference link {} inside {}".format(frag, base_schema_uri))
                 else:
                     traverseLogger.error(
-                        "SchemaURI missing reference link {} inside {}".format(frag, SchemaURI))
+                        "SchemaURI missing reference link {} inside {}".format(frag, base_schema_uri))
                     # error reported; assume likely schema uri to allow continued validation
                     uri = 'http://redfish.dmtf.org/schemas/v1/{}_v1.xml'.format(frag)
                     traverseLogger.info("Continue assuming schema URI for {} is {}".format(SchemaType, uri))
                     return getSchemaDetails(SchemaType, uri)
             else:
-                return True, soup, SchemaURI
-        if isNonService(SchemaURI) and ServiceOnly:
-            traverseLogger.info("Nonservice URI skipped: {}".format(SchemaURI))
+                return True, soup, base_schema_uri
+        if isNonService(base_schema_uri) and ServiceOnly:
+            traverseLogger.info("Nonservice URI skipped: {}".format(base_schema_uri))
         else:
-            traverseLogger.debug("SchemaURI called unsuccessfully: {}".format(SchemaURI))
+            traverseLogger.debug("SchemaURI called unsuccessfully: {}".format(base_schema_uri))
     if LocalOnly:
         traverseLogger.debug("This program is currently LOCAL ONLY")
     if ServiceOnly:
