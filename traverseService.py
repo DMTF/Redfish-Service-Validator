@@ -152,7 +152,7 @@ def setConfig(cdict):
         if item not in configset:
             traverseLogger.debug('Unsupported {}'.format(item))
         elif not isinstance(cdict[item], configset[item]):
-            traversetraverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
+            traverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
 
     global config
     config = dict(defaultconfig)
@@ -170,13 +170,13 @@ def setConfig(cdict):
 
     if config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
         if config['cachemode'] is not False:
-            traversetraverseLogger.error('CacheMode or path invalid, defaulting to Off')
+            traverseLogger.error('CacheMode or path invalid, defaulting to Off')
         config['cachemode'] = 'Off'
 
     AuthType = config['authtype']
     if AuthType not in ['None', 'Basic', 'Session', 'Token']:
         config['authtype'] = 'Basic'
-        traversetraverseLogger.error('AuthType invalid, defaulting to Basic')
+        traverseLogger.error('AuthType invalid, defaulting to Basic')
 
     global currentService
     if currentService is not None:
