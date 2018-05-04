@@ -17,6 +17,7 @@ from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from http.client import responses
 import copy
+import configparser
 
 import metadata as md
 

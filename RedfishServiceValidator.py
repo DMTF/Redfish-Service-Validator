@@ -18,7 +18,7 @@ from traverseService import AuthenticationError
 from tohtml import renderHtml, writeHtml
 import traverseService as rst
 
-tool_version = '1.0.8'
+tool_version = '1.0.9'
 
 rsvLogger = rst.getLogger()
 
