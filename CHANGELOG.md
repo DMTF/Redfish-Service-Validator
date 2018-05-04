@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.0.9] - 2018-05-04
+- Corrected problem when reading metadata from local cache
+- Made changes to clean the standard output
+
 ## [1.0.8] - 2018-04-27
 - Enhanced $metadata validation to check if a referenced namespace exists in the referenced schema file
 - Enhanced handling of properties found in payloads that are not defined in the schema file
