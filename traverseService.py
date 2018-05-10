@@ -358,6 +358,9 @@ def callResourceURI(URILink):
                             "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
             elif contenttype is not None and 'application/xml' in contenttype:
                 decoded = response.text
+            elif nonService and contenttype is not None and 'text/xml' in contenttype:
+                # non-service schemas can use "text/xml" Content-Type
+                decoded = response.text
             else:
                 traverseLogger.error(
                         "This URI did NOT return XML or Json, this is not a Redfish resource (is this redirected?): {}".format(URILink))
