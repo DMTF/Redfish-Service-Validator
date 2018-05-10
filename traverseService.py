@@ -35,7 +35,6 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 uri_sample_map = dict()
 
 currentService = None
-metadata = None
 
 class AuthenticationError(Exception):
     """Exception used for failed basic auth or token auth"""
@@ -62,21 +61,26 @@ argparse2configparser = {
 configset = {
         "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
         "metadatafilepath": str, "cachemode": (bool, str), "cachefilepath": str, "schemasuffix": str, "timeout": int, "httpproxy": str, "httpsproxy": str,
-        "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': dict, 'extraxmlheaders': dict
+        "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': dict, 'extraxmlheaders': dict, "schema_pack": str 
         }
 
 defaultconfig = {
         'authtype': 'basic', 'username': "", 'password': "", 'token': '',
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
-        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}, 'sample': 0
+        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}, 'sample': 0, 'schema_pack': None
         }
 
 config = dict(defaultconfig)
 
-proxies = {}
-
 configSet = False
+
+def startService():
+    global currentService
+    if currentService is not None:
+        currentService.close()
+    currentService = rfService(config)
+    return currentService
 
 def configToStr():
     config_str = ""
@@ -178,22 +182,22 @@ def setConfig(cdict):
         config['authtype'] = 'Basic'
         traverseLogger.error('AuthType invalid, defaulting to Basic')
 
-    global currentService
-    if currentService is not None:
-        currentService.close()
-    currentService = rfService(config)
 
 
 class rfService():
     def __init__(self, config):
+        traverseLogger.info('Setting up service...')
+        global currentService
+        currentService = self
         self.config = config
         self.proxies = dict()
+        self.active = False
 
         config['configuri'] = ('https' if config.get('usessl', True) else 'http') + '://' + config['targetip']
         httpprox = config['httpproxy']
         httpsprox = config['httpsproxy']
-        proxies['http'] = httpprox if httpprox != "" else None
-        proxies['https'] = httpsprox if httpsprox != "" else None
+        self.proxies['http'] = httpprox if httpprox != "" else None
+        self.proxies['https'] = httpsprox if httpsprox != "" else None
 
         # Convert list of strings to dict
         self.chkcertbundle = config['certificatebundle']
@@ -211,14 +215,15 @@ class rfService():
         if AuthType == 'Session':
             certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
-            self.currentSession = rfSession(config['user'], config['password'], config['configuri'], None, certVal, proxies)
+            self.currentSession = rfSession(config['user'], config['password'], config['configuri'], None, certVal, self.proxies)
         
-        global metadata
-        metadata = md.Metadata(traverseLogger)
+        self.metadata = md.Metadata(traverseLogger)
+        self.active = True
 
     def close(self):
         if self.currentSession is not None and self.currentSession.started:
             self.currentSession.killSession()
+        self.active = False
             
 
 def isNonService(uri):
@@ -260,6 +265,8 @@ def callResourceURI(URILink):
     # rs-assertions: 6.4.1, including accept, content-type and odata-versions
     # rs-assertion: handle redirects?  and target permissions
     # rs-assertion: require no auth for serviceroot calls
+    config = currentService.config
+    proxies = currentService.proxies
     ConfigURI, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['configuri'], config['usessl'], config['authtype'], \
             config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
     CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
@@ -426,6 +433,10 @@ def getSchemaDetails(SchemaType, SchemaURI):
     if SchemaType is None:
         return False, None, None
 
+    if currentService.active and getNamespace(SchemaType) in currentService.metadata.schema_store:
+        return currentService.metadata.schema_store[getNamespace(SchemaType)]
+
+    config = currentService.config
     LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
 
     if (SchemaURI is not None and not LocalOnly) or (SchemaURI is not None and '/redfish/v1/$metadata' in SchemaURI):
@@ -481,6 +492,7 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
     # What are we looking for?  Parse from URI
     # if we're not able to use URI to get suffix, work with option fallback
     Alias = getNamespace(SchemaType).split('.')[0]
+    config = currentService.config
     SchemaLocation, SchemaSuffix = config['metadatafilepath'], config['schemasuffix']
     if SchemaURI is not None:
         uriparse = SchemaURI.split('/')[-1].split('#')
@@ -522,13 +534,14 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
     except FileNotFoundError as ex:
         # if we're looking for $metadata locally... ditch looking for it, go straight to file
         if '/redfish/v1/$metadata' in SchemaURI and Alias != '$metadata':
-            traverseLogger.error("Unable to find a harddrive stored $metadata at {}, defaulting to {}".format(SchemaLocation, Alias + SchemaSuffix))
+            traverseLogger.warn("Unable to find a harddrive stored $metadata at {}, defaulting to {}".format(SchemaLocation, Alias + SchemaSuffix))
             return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix)
         else:
-            traverseLogger.error(
+            traverseLogger.warn
+            (
                 "Schema file {} not found in {}".format(pout, SchemaLocation))
             if Alias == '$metadata':
-                traverseLogger.error(
+                traverseLogger.warn(
                     "If $metadata cannot be found, Annotations may be unverifiable")
     except Exception as ex:
         traverseLogger.error("A problem when getting a local schema has occurred {}".format(SchemaURI))
@@ -560,6 +573,7 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     return: dictionary
     """
     refDict = {}
+    config = currentService.config
     ServiceOnly = config['servicemode']
 
     maintag = soup.find("edmx:Edmx", recursive=False)
@@ -734,6 +748,8 @@ class ResourceObj:
         self.initiated = True
         idtag = (fullType, self.context)
 
+        metadata = currentService.metadata
+
         serviceRefs = metadata.get_service_refs()
         serviceSchemaSoup = metadata.get_soup()
         if serviceSchemaSoup is not None:
@@ -756,8 +772,8 @@ class ResourceObj:
 
         while node is not None:
             self.links.update(getAllLinks(
-                self.jsondata, node.propList, node.refs, context=expectedSchema, linklimits=config['linklimit'],
-                sample_size=config['sample']))
+                self.jsondata, node.propList, node.refs, context=expectedSchema, linklimits=currentService.config['linklimit'],
+                sample_size=currentService.config['sample']))
             node = node.parent
 
 
@@ -824,6 +840,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     """
     Gets list of surface level properties for a given SchemaType,
     """
+    metadata = currentService.metadata
     PropertyList = list()
     PropertyPattern = None
     additional = False
@@ -987,7 +1004,7 @@ def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='En
             success, propertySoup, uri = True, soup, 'of parent'
 
         if not success:
-            traverseLogger.error(
+            traverseLogger.warn(
                 "getPropertyDetails: Could not acquire appropriate Schema for this item, {} {} {}".format(propertyOwner, PropertyNamespace, propertyName))
             return propEntry
 
@@ -995,7 +1012,7 @@ def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='En
         propertySchema = propertySoup.find(
             'Schema', attrs={'Namespace': PropertyNamespace})
         if propertySchema is None:
-            traverseLogger.error('Schema element with Namespace attribute of {} not found in schema file {}'
+            traverseLogger.warn('Schema element with Namespace attribute of {} not found in schema file {}'
                                  .format(PropertyNamespace, uri))
             break
         propertyTypeTag = propertySchema.find(
@@ -1262,6 +1279,7 @@ def getAnnotations(soup, refs, decoded, prefix=''):
     Function to gather @ additional props in a payload
     """
     allowed_annotations = ['odata', 'Redfish', 'Privileges', 'Message']
+    metadata = currentService.metadata
     additionalProps = list()
     # For every ...@ in decoded, check for its presence in refs
     #   get the schema file for it
