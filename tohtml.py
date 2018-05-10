@@ -67,7 +67,7 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
         '</th></tr>' \
         ''
 
-    htmlStr = rst.metadata.to_html()
+    htmlStr = rst.currentService.metadata.to_html()
 
     rsvLogger.info(len(results))
     for cnt, item in enumerate(results):

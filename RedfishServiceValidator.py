@@ -16,7 +16,9 @@ import json
 from simpletypes import *
 from traverseService import AuthenticationError
 from tohtml import renderHtml, writeHtml
+
 import traverseService as rst
+from metadata import setup_schema_pack
 
 tool_version = '1.0.9'
 
@@ -81,7 +83,7 @@ def validateActions(name, val, propTypeObj, payloadType):
                 actPass = False
                 rsvLogger.error('{}: action not found, is mandatory'.format(name + '.' + k))
             else:
-                rsvLogger.warn('{}: action not found, is not mandatory'.format(name + '.' + k))
+                rsvLogger.debug('{}: action not found, is not mandatory'.format(name + '.' + k))
         actionMessages[name + '.' + k] = (
                     'Action', '-',
                     'Yes' if actionDecoded != 'n/a' else 'No',
@@ -187,8 +189,8 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
     complexCounts = Counter()
     propList = list()
 
-    serviceRefs = rst.metadata.get_service_refs()
-    serviceSchemaSoup = rst.metadata.get_soup()
+    serviceRefs = rst.currentService.metadata.get_service_refs()
+    serviceSchemaSoup = rst.currentService.metadata.get_soup()
     if serviceSchemaSoup is not None:
         successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
         propSoup, propRefs = serviceSchemaSoup, serviceRefs
@@ -904,13 +906,13 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
             # add the namespace to the set of namespaces referenced by this service
             ns = rst.getNamespace(decoded[key])
             if '/' not in ns and not ns.endswith('$entity'):
-                rst.metadata.add_service_namespace(ns)
+                rst.currentService.metadata.add_service_namespace(ns)
         elif key == '@odata.type':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
             # add the namespace to the set of namespaces referenced by this service
-            rst.metadata.add_service_namespace(rst.getNamespace(decoded[key]))
+            rst.currentService.metadata.add_service_namespace(rst.getNamespace(decoded[key]))
         else:
             paramPass = True
         if not paramPass:
@@ -1038,8 +1040,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 counts['exceptionPropCheck'] += 1
         node = node.parent
 
-    serviceRefs = rst.metadata.get_service_refs()
-    serviceSchemaSoup = rst.metadata.get_soup()
+    serviceRefs = rst.currentService.metadata.get_service_refs()
+    serviceSchemaSoup = rst.currentService.metadata.get_soup()
     if serviceSchemaSoup is not None:
         for prop in propResourceObj.additionalList:
             propMessages, propCounts = checkPropertyConformance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
@@ -1171,6 +1173,7 @@ def main(argv=None, direct_parser=None):
 
     # tool
     argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
+    argget.add_argument('--schema_pack', type=str, help='Deploy DMTF schema from zip distribution, for use with --localonly (Specify url or type "latest", overwrites current schema)')
     argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
     argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
     argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
@@ -1205,7 +1208,7 @@ def main(argv=None, direct_parser=None):
     rst.callResourceURI.cache_clear()
     rst.getSchemaDetails.cache_clear()
 
-    # set up config (which creates service)
+    # set up config
     if direct_parser is not None:
         try:
             cdict = rst.convertConfigParserToDict(direct_parser)
@@ -1224,10 +1227,19 @@ def main(argv=None, direct_parser=None):
             rsvLogger.exception("Something went wrong")  # Printout FORMAT
             return 1, None, 'Config Exception'
 
-
-    currentService = rst.currentService
-    metadata = rst.metadata
     config = rst.config
+
+    # Setup schema store
+    if config['schema_pack'] is not None and config['schema_pack'] != '':
+        httpprox = config['httpproxy']
+        httpsprox = config['httpsproxy']
+        proxies = {}
+        proxies['http'] = httpprox if httpprox != "" else None
+        proxies['https'] = httpsprox if httpsprox != "" else None
+        setup_schema_pack(config['schema_pack'], config['metadatafilepath'], proxies, config['timeout']) 
+
+    currentService = rst.startService()
+    metadata = currentService.metadata
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
     logpath = config['logpath']
 
@@ -1287,14 +1299,14 @@ def main(argv=None, direct_parser=None):
 
     currentService.close()
 
-    rsvLogger.debug('Metadata: Namespaces referenced in service: {}'.format(rst.metadata.get_service_namespaces()))
-    rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(rst.metadata.get_missing_namespaces()))
+    rsvLogger.debug('Metadata: Namespaces referenced in service: {}'.format(metadata.get_service_namespaces()))
+    rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(metadata.get_missing_namespaces()))
 
     finalCounts = Counter()
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))  # Printout FORMAT
 
-    finalCounts.update(rst.metadata.get_counter())
+    finalCounts.update(metadata.get_counter())
     for item in results:
         innerCounts = results[item]['counts']
 
@@ -1307,8 +1319,10 @@ def main(argv=None, direct_parser=None):
         error_messages_present = False
         if results[item]['errors'] is not None and len(results[item]['errors'].getvalue()) > 0:
             error_messages_present = True
+        if results[item]['warns'] is not None and len(results[item]['warns'].getvalue()) > 0:
+            innerCounts['warningPresent'] = 1
         if counters_all_pass and error_messages_present:
-            innerCounts['failSchema'] = 1
+            innerCounts['failErrorPresent'] = 1
 
         finalCounts.update(results[item]['counts'])
 

@@ -7,12 +7,49 @@ import time
 from collections import Counter, OrderedDict, defaultdict
 import traverseService as rst
 
+from io import BytesIO
+import requests
+import zipfile
+
 EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
 EDMX_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edmx"
 EDM_TAGS = ['Action', 'Annotation', 'Collection', 'ComplexType', 'EntityContainer', 'EntityType', 'EnumType', 'Key',
             'Member', 'NavigationProperty', 'Parameter', 'Property', 'PropertyRef', 'PropertyValue', 'Record',
             'Schema', 'Singleton', 'Term', 'TypeDefinition']
 EDMX_TAGS = ['DataServices', 'Edmx', 'Include', 'Reference']
+
+
+live_zip_uri = 'http://redfish.dmtf.org/schemas/DSP8010_2017.3.zip'
+
+def setup_schema_pack(uri, local_dir, proxies, timeout):
+    rst.traverseLogger.info('Unpacking schema pack...')
+    if uri == 'latest':
+        uri = live_zip_uri
+    try:
+        response = requests.get(uri, timeout=timeout, proxies=proxies)
+        expCode = [200]
+        elapsed = response.elapsed.total_seconds()
+        statusCode = response.status_code
+        rst.traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode,
+                             expCode, response.headers, elapsed))
+        if statusCode in expCode:
+            if not zipfile.is_zipfile(BytesIO(response.content)):
+                pass
+            else:
+                zf = zipfile.ZipFile(BytesIO(response.content))
+                for name in zf.namelist():
+                    if '.xml' in name:
+                        cpath = '{}/{}'.format(local_dir, name.split('/')[-1]) 
+                        rst.traverseLogger.debug((name, cpath))
+                        item = zf.open(name)
+                        with open(cpath, 'wb') as f:
+                            f.write(item.read())
+                        item.close()
+                zf.close()
+    except Exception as ex:
+        rst.traverseLogger.error("A problem when getting resource has occurred {}".format(uri))
+        rst.traverseLogger.warn("output: ", exc_info=True)
+    return True
 
 
 def bad_edm_tags(tag):
@@ -65,6 +102,7 @@ class Metadata(object):
     schema_type = '$metadata'
 
     def __init__(self, logger):
+        logger.info('Constructing metadata...')
         self.success_get = False
         self.md_soup = None
         self.service_refs = dict()
@@ -72,6 +110,7 @@ class Metadata(object):
         self.elapsed_secs = 0
         self.metadata_namespaces = set()
         self.service_namespaces = set()
+        self.schema_store = dict()
         self.bad_tags = dict()
         self.bad_tag_ns = dict()
         self.refs_missing_uri = dict()
@@ -110,6 +149,11 @@ class Metadata(object):
             logger.debug('Metadata: includes_missing_ns = {}'.format(self.includes_missing_ns))
             logger.debug('Metadata: bad_schema_uris = {}'.format(self.bad_schema_uris))
             logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
+            for schema in self.service_refs:
+                name, uri = self.service_refs[schema]
+                result = rst.getSchemaDetails(name, uri)
+                self.schema_store[name] = result
+                
         else:
             logger.warning('Metadata: getSchemaDetails() did not return success')
 
