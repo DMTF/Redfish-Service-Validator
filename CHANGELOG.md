@@ -1,5 +1,11 @@
 # Change Log
 
+## [1.1.0] - 2018-05-11
+- Allow for text/xml in schema responses from external sites
+- Added console output when running the test via the GUI
+- Added Schema Pack option
+- Downgraded several messages from Error to Warning
+
 ## [1.0.9] - 2018-05-04
 - Corrected problem when reading metadata from local cache
 - Made changes to clean the standard output

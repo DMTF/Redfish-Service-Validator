@@ -70,6 +70,10 @@ g_config_defaults = {
             "value": "./SchemaFiles/metadata",
             "description": "Points to the local location of the DMTF schema files"
         },
+        "Schema_Pack": {
+            "value": "",
+            "description": "URL path to a zipped pack of DMTF Schema; for LocalMode only"
+        },
         "CacheMode": {
             "value": "Off",
             "description": "Cache options for overriding or falling back to a file",

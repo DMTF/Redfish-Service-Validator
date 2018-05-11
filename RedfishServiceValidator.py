@@ -20,15 +20,15 @@ from tohtml import renderHtml, writeHtml
 import traverseService as rst
 from metadata import setup_schema_pack
 
-tool_version = '1.0.9'
+tool_version = '1.1.0'
 
 rsvLogger = rst.getLogger()
 
-VERBO_NUM = 15 
+VERBO_NUM = 15
 logging.addLevelName(VERBO_NUM, "VERBO")
 def verboseout(self, message, *args, **kws):
     if self.isEnabledFor(VERBO_NUM):
-        self._log(VERBO_NUM, message, args, **kws) 
+        self._log(VERBO_NUM, message, args, **kws)
 logging.Logger.verboseout = verboseout
 
 attributeRegistries = dict()
