@@ -47,7 +47,7 @@ UserName = \<User ID of Administrator on the system\>
 
 Password = \<Password of the Administrator\>
 
-ForceAuth = \<Force authentication on otherwise insecure communication\>
+ForceAuth = \<Force authentication on otherwise unsecure communication\>
 
 AuthType = \<Type of authorization for above credentials (None,Basic,Session)\>
 
