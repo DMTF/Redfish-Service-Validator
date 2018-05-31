@@ -19,7 +19,7 @@ EDM_TAGS = ['Action', 'Annotation', 'Collection', 'ComplexType', 'EntityContaine
 EDMX_TAGS = ['DataServices', 'Edmx', 'Include', 'Reference']
 
 
-live_zip_uri = 'http://redfish.dmtf.org/schemas/DSP8010_2017.3.zip'
+live_zip_uri = 'http://redfish.dmtf.org/schemas/DSP8010_2018.1.zip'
 
 def setup_schema_pack(uri, local_dir, proxies, timeout):
     rst.traverseLogger.info('Unpacking schema pack...')

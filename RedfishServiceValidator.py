@@ -35,25 +35,13 @@ attributeRegistries = dict()
 
 
 def validateActions(name, val, propTypeObj, payloadType):
-    # checks for all Schema parents and gets their Action tags, does validation
-    # info: what tags are we getting, treat them as if they were properties in a complex
-    # error: broken/missing action, largely the only problem that's validateable
-    # warn: action is missing something, but is fine or not mandatory
     """
     Validates an action dict (val)
     """
     actionMessages, actionCounts = OrderedDict(), Counter()
-    # traverse through all parent types to discover Action tags
-    success, baseSoup, baseRefs, baseType = True, propTypeObj.soup, propTypeObj.refs, payloadType
-    actionsDict = dict()
-    while success:
-        SchemaNamespace = rst.getNamespace(baseType)
-        innerschema = baseSoup.find('Schema', attrs={'Namespace': SchemaNamespace})
-        actions = innerschema.find_all('Action')
-        for act in actions:
-            keyname = '#{}.{}'.format(SchemaNamespace, act['Name'])
-            actionsDict[keyname] = act
-        success, baseSoup, baseRefs, baseType = rst.getParentType(baseSoup, baseRefs, baseType, 'EntityType')
+
+    parentType = rst.PropType(payloadType, propTypeObj.soup, propTypeObj.refs)
+    actionsDict = {act.name: act.actDict for act in parentType.getActions()}
 
     # For each action found, check action dictionary for existence and conformance
     # No action is required unless specified, target is not required unless specified
@@ -70,13 +58,13 @@ def validateActions(name, val, propTypeObj, payloadType):
             elif not isinstance(target, str):
                 actPass = False
                 rsvLogger.error('{}: target for action is malformed; expected string, got {}'
-                                .format(name + '.' + k, str(type(target)).strip('<>')))
-            # check for unexpected properties
+                        .format(name + '.' + k, str(type(target)).strip('<>')))
+                # check for unexpected properties
             for prop in actionDecoded:
                 if prop not in ['target', 'title', '@Redfish.ActionInfo'] and '@Redfish.AllowableValues' not in prop:
                     actPass = False
                     rsvLogger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}", "{}" and "{}"'
-                                    .format(name + '.' + k, prop, 'target', 'title', '@Redfish.ActionInfo', '*@Redfish.AllowableValues'))
+                            .format(name + '.' + k, prop, 'target', 'title', '@Redfish.ActionInfo', '*@Redfish.AllowableValues'))
         else:
             # <Annotation Term="Redfish.Required"/>
             if actionsDict[k].find('annotation', {'term': 'Redfish.Required'}):
@@ -85,9 +73,9 @@ def validateActions(name, val, propTypeObj, payloadType):
             else:
                 rsvLogger.debug('{}: action not found, is not mandatory'.format(name + '.' + k))
         actionMessages[name + '.' + k] = (
-                    'Action', '-',
-                    'Yes' if actionDecoded != 'n/a' else 'No',
-                    'PASS' if actPass else 'FAIL')
+                'Action', '-',
+                'Yes' if actionDecoded != 'n/a' else 'No',
+                'PASS' if actPass else 'FAIL')
         if actPass:
             actionCounts['pass'] += 1
         else:
@@ -96,9 +84,6 @@ def validateActions(name, val, propTypeObj, payloadType):
 
 
 def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpand, parentURI=""):
-    # info: what are we looking for (the type), what are we getting (the uri), does the uri make sense based on type (does not do this yet)
-    # error: this type is bad, could not get resource, could not find the type, no reference, cannot construct type (doesn't do this yet)
-    # debug: what types do we have, what reference did we get back
     """
     Validates an entity based on its uri given
     """
@@ -170,47 +155,49 @@ def validateEntity(name, val, propType, propCollectionType, soup, refs, autoExpa
 
 
 def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
-    # one of the more complex validation methods, but is similar to validateSingleURI
-    # info: treat this like an individual payload, where is it, what is going on, perhaps reuse same code by moving it to helper
-    # warn: lacks an odata type, defaulted to highest type (this would happen during type gen)
-    # error: this isn't a dict, these properties aren't good/missing/etc, just like a payload
-    # debug: what are the properties we are looking for, what vals, etc (this is genned during checkPropertyConformance)
-
     """
     Validate a complex property
     """
     rsvLogger.verboseout('\t***going into Complex')
     if not isinstance(val, dict):
         rsvLogger.error(name + ': Complex item not a dictionary')  # Printout FORMAT
-        return False, None, None
+        return False, None, None, None
 
     # Check inside of complexType, treat it like an Entity
     complexMessages = OrderedDict()
     complexCounts = Counter()
+    oemLinks = OrderedDict()
     propList = list()
 
     serviceRefs = rst.currentService.metadata.get_service_refs()
     serviceSchemaSoup = rst.currentService.metadata.get_soup()
     if serviceSchemaSoup is not None:
-        successService, additionalProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
+        successService, annotationProps = rst.getAnnotations(serviceSchemaSoup, serviceRefs, val)
         propSoup, propRefs = serviceSchemaSoup, serviceRefs
-        for prop in additionalProps:
-            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs,
+        for prop in annotationProps:
+            propMessages, propCounts, newLinks = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs,
                                                                 ParentItem=name)
             complexMessages.update(propMessages)
             complexCounts.update(propCounts)
-    
+            oemLinks.update(newLinks)
 
+    if '@odata.type' in val:
+        content = rst.currentService.metadata.schema_store.get(rst.getNamespace(val.get('@odata.type')))
+        success, soup, uri = content if content is not None else (False, None, None)
+        if success:
+            refs = rst.getReferenceDetails(soup, rst.currentService.metadata.get_service_refs(), uri)
+            propTypeObj = rst.PropType(val['@odata.type'], soup, refs, tagType='ComplexType')
+            oemLinks.update(rst.getAllLinks(val, propTypeObj.getProperties(), refs))
+        else:
+            rsvLogger.error('{}: complex payload error, @odata.type does not seem to exist in metadata'.format(str(name)))
 
-    node = propTypeObj
-    while node is not None:
-        propList, propSoup, propRefs = node.propList, node.soup, node.refs
-        for prop in propList:
-            propMessages, propCounts = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs,
-                                                                ParentItem=name)
-            complexMessages.update(propMessages)
-            complexCounts.update(propCounts)
-        node = node.parent
+    for prop in propTypeObj.getProperties():
+        propMessages, propCounts, newLinks = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs,
+                                                            ParentItem=name)
+        complexMessages.update(propMessages)
+        complexCounts.update(propCounts)
+        oemLinks.update(newLinks)
+
     successPayload, odataMessages = checkPayloadConformance('', val, ParentItem=name)
     complexMessages.update(odataMessages)
     if not successPayload:
@@ -218,19 +205,21 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
         rsvLogger.error('{}: complex payload error, @odata property non-conformant'.format(str(name)))
     rsvLogger.verboseout('\t***out of Complex')
     rsvLogger.verboseout('complex {}'.format(str(complexCounts)))
+
     if name == 'Actions':
         aMsgs, aCounts = validateActions(name, val, propTypeObj, payloadType)
         complexMessages.update(aMsgs)
         complexCounts.update(aCounts)
 
     # validate the Redfish.DynamicPropertyPatterns if present
-    if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
-        patternMessages, patternCounts = validateDynamicPropertyPatterns(name, val, propTypeObj,
-                                                                         payloadType, attrRegistryId)
+    if propTypeObj.additional or propTypeObj.propPattern:
+        patternMessages, patternCounts, newLinks = validateDynamicPropertyPatterns(name, val, propTypeObj,
+                                                                         payloadType, attrRegistryId, ParentItem=name)
         complexMessages.update(patternMessages)
         complexCounts.update(patternCounts)
+        oemLinks.update(newLinks)
 
-    return True, complexCounts, complexMessages
+    return True, complexCounts, complexMessages, oemLinks
 
 
 def validateDynamicPropertyType(name, key, value, prop_type):
@@ -401,7 +390,7 @@ def validateAttributeRegistry(name, key, value, attr_reg):
     return reg_pass, type_prop
 
 
-def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrRegistryId):
+def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrRegistryId, ParentItem=None):
     """
     Checks the value type and key pattern of the properties specified via Redfish.DynamicPropertyPatterns annotation
     :param name: the name of the dictionary of properties being validated
@@ -413,6 +402,7 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
     """
     fn = 'validateDynamicPropertyPatterns'
     messages = OrderedDict()
+    oemLinks = OrderedDict()
     counts = Counter()
     rsvLogger.debug('{}: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
                     .format(fn, name, type(val), propTypeObj.propPattern, payloadType))
@@ -423,19 +413,19 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
     if prop_pattern is None or prop_type is None:
         rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern or Type properties missing'
                         .format(name))
-        return messages, counts
+        return messages, counts, oemLinks
     if not isinstance(prop_pattern, str):
         rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern property not a string'
                         .format(name))
-        return messages, counts
+        return messages, counts, oemLinks
     if not isinstance(prop_type, str):
         rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Type property not a string'
                         .format(name))
-        return messages, counts
+        return messages, counts, oemLinks
     if not isinstance(val, dict):
         rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but payload value not a dictionary'
                         .format(name))
-        return messages, counts
+        return messages, counts, oemLinks
     # get the attribute registry dictionary if applicable
     attr_reg = None
     if attrRegistryId is not None:
@@ -471,11 +461,18 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
         else:
             counts['failDynamicPropertyPatterns'] += 1
         # validate the value type against the Type
-        type_pass = validateDynamicPropertyType(name, key, value, prop_type)
-        if type_pass:
-            counts['pass'] += 1
-        else:
-            counts['failDynamicPropertyPatterns'] += 1
+        value_obj = rst.PropItem(propTypeObj.soup, propTypeObj.refs, propTypeObj.fulltype, key, None, None, customType=prop_type)
+        try:
+            propMessages, propCounts, newLinks = checkPropertyConformance(propTypeObj.soup, value_obj.name, value_obj.propDict, val, propTypeObj.refs, parentURI='...', ParentItem=ParentItem)
+            messages.update(propMessages)
+            counts.update(propCounts)
+            oemLinks.update(newLinks)
+        except AuthenticationError as e:
+            raise  # re-raise exception
+        except Exception as ex:
+            rsvLogger.exception("Something went wrong")  # Printout FORMAT
+            rsvLogger.error('%s: Could not finish check on this property' % (value_obj.name))  # Printout FORMAT
+            counts['exceptionPropCheck'] += 1
         # validate against the attribute registry if present
         reg_pass = True
         attr_reg_type = None
@@ -485,11 +482,8 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
                 counts['pass'] += 1
             else:
                 counts['failAttributeRegistry'] += 1
-        messages[name + '.' + key] = (
-            displayValue(value), displayType('', prop_type if attr_reg_type is None else attr_reg_type),
-            'Yes', 'PASS' if type_pass and pattern_pass and reg_pass else 'FAIL')
 
-    return messages, counts
+    return messages, counts, oemLinks
 
 
 def displayType(propType, propRealType, is_collection=False):
@@ -655,6 +649,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
     param arg4: refs
     """
     resultList = OrderedDict()
+    oemLinks = OrderedDict()
     counts = Counter()
 
     rsvLogger.verboseout(PropertyName)
@@ -673,12 +668,12 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
             rsvLogger.verboseout('{}: Item is skipped, no schema'.format(item))
             counts['skipNoSchema'] += 1
             return {item: ('-', '-',
-                                'Yes' if propExists else 'No', 'NoSchema')}, counts
+                                'Yes' if propExists else 'No', 'NoSchema')}, counts, oemLinks
         else:
             rsvLogger.error('{}: Item is present, but no schema found'.format(item))
             counts['failNoSchema'] += 1
             return {item: ('-', '-',
-                                'Yes' if propExists else 'No', 'FAIL')}, counts
+                                'Yes' if propExists else 'No', 'FAIL')}, counts, oemLinks
 
     propAttr = PropertyItem['attrs']
 
@@ -689,10 +684,10 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
     # why not actually check oem
     # rs-assertion: 7.4.7.2
     if 'Oem' in PropertyName:
-        rsvLogger.verboseout('\tOem is skipped')
-        counts['skipOem'] += 1
-        return {item: ('-', '-',
-                            'Yes' if propExists else 'No', 'OEM')}, counts
+        #rsvLogger.verboseout('\tOem is skipped')
+        #counts['skipOem'] += 1
+        #return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts
+        pass
 
     propMandatory = False
     propMandatoryPass = True
@@ -710,7 +705,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
             return {item: (
                 '-', displayType(propType, propRealType),
                 'Yes' if propExists else 'No',
-                'Optional')}, counts
+                'Optional')}, counts, oemLinks
 
     nullable_attr = propAttr.get('Nullable')
     propNullable = False if nullable_attr == 'false' else True  # default is true
@@ -754,7 +749,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
         return {item: (
             '-', displayType(propType, propRealType, is_collection=True),
             'Yes' if propExists else 'No',
-            'FAIL')}, counts
+            'FAIL')}, counts, oemLinks
     elif isCollection and propValue is not None:
         # note: handle collections correctly, this needs a nicer printout
         # rs-assumption: do not assume URIs for collections
@@ -809,7 +804,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
             else:
                 if propRealType == 'complex':
                     innerPropType = PropertyItem['typeprops']
-                    success, complexCounts, complexMessages = validateComplex(sub_item, val, innerPropType,
+                    success, complexCounts, complexMessages, newLinks = validateComplex(sub_item, val, innerPropType,
                                                                               decoded.get('@odata.type'),
                                                                               decoded.get('AttributeRegistry'))
                     if not success:
@@ -826,14 +821,17 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
 
                     counts.update(complexCounts)
                     resultList.update(complexMessages)
-                    additionalComplex = innerPropType.additional
+                    oemLinks.update(newLinks)
+                    allowAdditional = innerPropType.additional
                     for key in val:
-                        if sub_item + '.' + key not in complexMessages and not additionalComplex:
+                        if sub_item + '.' + key not in complexMessages and not allowAdditional:
                             rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
                                             .format(sub_item + '.' + key, innerPropType.snamespace))
                             counts['failComplexAdditional'] += 1
                             resultList[sub_item + '.' + key] = (displayValue(val[key]), '-', '-', 'FAIL')
                         elif sub_item + '.' + key not in complexMessages:
+                            rsvLogger.warn('{} not defined in schema {} (check version, spelling and casing)'
+                                            .format(sub_item + '.' + key, innerPropType.snamespace))
                             counts['unverifiedComplexAdditional'] += 1
                             resultList[sub_item + '.' + key] = (displayValue(val[key]), '-', '-', 'Additional')
                     continue
@@ -877,7 +875,7 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
                 counts['failNullable'] += 1
             rsvLogger.verboseout("\tFAIL")  # Printout FORMAT
 
-    return resultList, counts
+    return resultList, counts, oemLinks
 
 
 def checkPayloadConformance(uri, decoded, ParentItem=None):
@@ -954,6 +952,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     rsvLogger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)  # Printout FORMAT
     counts = Counter()
     results = OrderedDict()
+    oemLinks = OrderedDict()
     messages = OrderedDict()
     success = True
 
@@ -1026,27 +1025,27 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 loadAttributeRegDict(odata_type, propResourceObj.jsondata)
 
     node = propResourceObj.typeobj
-    while node is not None:
-        for prop in node.propList:
-            try:
-                propMessages, propCounts = checkPropertyConformance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs, parentURI=URI)
-                messages.update(propMessages)
-                counts.update(propCounts)
-            except AuthenticationError as e:
-                raise  # re-raise exception
-            except Exception as ex:
-                rsvLogger.exception("Something went wrong")  # Printout FORMAT
-                rsvLogger.error('%s: Could not finish check on this property' % (prop.name))  # Printout FORMAT
-                counts['exceptionPropCheck'] += 1
-        node = node.parent
+    for prop in node.getProperties():
+        try:
+            propMessages, propCounts, newLinks= checkPropertyConformance(node.soup, prop.name, prop.propDict, propResourceObj.jsondata, node.refs, parentURI=URI)
+            messages.update(propMessages)
+            counts.update(propCounts)
+            oemLinks.update(newLinks)
+        except AuthenticationError as e:
+            raise  # re-raise exception
+        except Exception as ex:
+            rsvLogger.exception("Something went wrong")  # Printout FORMAT
+            rsvLogger.error('%s: Could not finish check on this property' % (prop.name))  # Printout FORMAT
+            counts['exceptionPropCheck'] += 1
 
     serviceRefs = rst.currentService.metadata.get_service_refs()
     serviceSchemaSoup = rst.currentService.metadata.get_soup()
     if serviceSchemaSoup is not None:
         for prop in propResourceObj.additionalList:
-            propMessages, propCounts = checkPropertyConformance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
+            propMessages, propCounts, oemLinks = checkPropertyConformance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
             messages.update(propMessages)
             counts.update(propCounts)
+            oemLinks.update(newLinks)
 
     uriName, SchemaFullType, jsonData = propResourceObj.name, propResourceObj.typeobj.fulltype, propResourceObj.jsondata
     SchemaNamespace, SchemaType = rst.getNamespace(SchemaFullType), rst.getType(SchemaFullType)
@@ -1062,7 +1061,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             key, messages[key][3] if key in messages else 'Exists, no schema check'))
         if key not in messages: 
             # note: extra messages for "unchecked" properties
-            if not propResourceObj.typeobj.additional:
+            allowAdditional = propResourceObj.typeobj.additional
+            if not allowAdditional:
                 rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
                                 .format(key, SchemaNamespace))
                 counts['failAdditional'] += 1
@@ -1070,6 +1070,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                                  '-',
                                  'FAIL')
             else:
+                rsvLogger.warn('{} not defined in schema {} (check version, spelling and casing)'
+                                .format(sub_item + '.' + key, innerPropType.snamespace))
                 counts['unverifiedAdditional'] += 1
                 messages[key] = (displayValue(item), '-',
                                  '-',
@@ -1093,7 +1095,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     rsvLogger.debug(propResourceObj.links)  # Printout FORMAT
     rsvLogger.removeHandler(errh)  # Printout FORMAT
     rsvLogger.removeHandler(warnh)  # Printout FORMAT
-    return True, counts, results, propResourceObj.links, propResourceObj
+    oemLinks.update(propResourceObj.links)
+    return True, counts, results, oemLinks, propResourceObj
 
 
 def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expectedJson=None, parent=None, allLinks=None):
@@ -1173,7 +1176,7 @@ def main(argv=None, direct_parser=None):
 
     # tool
     argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
-    argget.add_argument('--schema_pack', type=str, help='Deploy DMTF schema from zip distribution, for use with --localonly (Specify url or type "latest", overwrites current schema)')
+    argget.add_argument('--schema_pack', type=str, default='', help='Deploy DMTF schema from zip distribution, for use with --localonly (Specify url or type "latest", overwrites current schema)')
     argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
     argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
     argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)

@@ -68,7 +68,7 @@ defaultconfig = {
         'authtype': 'basic', 'username': "", 'password': "", 'token': '',
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
-        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}, 'sample': 0, 'schema_pack': None
+        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}, 'sample': 0, 'schema_pack': ''
         }
 
 config = dict(defaultconfig)
@@ -741,19 +741,14 @@ class ResourceObj:
             traverseLogger.warn(
                 'No @odata.type present, assuming highest type {}'.format(fullType))
 
-        self.additionalList = []
         self.initiated = True
         idtag = (fullType, self.context)
 
+        # get our metadata
         metadata = currentService.metadata
 
         serviceRefs = metadata.get_service_refs()
         serviceSchemaSoup = metadata.get_soup()
-        if serviceSchemaSoup is not None:
-            successService, additionalProps = getAnnotations(
-                serviceSchemaSoup, serviceRefs, self.jsondata)
-            for prop in additionalProps:
-                self.additionalList.append(prop)
 
         # if we've generated this type, use it, else generate type
         if idtag in ResourceObj.robjcache:
@@ -764,6 +759,20 @@ class ResourceObj:
                 fullType, typesoup, typerefs, 'EntityType', topVersion=getNamespace(fullType))
             ResourceObj.robjcache[idtag] = self.typeobj
 
+        # get additional
+         
+
+
+
+
+        # get annotation
+        self.additionalList = []
+        if serviceSchemaSoup is not None:
+            successService, annotationProps = getAnnotations(
+                serviceSchemaSoup, serviceRefs, self.jsondata)
+            self.additionalList.extend(annotationProps)
+
+
         self.links = OrderedDict()
         node = self.typeobj
 
@@ -773,14 +782,19 @@ class ResourceObj:
                 sample_size=currentService.config['sample']))
             node = node.parent
 
+    def getResourceProperties(self):
+        pass
+
+        
+
 
 class PropItem:
-    def __init__(self, soup, refs, propOwner, propChild, tagType, topVersion):
+    def __init__(self, soup, refs, propOwner, propChild, tagType, topVersion, customType=None):
         try:
             self.name = propOwner + ':' + propChild
             self.propOwner, self.propChild = propOwner, propChild
             self.propDict = getPropertyDetails(
-                soup, refs, propOwner, propChild, tagType, topVersion)
+                soup, refs, propOwner, propChild, tagType, topVersion, customType)
             self.attr = self.propDict['attrs']
         except Exception as ex:
             traverseLogger.exception("Something went wrong")
@@ -790,9 +804,23 @@ class PropItem:
             return
         pass
 
+class PropAction:
+    def __init__(self, propOwner, propChild, act):
+        try:
+            self.name = '#{}.{}'.format(propOwner, propChild)
+            self.propOwner, self.propChild = propOwner, propChild
+            self.actDict = act
+        except Exception as ex:
+            traverseLogger.exception("Something went wrong")
+            traverseLogger.error(
+                    '{}:{} :  Could not get details on this action'.format(str(propOwner),str(propChild)))
+            self.propDict = None
+            return
+        pass
+
 
 class PropType:
-    def __init__(self, fulltype, soup, refs, tagType, topVersion=None):
+    def __init__(self, fulltype, soup, refs, tagType='EntityType', topVersion=None):
         self.initiated = False
         self.fulltype = fulltype
         self.soup, self.refs = soup, refs
@@ -803,15 +831,18 @@ class PropType:
         self.tagType = tagType
         self.isNav = False
         self.propList = []
+        self.actionList = []
         self.parent = None
         self.propPattern = None
 
-        propertyList = self.propList
+        # get all properties and actions in Type chain
         success, baseSoup, baseRefs, baseType = True, self.soup, self.refs, self.fulltype
         try:
-            self.additional, newList, self.propPattern = getTypeDetails(
+            newPropList, newActionList, self.additional, self.propPattern = getTypeDetails(
                 baseSoup, baseRefs, baseType, self.tagType, topVersion)
-            propertyList.extend(newList)
+            self.propList.extend(newPropList)
+            self.actionList.extend(newActionList)
+            
             success, baseSoup, baseRefs, baseType = getParentType(
                 baseSoup, baseRefs, baseType, self.tagType)
             if success:
@@ -826,6 +857,33 @@ class PropType:
                 '{}:  Getting type failed for {}'.format(str(self.fulltype), str(baseType)))
             return
 
+    def getTypeChain(self):
+        if self.fulltype is None:
+            raise StopIteration
+        else:
+            node = self
+            tlist = []
+            while node is not None:
+                tlist.append(node.fulltype)
+                yield node.fulltype
+                node = node.parent
+            raise StopIteration
+    def getProperties(self):
+        node = self
+        while node is not None:
+            for prop in node.propList:
+                yield prop
+            node = node.parent
+        raise StopIteration
+
+    def getActions(self):
+        node = self
+        while node is not None:
+            for prop in node.actionList:
+                yield prop
+            node = node.parent
+        raise StopIteration
+
 
 def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     # spits out information on the type we have, prone to issues if references/soup is ungettable, this shouldn't be ran without it 
@@ -839,6 +897,7 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
     """
     metadata = currentService.metadata
     PropertyList = list()
+    ActionList = list()
     PropertyPattern = None
     additional = False
 
@@ -860,15 +919,14 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
                 uri = metadata.get_schema_uri(SchemaType)
         traverseLogger.error('Schema namespace {} not found in schema file {}. Will not be able to gather type details.'
                              .format(SchemaNamespace, uri if uri is not None else SchemaType))
-        return False, PropertyList, PropertyPattern
+        return PropertyList, ActionList, False, PropertyPattern
 
     element = innerschema.find(tagType, attrs={'Name': SchemaType}, recursive=False)
     traverseLogger.debug("___")
-    traverseLogger.debug(element['Name'])
+    traverseLogger.debug(element.get('Name'))
     traverseLogger.debug(element.attrs)
     traverseLogger.debug(element.get('BaseType'))
 
-    usableProperties = element.find_all(['NavigationProperty', 'Property'], recursive=False)
     additionalElement = element.find(
         'Annotation', attrs={'Term': 'OData.AdditionalProperties'})
     additionalElementOther = element.find(
@@ -899,6 +957,9 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
             PropertyPattern['Type'] = prop_type
         additional = True
 
+    # get properties
+    usableProperties = element.find_all(['NavigationProperty', 'Property'], recursive=False)
+
     for innerelement in usableProperties:
         traverseLogger.debug(innerelement['Name'])
         traverseLogger.debug(innerelement.get('Type'))
@@ -906,14 +967,23 @@ def getTypeDetails(soup, refs, SchemaAlias, tagType, topVersion=None):
         newPropOwner = SchemaAlias if SchemaAlias is not None else 'SomeSchema'
         newProp = innerelement['Name']
         traverseLogger.debug("ADDING :::: {}:{}".format(newPropOwner, newProp))
-        if newProp not in PropertyList:
-            PropertyList.append(
-                PropItem(soup, refs, newPropOwner, newProp, tagType=tagType, topVersion=topVersion))
+        PropertyList.append(
+             PropItem(soup, refs, newPropOwner, newProp, tagType=tagType, topVersion=topVersion))
 
-    return additional, PropertyList, PropertyPattern
+    # get actions
+    usableActions = innerschema.find_all(['Action'], recursive=False)
+
+    for act in usableActions:
+        newPropOwner = getNamespace(SchemaAlias) if SchemaAlias is not None else 'SomeSchema'
+        newProp = act['Name']
+        traverseLogger.debug("ADDING ACTION :::: {}:{}".format(newPropOwner, newProp))
+        ActionList.append(
+             PropAction(newPropOwner, newProp, act))
+
+    return PropertyList, ActionList, additional, PropertyPattern
 
 
-def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='EntityType', topVersion=None):
+def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='EntityType', topVersion=None, customType=None):
     # gets an individual property's details, can be prone to problems if info does not exist in soup or is bad
     #   HOWEVER, this will rarely be the case: a property that does not exist in soup would never be expected to generate
     #   info: under the hood, too much info to be worth showing
@@ -935,42 +1005,53 @@ def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='En
     traverseLogger.debug('___')
     traverseLogger.debug('{}, {}:{}, {}'.format(OwnerNamespace, propertyOwner, propertyName, ownerTagType))
 
-    # Get Schema of the Owner that owns this prop
-    ownerSchema = soup.find('Schema', attrs={'Namespace': OwnerNamespace})
+    if customType is None:
+        # Get Schema of the Owner that owns this prop
+        ownerSchema = soup.find('Schema', attrs={'Namespace': OwnerNamespace})
 
-    if ownerSchema is None:
-        traverseLogger.warn(
-            "getPropertyDetails: Schema could not be acquired,  {}".format(OwnerNamespace))
-        return None
+        if ownerSchema is None:
+            traverseLogger.warn(
+                "getPropertyDetails: Schema could not be acquired,  {}".format(OwnerNamespace))
+            return None
 
-    # Get Entity of Owner, then the property of the Property we're targeting
-    ownerEntity = ownerSchema.find(
-        ownerTagType, attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+        # Get Entity of Owner, then the property of the Property we're targeting
+        ownerEntity = ownerSchema.find(
+            ownerTagType, attrs={'Name': OwnerType}, recursive=False)  # BS4 line
 
-    propertyTag = ownerEntity.find(
-        ['NavigationProperty', 'Property'], attrs={'Name': propertyName}, recursive=False)  # BS4 line
+        propertyTag = ownerEntity.find(
+            ['NavigationProperty', 'Property'], attrs={'Name': propertyName}, recursive=False)  # BS4 line
 
-    # check if this property is a nav property
-    # Checks if this prop is an annotation
-    success, propertySoup, propertyRefs, propertyFullType = True, soup, refs, OwnerType
+        # check if this property is a nav property
+        # Checks if this prop is an annotation
+        success, propertySoup, propertyRefs, propertyFullType = True, soup, refs, OwnerType
 
-    if '@' not in propertyName:
-        propEntry['isTerm'] = False  # not an @ annotation
-        # start adding attrs and props together
-        propertyInnerTags = propertyTag.find_all()  # BS4 line
-        for tag in propertyInnerTags:
-            propEntry[tag['Term']] = tag.attrs
-        propertyFullType = propertyTag.get('Type')
+        if '@' not in propertyName:
+            propEntry['isTerm'] = False  # not an @ annotation
+            # start adding attrs and props together
+            propertyInnerTags = propertyTag.find_all()  # BS4 line
+            for tag in propertyInnerTags:
+                propEntry[tag['Term']] = tag.attrs
+            propertyFullType = propertyTag.get('Type')
+        else:
+            propEntry['isTerm'] = True
+            propertyTag = ownerEntity
+            propertyFullType = propertyTag.get('Type', propertyOwner)
+
+        propEntry['isNav'] = propertyTag.name == 'NavigationProperty'
+        propEntry['attrs'] = propertyTag.attrs
+        traverseLogger.debug(propEntry)
+
+        propEntry['realtype'] = 'none'
+
     else:
-        propEntry['isTerm'] = True
-        propertyTag = ownerEntity
-        propertyFullType = propertyTag.get('Type', propertyOwner)
-
-    propEntry['isNav'] = propertyTag.name == 'NavigationProperty'
-    propEntry['attrs'] = propertyTag.attrs
-    traverseLogger.debug(propEntry)
-
-    propEntry['realtype'] = 'none'
+        propertyFullType = customType
+        propEntry['realtype'] = 'none'
+        propEntry['attrs'] = dict()
+        propEntry['attrs']['Type'] = customType
+        metadata = currentService.metadata
+        serviceRefs = currentService.metadata.get_service_refs()
+        serviceSchemaSoup = currentService.metadata.get_soup()
+        success, propertySoup, propertyRefs, propertyFullType = True, serviceSchemaSoup, serviceRefs, customType
 
     # find the real type of this, by inheritance
     while propertyFullType is not None:
@@ -1045,7 +1126,7 @@ def getPropertyDetails(soup, refs, propertyOwner, propertyName, ownerTagType='En
             success, baseSoup, baseRefs, baseType = True, propertySoup, propertyRefs, propertyFullType
 
             # If we're outside of our normal Soup, then do something different, otherwise elif
-            if PropertyNamespace.split('.')[0] != OwnerNamespace.split('.')[0]:
+            if PropertyNamespace.split('.')[0] != OwnerNamespace.split('.')[0] and not customType:
                 typelist = []
                 schlist = []
                 for schema in baseSoup.find_all('Schema'):
@@ -1170,7 +1251,7 @@ def getAllLinks(jsonData, propList, refDict, prefix='', context='', linklimits=N
     """
     linkList = OrderedDict()
     if linklimits is None:
-        linklimits = {}
+        linklimits = currentService.config.get('linklimits',{})
     # check keys in propertyDictionary
     # if it is a Nav property, check that it exists
     #   if it is not a Nav Collection, add it to list
