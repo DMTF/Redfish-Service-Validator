@@ -1045,6 +1045,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if serviceSchemaSoup is not None:
         for prop in propResourceObj.additionalList:
             propMessages, propCounts = checkPropertyConformance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
+            if '@Redfish.Copyright' in propMessages:
+                modified_entry = list(propMessages['@Redfish.Copyright'])
+                modified_entry[-1] = 'FAIL'
+                propMessages['@Redfish.Copyright'] = tuple(modified_entry)
+                rsvLogger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations') 
             messages.update(propMessages)
             counts.update(propCounts)
 
@@ -1279,12 +1284,6 @@ def main(argv=None, direct_parser=None):
         else:
             rsvLogger.error('File not found: {}'.format(ppath))
             return 1, None, 'File not found: {}'.format(ppath)
-        # start session if using Session auth
-        if currentService.currentSession is not None:
-            success = currentService.currentSession.startSession()
-            if not success:
-                # terminate program on start session error (error logged in startSession() call above)
-                return 1, None, 'Could not establish a session with the service'
 
     try:
         if 'Single' in pmode:
