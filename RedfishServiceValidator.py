@@ -1045,6 +1045,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if serviceSchemaSoup is not None:
         for prop in propResourceObj.additionalList:
             propMessages, propCounts = checkPropertyConformance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
+            if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in propResourceObj.typeobj.fulltype:
+                modified_entry = list(propMessages['@Redfish.Copyright'])
+                modified_entry[-1] = 'FAIL'
+                propMessages['@Redfish.Copyright'] = tuple(modified_entry)
+                rsvLogger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations') 
             messages.update(propMessages)
             counts.update(propCounts)
 
@@ -1192,6 +1197,7 @@ def main(argv=None, direct_parser=None):
     argget.add_argument('--timeout', type=int, default=30, help='requests timeout in seconds')
     argget.add_argument('--nochkcert', action='store_true', help='ignore check for certificate')
     argget.add_argument('--nossl', action='store_true', help='use http instead of https')
+    argget.add_argument('--forceauth', action='store_true', help='force authentication on unsecure connections')
     argget.add_argument('--authtype', type=str, default='Basic', help='authorization type (None|Basic|Session|Token)')
     argget.add_argument('--localonly', action='store_true', help='only use locally stored schema on your harddrive')
     argget.add_argument('--service', action='store_true', help='only use uris within the service')
@@ -1266,7 +1272,7 @@ def main(argv=None, direct_parser=None):
     jsonData = None
    
     # Determine runner
-    pmode, ppath = config.get('payloadmode'), config.get('payloadfilepath')
+    pmode, ppath = config.get('payloadmode', 'Default'), config.get('payloadfilepath')
     if pmode not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
         pmode = 'Default'
         rsvLogger.error('PayloadMode or path invalid, using Default behavior')
@@ -1278,12 +1284,6 @@ def main(argv=None, direct_parser=None):
         else:
             rsvLogger.error('File not found: {}'.format(ppath))
             return 1, None, 'File not found: {}'.format(ppath)
-        # start session if using Session auth
-        if currentService.currentSession is not None:
-            success = currentService.currentSession.startSession()
-            if not success:
-                # terminate program on start session error (error logged in startSession() call above)
-                return 1, None, 'Could not establish a session with the service'
 
     try:
         if 'Single' in pmode:

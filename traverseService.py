@@ -56,20 +56,21 @@ argparse2configparser = {
         'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
         'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
         'linklimit': 'linklimit', 'sample': 'sample'
-        }
+        } 
 
 configset = {
         "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
         "metadatafilepath": str, "cachemode": (bool, str), "cachefilepath": str, "schemasuffix": str, "timeout": int, "httpproxy": str, "httpsproxy": str,
-        "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': dict, 'extraxmlheaders': dict, "schema_pack": str 
+        "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': dict, 'extraxmlheaders': dict, "schema_pack": str,
+        "forceauth": bool
         }
 
 defaultconfig = {
         'authtype': 'basic', 'username': "", 'password': "", 'token': '',
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
-        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}, 'sample': 0, 'schema_pack': None
-        }
+        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}, 'sample': 0, 'schema_pack': None, 'forceauth': False
+        } 
 
 config = dict(defaultconfig)
 
@@ -211,11 +212,17 @@ class rfService():
 
         ChkCert = config['certificatecheck']
         AuthType = config['authtype']
+            
         self.currentSession = None
+        if not config.get('usessl', True) and not config['forceauth']:
+            if config['username'] not in ['', None] or config['password'] not in ['', None]:
+                traverseLogger.warn('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
+                config['username'] = ''
+                config['password'] = ''
         if AuthType == 'Session':
             certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
-            self.currentSession = rfSession(config['user'], config['password'], config['configuri'], None, certVal, self.proxies)
+            self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
         
         self.metadata = md.Metadata(traverseLogger)
         self.active = True
@@ -321,8 +328,9 @@ def callResourceURI(URILink):
 
     # rs-assertion: do not send auth over http
     # remove UseSSL if necessary if you require unsecure auth
-    if not UseSSL or nonService or AuthType != 'Basic':
+    if (not UseSSL and not config['forceauth']) or nonService or AuthType != 'Basic':
         auth = None
+
 
     # only send token when we're required to chkauth, during a Session, and on Service and Secure
     if UseSSL and not nonService and AuthType == 'Session' and not noauthchk:
