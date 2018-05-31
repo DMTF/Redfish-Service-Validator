@@ -1197,7 +1197,7 @@ def main(argv=None, direct_parser=None):
     argget.add_argument('--timeout', type=int, default=30, help='requests timeout in seconds')
     argget.add_argument('--nochkcert', action='store_true', help='ignore check for certificate')
     argget.add_argument('--nossl', action='store_true', help='use http instead of https')
-    argget.add_argument('--forceauth', action='store_true', help='force authentication on insecure connections')
+    argget.add_argument('--forceauth', action='store_true', help='force authentication on unsecure connections')
     argget.add_argument('--authtype', type=str, default='Basic', help='authorization type (None|Basic|Session|Token)')
     argget.add_argument('--localonly', action='store_true', help='only use locally stored schema on your harddrive')
     argget.add_argument('--service', action='store_true', help='only use uris within the service')
