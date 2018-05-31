@@ -1045,7 +1045,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if serviceSchemaSoup is not None:
         for prop in propResourceObj.additionalList:
             propMessages, propCounts = checkPropertyConformance(serviceSchemaSoup, prop.name, prop.propDict, propResourceObj.jsondata, serviceRefs)
-            if '@Redfish.Copyright' in propMessages:
+            if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in propResourceObj.typeobj.fulltype:
                 modified_entry = list(propMessages['@Redfish.Copyright'])
                 modified_entry[-1] = 'FAIL'
                 propMessages['@Redfish.Copyright'] = tuple(modified_entry)

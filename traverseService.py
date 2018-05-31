@@ -220,10 +220,9 @@ class rfService():
                 config['username'] = ''
                 config['password'] = ''
         if AuthType == 'Session':
-            auth = (config['username'], config['password'])
             certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
-            self.currentSession = rfSession(auth[0], auth[1], config['configuri'], None, certVal, self.proxies)
+            self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
         
         self.metadata = md.Metadata(traverseLogger)
         self.active = True
