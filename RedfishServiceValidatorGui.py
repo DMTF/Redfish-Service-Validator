@@ -46,6 +46,11 @@ g_config_defaults = {
             "description": "The type of authorization to use while testing",
             "options": ( "None", "Basic", "Session", "Token" )
         },
+        "ForceAuth": {
+            "value": "False",
+            "description": "Force authentication on unsecure connections",
+            "options": ( "True", "False" )
+        },
         "Token": {
             "value": "",
             "description": "The token to use when AuthType is set to Token"

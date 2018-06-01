@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.1.1] - 2018-06-01
+- Added option to force authentication if using an unsecure connection
+- Added error checking for @Redfish.Copyright in payloads
+
 ## [1.1.0] - 2018-05-11
 - Allow for text/xml in schema responses from external sites
 - Added console output when running the test via the GUI
