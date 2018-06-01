@@ -20,7 +20,7 @@ from tohtml import renderHtml, writeHtml
 import traverseService as rst
 from metadata import setup_schema_pack
 
-tool_version = '1.1.0'
+tool_version = '1.1.1'
 
 rsvLogger = rst.getLogger()
 
