@@ -46,6 +46,11 @@ g_config_defaults = {
             "description": "The type of authorization to use while testing",
             "options": ( "None", "Basic", "Session", "Token" )
         },
+        "ForceAuth": {
+            "value": "False",
+            "description": "Force authentication on unsecure connections",
+            "options": ( "True", "False" )
+        },
         "Token": {
             "value": "",
             "description": "The token to use when AuthType is set to Token"
@@ -69,6 +74,10 @@ g_config_defaults = {
         "MetadataFilePath": {
             "value": "./SchemaFiles/metadata",
             "description": "Points to the local location of the DMTF schema files"
+        },
+        "Schema_Pack": {
+            "value": "",
+            "description": "URL path to a zipped pack of DMTF Schema; for LocalMode only"
         },
         "CacheMode": {
             "value": "Off",
@@ -318,6 +327,19 @@ class RSVGui:
         """
         self.run_label_text.set( "Test running; please wait" )
 
+        run_window = tk.Toplevel()
+        run_text_frame = tk.Frame( run_window )
+        run_text_frame.pack( side = tk.TOP )
+        run_scroll = tk.Scrollbar( run_text_frame )
+        run_scroll.pack( side = tk.RIGHT, fill = tk.Y )
+        run_text = tk.Text( run_text_frame, height = 48, width = 128, yscrollcommand = run_scroll.set )
+        rsv.rsvLogger.handlers[0].stream = RunOutput( run_text )
+        run_text.pack( side = tk.TOP )
+        run_button_frame = tk.Frame( run_window )
+        run_button_frame.pack( side = tk.BOTTOM )
+        tk.Button( run_button_frame, text = "OK", command = run_window.destroy ).pack( side = tk.LEFT )
+        tk.Button( run_button_frame, text = "Copy", command = lambda: self.copy_text( run_text ) ).pack( side = tk.RIGHT )
+
         # Launch the validator
         try:
             rsv_config = self.build_config_parser( False )
@@ -356,6 +378,28 @@ class RSVGui:
         """
         self.parent.clipboard_clear()
         self.parent.clipboard_append( text.get( 1.0, tk.END ) )
+
+class RunOutput( object ):
+    """
+    Runtime output class
+
+    Args:
+        text (Text): Tkinter Text object to use as the output
+    """
+
+    def __init__( self, text ):
+        self.output = text
+
+    def write( self, string ):
+        """
+        Writes to the output object
+
+        Args:
+            string (string): The string to output
+        """
+        if self.output.winfo_exists():
+            self.output.insert( tk.END, string )
+            self.output.see( tk.END )
 
 def main():
     """
