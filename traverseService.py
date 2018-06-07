@@ -62,7 +62,7 @@ configset = {
         "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
         "metadatafilepath": str, "cachemode": (bool, str), "cachefilepath": str, "schemasuffix": str, "timeout": int, "httpproxy": str, "httpsproxy": str,
         "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': dict, 'extraxmlheaders': dict, "schema_pack": str,
-        "forceauth": bool
+        "forceauth": bool, "oemcheck": bool
         }
 
 defaultconfig = {

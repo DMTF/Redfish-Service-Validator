@@ -169,6 +169,7 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
     oemLinks = OrderedDict()
     propList = list()
 
+
     serviceRefs = rst.currentService.metadata.get_service_refs()
     serviceSchemaSoup = rst.currentService.metadata.get_soup()
     if serviceSchemaSoup is not None:
@@ -185,7 +186,7 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
         content = rst.currentService.metadata.schema_store.get(rst.getNamespace(val.get('@odata.type')))
         success, soup, uri = content if content is not None else (False, None, None)
         if success:
-            refs = rst.getReferenceDetails(soup, rst.currentService.metadata.get_service_refs(), uri)
+            refs = rst.getReferenceDetails(soup, serviceRefs, uri)
             propTypeObj = rst.PropType(val['@odata.type'], soup, refs, tagType='ComplexType')
             oemLinks.update(rst.getAllLinks(val, propTypeObj.getProperties(), refs))
         else:
@@ -212,6 +213,7 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
         complexCounts.update(aCounts)
 
     # validate the Redfish.DynamicPropertyPatterns if present
+    # current issue, missing refs where they are appropriate, may cause issues
     if propTypeObj.additional or propTypeObj.propPattern:
         patternMessages, patternCounts, newLinks = validateDynamicPropertyPatterns(name, val, propTypeObj,
                                                                          payloadType, attrRegistryId, ParentItem=name)
@@ -220,42 +222,6 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
         oemLinks.update(newLinks)
 
     return True, complexCounts, complexMessages, oemLinks
-
-
-def validateDynamicPropertyType(name, key, value, prop_type):
-    """
-    Check the type of the property value
-    :param name: the name of the dictionary of properties being validated
-    :param key: the key of the individual property being validated
-    :param value: the value of the individual property being validated
-    :param prop_type: the expected type of the value
-    :return: True if the type check passes, False otherwise
-    """
-    type_pass = True
-    if value is None:
-        # null value is OK
-        type_pass = True
-    elif prop_type == 'Edm.Primitive' or prop_type == 'Edm.PrimitiveType':
-        type_pass = isinstance(value, (int, float, str, bool))
-    elif prop_type == 'Edm.String':
-        type_pass = isinstance(value, str)
-    elif prop_type == 'Edm.Boolean':
-        type_pass = isinstance(value, bool)
-    elif prop_type == 'Edm.DateTimeOffset':
-        type_pass = validateDatetime(key, value)
-    elif prop_type == 'Edm.Int' or prop_type == 'Edm.Int16' or prop_type == 'Edm.Int32' or prop_type == 'Edm.Int64':
-        type_pass = isinstance(value, int)
-    elif prop_type == 'Edm.Decimal' or prop_type == 'Edm.Double':
-        type_pass = isinstance(value, (int, float))
-    elif prop_type == 'Edm.Guid':
-        type_pass = validateGuid(key, value)
-    else:
-        rsvLogger.debug('{}: Do not know how to validate type {}'
-                        .format(name + '.' + key, prop_type))
-    if not type_pass:
-        rsvLogger.error('{} with value {} is not of type {}'.format(name + '.' + key, value, prop_type))
-    return type_pass
-
 
 def validateAttributeRegistry(name, key, value, attr_reg):
     """
@@ -683,10 +649,10 @@ def checkPropertyConformance(soup, PropertyName, PropertyItem, decoded, refs, Pa
 
     # why not actually check oem
     # rs-assertion: 7.4.7.2
-    if 'Oem' in PropertyName:
-        #rsvLogger.verboseout('\tOem is skipped')
-        #counts['skipOem'] += 1
-        #return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts
+    if 'Oem' in PropertyName and not rst.currentService.config.get('oemcheck', False):
+        rsvLogger.verboseout('\tOem is skipped')
+        counts['skipOem'] += 1
+        return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts, oemLinks
         pass
 
     propMandatory = False
@@ -1192,6 +1158,7 @@ def main(argv=None, direct_parser=None):
             help='Output debug statements to text log, otherwise it only uses INFO')
     argget.add_argument('--verbose_checks', action="store_const", const=VERBO_NUM, default=logging.INFO,
             help='Show all checks in logging')
+    argget.add_argument('--oemcheck', action='store_true', help='Check OEM items')
 
     # service
     argget.add_argument('-i', '--ip', type=str, help='ip to test on [host:port]')
