@@ -190,7 +190,7 @@ def validateComplex(name, val, propTypeObj, payloadType, attrRegistryId):
             propTypeObj = rst.PropType(val['@odata.type'], soup, refs, tagType='ComplexType')
             oemLinks.update(rst.getAllLinks(val, propTypeObj.getProperties(), refs))
         else:
-            rsvLogger.error('{}: complex payload error, @odata.type does not seem to exist in metadata'.format(str(name)))
+            rsvLogger.error('{}: complex payload error, @odata.type does not seem to exist in metadata {}'.format(str(name), val.get('@odata.type')))
 
     for prop in propTypeObj.getProperties():
         propMessages, propCounts, newLinks = checkPropertyConformance(propSoup, prop.name, prop.propDict, val, propRefs,
@@ -1158,7 +1158,7 @@ def main(argv=None, direct_parser=None):
             help='Output debug statements to text log, otherwise it only uses INFO')
     argget.add_argument('--verbose_checks', action="store_const", const=VERBO_NUM, default=logging.INFO,
             help='Show all checks in logging')
-    argget.add_argument('--oemcheck', action='store_true', help='Check OEM items')
+    argget.add_argument('--nooemcheck', action='store_true', help='Don\'t check OEM items')
 
     # service
     argget.add_argument('-i', '--ip', type=str, help='ip to test on [host:port]')

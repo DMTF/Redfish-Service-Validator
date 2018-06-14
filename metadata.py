@@ -153,7 +153,6 @@ class Metadata(object):
                 name, uri = self.service_refs[schema]
                 result = rst.getSchemaDetails(name, uri)
                 self.schema_store[name] = result
-                
         else:
             logger.warning('Metadata: getSchemaDetails() did not return success')
 
