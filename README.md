@@ -57,6 +57,8 @@ The Tool has an option to ignore SSL certificate check if certificate is not ins
 
 UseSSL = \<On / Off\>
 
+OemCheck = \<On / Off\>    Specify if we want to check OEM properties
+
 CertificateCheck = \<On / Off\>
 
 CertificateBundle = ca_bundle   Specify a bundle (file or directory) with certificates of trusted CAs. See [SelfSignedCerts.md](https://github.com/DMTF/Redfish-Service-Validator/blob/master/SelfSignedCerts.md) for tips on creating the bundle.
