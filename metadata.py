@@ -104,8 +104,6 @@ class Metadata(object):
     def __init__(self, logger):
         logger.info('Constructing metadata...')
         self.success_get = False
-        self.md_soup = None
-        self.service_refs = dict()
         self.uri_to_namespaces = defaultdict(list)
         self.elapsed_secs = 0
         self.metadata_namespaces = set()
@@ -122,10 +120,13 @@ class Metadata(object):
         self.redfish_extensions_alias_ok = False
 
         start = time.time()
-        self.success_get, self.md_soup, uri = rst.getSchemaDetails(Metadata.schema_type, Metadata.metadata_uri)
+        self.schema_obj = rst.getSchemaObject(Metadata.schema_type, Metadata.metadata_uri)
+        uri = Metadata.metadata_uri
+
         self.elapsed_secs = time.time() - start
-        if self.success_get:
-            self.service_refs = rst.getReferenceDetails(self.md_soup, name=Metadata.schema_type)
+        if self.schema_obj:
+            self.md_soup = self.schema_obj.soup
+            self.service_refs = self.schema_obj.refs
             # set of namespaces included in $metadata
             self.metadata_namespaces = {k for k in self.service_refs.keys()}
             # create map of schema URIs to namespaces from $metadata
@@ -151,10 +152,12 @@ class Metadata(object):
             logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
             for schema in self.service_refs:
                 name, uri = self.service_refs[schema]
-                result = rst.getSchemaDetails(name, uri)
-                self.schema_store[name] = result
+                self.schema_store[name] = rst.getSchemaObject(name, uri)
         else:
             logger.warning('Metadata: getSchemaDetails() did not return success')
+
+    def get_schema_obj(self):
+        return self.schema_obj
 
     def get_soup(self):
         return self.md_soup
@@ -224,7 +227,7 @@ class Metadata(object):
                         self.logger.debug('Metadata: {}'.format(msg))
                         self.bad_namespace_include.add(msg)
             else:
-                self.logger.debug('Metadata: failure opening schema {} of type {}'.format(schema_uri, schema_type))
+                self.logger.error('Metadata: failure opening schema {} of type {}'.format(schema_uri, schema_type))
                 self.bad_schema_uris.add(schema_uri)
 
     def get_counter(self):
