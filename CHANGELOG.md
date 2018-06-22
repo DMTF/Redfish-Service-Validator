@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.1.2] - 2018-06-22
+- Added support for verifying OEM objects in responses
+
 ## [1.1.1] - 2018-06-01
 - Added option to force authentication if using an unsecure connection
 - Added error checking for @Redfish.Copyright in payloads

@@ -79,6 +79,11 @@ g_config_defaults = {
             "value": "",
             "description": "URL path to a zipped pack of DMTF Schema; for LocalMode only"
         },
+        "OemCheck": {
+            "value": "True",
+            "description": "Enable or disable validation of OEM objects",
+            "options": ( "True", "False" )
+        },
         "CacheMode": {
             "value": "Off",
             "description": "Cache options for overriding or falling back to a file",
