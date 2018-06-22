@@ -51,17 +51,17 @@ ForceAuth = \<Force authentication on otherwise unsecure communication\>
 
 AuthType = \<Type of authorization for above credentials (None,Basic,Session)\>
 
-The Tool has an option to ignore SSL certificate check if certificate is not installed on the client system. The certificate check can be switched on or off using the below parameter of the config.ini file. By default the parameter is set to ‘Off’.  UseSSL determines whether or not the https protocol is used.  If it is `Off`, it will also disable certification.
+UseSSL = \<True / False\>
+
+CertificateCheck = \<True / False\>
+
+CertificateBundle = ca_bundle   Specify a bundle (file or directory) with certificates of trusted CAs. See [SelfSignedCerts.md](https://github.com/DMTF/Redfish-Service-Validator/blob/master/SelfSignedCerts.md) for tips on creating the bundle.
+
+The Tool has an option to ignore SSL certificate check if certificate is not installed on the client system. The certificate check can be switched on or off using the below parameter of the config.ini file. By default the parameter is set to `False`.  UseSSL determines whether or not the https protocol is used.  If it is `False`, it will also disable certification.
 
 [Options]
 
-UseSSL = \<On / Off\>
-
-OemCheck = \<On / Off\>    Specify if we want to check OEM properties
-
-CertificateCheck = \<On / Off\>
-
-CertificateBundle = ca_bundle   Specify a bundle (file or directory) with certificates of trusted CAs. See [SelfSignedCerts.md](https://github.com/DMTF/Redfish-Service-Validator/blob/master/SelfSignedCerts.md) for tips on creating the bundle.
+OemCheck = \<True / False\>    Specify if we want to check OEM properties
 
 Other  attributes under the "[Options]" section have schema specific implementations as described below
 
@@ -72,8 +72,6 @@ ServiceMode - (boolean) Only test properties against Resources/Schema that exist
 MetadataFilePath - (string) This attribute points to the location of the DMTF schema file location, populated by xml files
 
 Schema_Pack - (string) URL path to an official zipped pack of DMTF Schema, to be extracted over the user's local schema directory.  Use 'latest' to pull the latest zip.  (To be used with option LocalOnly) 
-
-LogPath - (string) Path with which to generate logs in
 
 Timeout - (integer) Interval of time before timing out
 
@@ -94,6 +92,10 @@ CacheFilePath = Path to cache directory
 LinkLimit = TypeName:## -- Option to limit the amount of links accepted from collections, default LogEntry:20
 
 Sample = (integer) Number of random members from large collections to validate. The default is to validate all members. All members will be validated if a value of zero or a negative number is specified. If a LinkLimit and Sample apply to a given collection, the LinkLimit takes precedence.
+
+[Validator]
+
+LogPath - (string) Path to store the logs for the generator
 
 PayloadMode = [Default, Tree, Single, TreeFile, SingleFile] -- Options for the target of validation, allowing to specify a file or specific URI and traversal behavior
 
