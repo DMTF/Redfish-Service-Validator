@@ -1115,13 +1115,10 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
 
 validatorconfig = {'payloadmode': 'Default', 'payloadfilepath': None, 'logpath': './logs'}
 
-def main(argv=None, direct_parser=None):
+def main(arglist=None, direct_parser=None):
     """
     Main program
     """
-    if argv is None:
-        argv = sys.argv
-
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
     
     # config
@@ -1160,7 +1157,7 @@ def main(argv=None, direct_parser=None):
     argget.add_argument('--https_proxy', type=str, default='', help='URL for the HTTPS proxy')
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
 
-    args = argget.parse_args()
+    args = argget.parse_args(arglist)
     
     # clear cache from any other runs
     rst.callResourceURI.cache_clear()
@@ -1196,12 +1193,8 @@ def main(argv=None, direct_parser=None):
         proxies['https'] = httpsprox if httpsprox != "" else None
         setup_schema_pack(config['schema_pack'], config['metadatafilepath'], proxies, config['timeout']) 
 
-    currentService = rst.startService()
-    metadata = currentService.metadata
-    sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
-    logpath = config['logpath']
-
     # Logging config
+    logpath = config['logpath']
     startTick = datetime.now()
     if not os.path.isdir(logpath):
         os.makedirs(logpath)
@@ -1212,6 +1205,12 @@ def main(argv=None, direct_parser=None):
         fh.setLevel(args.verbose_checks)
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)  # Printout FORMAT
+
+    # Then start service
+    currentService = rst.startService()
+    metadata = currentService.metadata
+    sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
+
 
     # start printing
     rsvLogger.info('ConfigURI: ' + ConfigURI)
