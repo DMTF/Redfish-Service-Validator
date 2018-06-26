@@ -154,6 +154,10 @@ class Metadata(object):
             for schema in self.service_refs:
                 name, uri = self.service_refs[schema]
                 self.schema_store[name] = rst.getSchemaObject(name, uri)
+                if self.schema_store[name] is not None:
+                    for ref in self.schema_store[name].refs:
+                        pass
+
         else:
             logger.warning('Metadata: getSchemaDetails() did not return success')
 

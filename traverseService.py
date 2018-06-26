@@ -727,7 +727,7 @@ class ResourceObj:
                 typename, schemaObj, topVersion=getNamespace(typename))
 
         self.propertyList = self.typeobj.getProperties(self.jsondata)
-        propertyList = [prop.name.split(':')[-1] for prop in self.propertyList]
+        propertyList = [prop.propChild for prop in self.propertyList]
 
 
         # get additional
@@ -745,7 +745,7 @@ class ResourceObj:
 
         if propTypeObj.additional:
             for key in [k for k in self.jsondata if k not in propertyList +
-                    [prop.name.split(':')[-1] for prop in self.additionalList]]:
+                    [prop.propChild for prop in self.additionalList]]:
                 val = self.jsondata.get(key)
                 value_obj = PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)
@@ -760,7 +760,7 @@ class ResourceObj:
 
         # list illegitimate properties together
         self.unknownProperties = [k for k in self.jsondata if k not in propertyList +
-                [prop.name for prop in self.additionalList] and '@odata' not in k]
+                [prop.propChild  for prop in self.additionalList] and '@odata' not in k]
 
         self.links = OrderedDict()
         node = self.typeobj
@@ -1457,9 +1457,9 @@ def getAnnotations(schemaObj, decoded, prefix=''):
             # add the namespace to the set of namespaces referenced by this service
             metadata.add_service_namespace(getNamespace(fullItem))
         annotationSchemaObj = schemaObj.getSchemaFromReference(getNamespace(fullItem))
-        realType = annotationSchemaObj.name
         traverseLogger.debug('{}, {}, {}'.format(key, splitKey, decoded[key]))
         if annotationSchemaObj is not None:
+            realType = annotationSchemaObj.name
             if isinstance(decoded[key], dict) and decoded[key].get('@odata.type') is not None:
                 payloadType = decoded[key].get('@odata.type','').replace('#', '')
                 annotationSchemaObj = annotationSchemaObj.getSchemaFromReference(getNamespace(payloadType))
