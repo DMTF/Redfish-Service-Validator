@@ -677,6 +677,14 @@ class ResourceObj:
         if acquiredtype is not typename and isComplex:
             context = None 
 
+        if jsondata.get('@odata.type') is not None:
+            currentService.metadata.add_service_namespace(getNamespace(jsondata.get('@odata.type')))
+        if jsondata.get('@odata.context') is not None:
+            # add the namespace to the set of namespaces referenced by this service
+            ns = getNamespace(jsondata.get('@odata.context').split('#')[-1])
+            if '/' not in ns and not ns.endswith('$entity'):
+                currentService.metadata.add_service_namespace(ns)
+
         # Provide a context for this (todo: regex)
         if context is None:
             context = self.jsondata.get('@odata.context')
@@ -743,14 +751,6 @@ class ResourceObj:
                 value_obj = PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)
 
-        if propTypeObj.additional:
-            prop_type = 'Resource.OemObject'
-            for key in [k for k in self.jsondata if k not in propertyList +
-                    [prop.propChild for prop in self.additionalList]]:
-                val = self.jsondata.get(key)
-                value_obj = PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
-                self.additionalList.append(value_obj)
-                
 
         # get annotation
         if serviceSchemaSoup is not None:
@@ -1121,6 +1121,9 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
             propEntry['isTerm'] = True
             ownerEntity = ownerSchema.find(
                 ['Term'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+            if ownerEntity is None:
+                ownerEntity = ownerSchema.find(
+                    ['EntityType', 'ComplexType'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
             propertyTag = ownerEntity
             propertyFullType = propertyTag.get('Type', propertyOwner)
 
@@ -1464,17 +1467,7 @@ def getAnnotations(schemaObj, decoded, prefix=''):
         traverseLogger.debug('{}, {}, {}'.format(key, splitKey, decoded[key]))
         if annotationSchemaObj is not None:
             realType = annotationSchemaObj.name
-            if isinstance(decoded[key], dict) and decoded[key].get('@odata.type') is not None:
-                payloadType = decoded[key].get('@odata.type','').replace('#', '')
-                annotationSchemaObj = annotationSchemaObj.getSchemaFromReference(getNamespace(payloadType))
-                if annotationSchemaObj is not None:
-                    realType = annotationSchemaObj.name
-                else:
-                    traverseLogger.warn("getAnnotations: {} cannot be acquired from metadata -> {}".format(payloadType, fullItem))
-                realItem = payloadType
-                tagtype = 'ComplexType'
-            else:
-                realItem = realType + '.' + fullItem.split('.', 1)[1]
+            realItem = realType + '.' + fullItem.split('.', 1)[1]
             additionalProps.append(
                 PropItem(annotationSchemaObj, realItem, key, decoded[key]))
     traverseLogger.debug("Annotations generated: {} out of {}".format(len(additionalProps), annotationsFound))

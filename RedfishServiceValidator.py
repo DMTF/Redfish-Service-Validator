@@ -860,16 +860,10 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
             if paramPass:
                 paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None or\
                     re.match('(\/.*)+#(\/.*)+[/]$entity', decoded[key]) is not None
-            # add the namespace to the set of namespaces referenced by this service
-            ns = rst.getNamespace(decoded[key])
-            if '/' not in ns and not ns.endswith('$entity'):
-                rst.currentService.metadata.add_service_namespace(ns)
         elif key == '@odata.type':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
-            # add the namespace to the set of namespaces referenced by this service
-            rst.currentService.metadata.add_service_namespace(rst.getNamespace(decoded[key]))
         else:
             paramPass = True
         if not paramPass:
