@@ -738,12 +738,13 @@ class ResourceObj:
             prop_type = propTypeObj.propPattern.get('Type','Resource.OemObject')
          
             regex = re.compile(prop_pattern)
-            for key in [k for k in self.jsondata if k not in propertyList]:
+            for key in [k for k in self.jsondata if k not in propertyList and regex.match(k)]:
                 val = self.jsondata.get(key)
                 value_obj = PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)
 
         if propTypeObj.additional:
+            prop_type = 'Resource.OemObject'
             for key in [k for k in self.jsondata if k not in propertyList +
                     [prop.propChild for prop in self.additionalList]]:
                 val = self.jsondata.get(key)
@@ -765,11 +766,12 @@ class ResourceObj:
         self.links = OrderedDict()
         node = self.typeobj
 
-        self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList))
+        oem = config.get('oemcheck', True)
+        self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList, oem))
 
         self.links.update(getAllLinks(
             self.jsondata, self.additionalList, schemaObj, context=context, linklimits=currentService.config.get('linklimits',{}),
-            sample_size=currentService.config['sample']))
+            sample_size=currentService.config['sample'], oemCheck=oem))
 
     def getResourceProperties(self):
         allprops = self.propertyList + self.additionalList[:min(len(self.additionalList), 100)]
@@ -941,13 +943,13 @@ class PropType:
                 node = node.parent
             raise StopIteration
 
-    def getLinksFromType(self, jsondata, context, propList=None):
+    def getLinksFromType(self, jsondata, context, propList=None, oemCheck=True):
         node = self
         links = OrderedDict()
         while node is not None:
             links.update(getAllLinks(
                 jsondata, node.getProperties(jsondata) if propList is None else propList, node.schemaObj, context=context, linklimits=currentService.config.get('linklimits',{}),
-                sample_size=currentService.config['sample']))
+                sample_size=currentService.config['sample'], oemCheck=oemCheck))
             node = node.parent
         return links
         
@@ -1321,7 +1323,7 @@ def enumerate_collection(items, cTypeName, linklimits, sample_size):
         yield from enumerate(items)
 
 
-def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits=None, sample_size=0):
+def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits=None, sample_size=0, oemCheck=True):
     """
     Function that returns all links provided in a given JSON response.
     This result will include a link to itself.
@@ -1413,12 +1415,14 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
             propDict = propx.propDict
             key = propx.name
             item = getType(key).split(':')[-1]
+            if 'Oem' in item and not oemCheck:
+                continue
             cType = propDict.get('isCollection')
             if propDict is None:
                 continue
             elif propDict['realtype'] == 'complex':
                 tp = propDict['typeprops']
-                if jsonData.get(item) is not None:
+                if jsonData.get(item) is not None and tp is not None:
                     if cType is not None:
                         cTypeName = getType(cType)
                         for item in tp:
