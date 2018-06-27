@@ -158,6 +158,7 @@ class Metadata(object):
                     for ref in self.schema_store[name].refs:
                         pass
 
+
         else:
             logger.warning('Metadata: getSchemaDetails() did not return success')
 
