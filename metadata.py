@@ -127,6 +127,7 @@ class Metadata(object):
         if self.schema_obj:
             self.md_soup = self.schema_obj.soup
             self.service_refs = self.schema_obj.refs
+            self.success_get = True
             # set of namespaces included in $metadata
             self.metadata_namespaces = {k for k in self.service_refs.keys()}
             # create map of schema URIs to namespaces from $metadata
@@ -153,6 +154,10 @@ class Metadata(object):
             for schema in self.service_refs:
                 name, uri = self.service_refs[schema]
                 self.schema_store[name] = rst.getSchemaObject(name, uri)
+                if self.schema_store[name] is not None:
+                    for ref in self.schema_store[name].refs:
+                        pass
+
         else:
             logger.warning('Metadata: getSchemaDetails() did not return success')
 

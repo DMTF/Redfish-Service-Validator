@@ -677,6 +677,14 @@ class ResourceObj:
         if acquiredtype is not typename and isComplex:
             context = None 
 
+        if jsondata.get('@odata.type') is not None:
+            currentService.metadata.add_service_namespace(getNamespace(jsondata.get('@odata.type')))
+        if jsondata.get('@odata.context') is not None:
+            # add the namespace to the set of namespaces referenced by this service
+            ns = getNamespace(jsondata.get('@odata.context').split('#')[-1])
+            if '/' not in ns and not ns.endswith('$entity'):
+                currentService.metadata.add_service_namespace(ns)
+
         # Provide a context for this (todo: regex)
         if context is None:
             context = self.jsondata.get('@odata.context')
@@ -727,7 +735,7 @@ class ResourceObj:
                 typename, schemaObj, topVersion=getNamespace(typename))
 
         self.propertyList = self.typeobj.getProperties(self.jsondata)
-        propertyList = [prop.name.split(':')[-1] for prop in self.propertyList]
+        propertyList = [prop.propChild for prop in self.propertyList]
 
 
         # get additional
@@ -738,18 +746,11 @@ class ResourceObj:
             prop_type = propTypeObj.propPattern.get('Type','Resource.OemObject')
          
             regex = re.compile(prop_pattern)
-            for key in [k for k in self.jsondata if k not in propertyList]:
+            for key in [k for k in self.jsondata if k not in propertyList and regex.match(k)]:
                 val = self.jsondata.get(key)
                 value_obj = PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)
 
-        if propTypeObj.additional:
-            for key in [k for k in self.jsondata if k not in propertyList +
-                    [prop.name.split(':')[-1] for prop in self.additionalList]]:
-                val = self.jsondata.get(key)
-                value_obj = PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
-                self.additionalList.append(value_obj)
-                
 
         # get annotation
         if serviceSchemaSoup is not None:
@@ -760,16 +761,17 @@ class ResourceObj:
 
         # list illegitimate properties together
         self.unknownProperties = [k for k in self.jsondata if k not in propertyList +
-                [prop.name for prop in self.additionalList] and '@odata' not in k]
+                [prop.propChild  for prop in self.additionalList] and '@odata' not in k]
 
         self.links = OrderedDict()
         node = self.typeobj
 
-        self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList))
+        oem = config.get('oemcheck', True)
+        self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList, oem))
 
         self.links.update(getAllLinks(
             self.jsondata, self.additionalList, schemaObj, context=context, linklimits=currentService.config.get('linklimits',{}),
-            sample_size=currentService.config['sample']))
+            sample_size=currentService.config['sample'], oemCheck=oem))
 
     def getResourceProperties(self):
         allprops = self.propertyList + self.additionalList[:min(len(self.additionalList), 100)]
@@ -941,13 +943,13 @@ class PropType:
                 node = node.parent
             raise StopIteration
 
-    def getLinksFromType(self, jsondata, context, propList=None):
+    def getLinksFromType(self, jsondata, context, propList=None, oemCheck=True):
         node = self
         links = OrderedDict()
         while node is not None:
             links.update(getAllLinks(
                 jsondata, node.getProperties(jsondata) if propList is None else propList, node.schemaObj, context=context, linklimits=currentService.config.get('linklimits',{}),
-                sample_size=currentService.config['sample']))
+                sample_size=currentService.config['sample'], oemCheck=oemCheck))
             node = node.parent
         return links
         
@@ -1119,6 +1121,9 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
             propEntry['isTerm'] = True
             ownerEntity = ownerSchema.find(
                 ['Term'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+            if ownerEntity is None:
+                ownerEntity = ownerSchema.find(
+                    ['EntityType', 'ComplexType'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
             propertyTag = ownerEntity
             propertyFullType = propertyTag.get('Type', propertyOwner)
 
@@ -1321,7 +1326,7 @@ def enumerate_collection(items, cTypeName, linklimits, sample_size):
         yield from enumerate(items)
 
 
-def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits=None, sample_size=0):
+def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits=None, sample_size=0, oemCheck=True):
     """
     Function that returns all links provided in a given JSON response.
     This result will include a link to itself.
@@ -1413,12 +1418,14 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
             propDict = propx.propDict
             key = propx.name
             item = getType(key).split(':')[-1]
+            if 'Oem' in item and not oemCheck:
+                continue
             cType = propDict.get('isCollection')
             if propDict is None:
                 continue
             elif propDict['realtype'] == 'complex':
                 tp = propDict['typeprops']
-                if jsonData.get(item) is not None:
+                if jsonData.get(item) is not None and tp is not None:
                     if cType is not None:
                         cTypeName = getType(cType)
                         for item in tp:
@@ -1457,20 +1464,10 @@ def getAnnotations(schemaObj, decoded, prefix=''):
             # add the namespace to the set of namespaces referenced by this service
             metadata.add_service_namespace(getNamespace(fullItem))
         annotationSchemaObj = schemaObj.getSchemaFromReference(getNamespace(fullItem))
-        realType = annotationSchemaObj.name
         traverseLogger.debug('{}, {}, {}'.format(key, splitKey, decoded[key]))
         if annotationSchemaObj is not None:
-            if isinstance(decoded[key], dict) and decoded[key].get('@odata.type') is not None:
-                payloadType = decoded[key].get('@odata.type','').replace('#', '')
-                annotationSchemaObj = annotationSchemaObj.getSchemaFromReference(getNamespace(payloadType))
-                if annotationSchemaObj is not None:
-                    realType = annotationSchemaObj.name
-                else:
-                    traverseLogger.warn("getAnnotations: {} cannot be acquired from metadata -> {}".format(payloadType, fullItem))
-                realItem = payloadType
-                tagtype = 'ComplexType'
-            else:
-                realItem = realType + '.' + fullItem.split('.', 1)[1]
+            realType = annotationSchemaObj.name
+            realItem = realType + '.' + fullItem.split('.', 1)[1]
             additionalProps.append(
                 PropItem(annotationSchemaObj, realItem, key, decoded[key]))
     traverseLogger.debug("Annotations generated: {} out of {}".format(len(additionalProps), annotationsFound))
