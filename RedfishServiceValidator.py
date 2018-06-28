@@ -50,14 +50,19 @@ def validateActions(name: str, val: dict, propTypeObj: rst.PropType, payloadType
     actionMessages, actionCounts = OrderedDict(), Counter()
 
     parentTypeObj = rst.PropType(payloadType, propTypeObj.schemaObj)
-    actionsDict = {act.name: act.actTag for act in parentTypeObj.getActions()}
+    actionsDict = {act.name: (val.get(act, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
+
+    if 'Oem' in val:
+        for newAct in val['Oem']:
+            actionsDict['Oem.' + newAct] = (val['Oem'][newAct], None)
 
     # For each action found, check action dictionary for existence and conformance
     # No action is required unless specified, target is not required unless specified
     # (should check for viable parameters)
     for k in actionsDict:
-        actionDecoded = val.get(k, 'n/a')
+        actionDecoded, actDict = actionsDict[k]
         actPass = True
+        actOptional = False
         if actionDecoded != 'n/a':
             # validate target
             target = actionDecoded.get('target')
@@ -76,17 +81,20 @@ def validateActions(name: str, val: dict, propTypeObj: rst.PropType, payloadType
                             .format(name + '.' + k, prop, 'target', 'title', '@Redfish.ActionInfo', '*@Redfish.AllowableValues'))
         else:
             # <Annotation Term="Redfish.Required"/>
-            if actionsDict[k].find('annotation', {'term': 'Redfish.Required'}):
+            if actDict is not None and actDict.find('annotation', {'term': 'Redfish.Required'}):
                 actPass = False
                 rsvLogger.error('{}: action not found, is mandatory'.format(name + '.' + k))
             else:
+                actOptional = True
                 rsvLogger.debug('{}: action not found, is not mandatory'.format(name + '.' + k))
         actionMessages[name + '.' + k] = (
                 'Action', '-',
                 'Yes' if actionDecoded != 'n/a' else 'No',
-                'PASS' if actPass else 'FAIL')
-        if actPass:
-            actionCounts['pass'] += 1
+                'Optional' if actOptional else 'PASS' if actPass else 'FAIL')
+        if actOptional:
+            actionCounts['optionalAction'] += 1
+        elif actPass:
+            actionCounts['passAction'] += 1
         else:
             actionCounts['failAction'] += 1
     return actionMessages, actionCounts
@@ -172,7 +180,7 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     rsvLogger.verboseout('\t***going into Complex')
     if not isinstance(val, dict):
         rsvLogger.error(name + ': Complex item not a dictionary')  # Printout FORMAT
-        return False, None, None, None
+        return False, None, None
 
     # Check inside of complexType, treat it like an Entity
     complexMessages = OrderedDict()
@@ -184,6 +192,8 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
         return False, complexCounts, complexMessages
 
     for prop in propComplexObj.getResourceProperties():
+        if prop.propChild == 'Oem' and name == 'Actions':
+            continue
         propMessages, propCounts = checkPropertyConformance(propComplexObj.schemaObj, prop.name, prop.propDict, val, ParentItem=name)
         complexMessages.update(propMessages)
         complexCounts.update(propCounts)
@@ -205,7 +215,7 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
 
     # validate the Redfish.DynamicPropertyPatterns if present
     # current issue, missing refs where they are appropriate, may cause issues
-    if propTypeObj.additional or propTypeObj.propPattern:
+    if propTypeObj.propPattern:
         patternMessages, patternCounts = validateDynamicPropertyPatterns(name, val, propTypeObj,
                                                                          payloadType, attrRegistryId, ParentItem=name)
         complexMessages.update(patternMessages)
@@ -1019,7 +1029,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                              'FAIL')
         else:
             rsvLogger.warn('{} not defined in schema {} (check version, spelling and casing)'
-                            .format(sub_item + '.' + key, innerPropType.snamespace))
+                            .format(key, innerPropType.snamespace))
             counts['unverifiedAdditional'] += 1
             messages[key] = (displayValue(item), '-',
                              '-',
