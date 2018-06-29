@@ -224,7 +224,6 @@ class rfService():
             certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
             self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
-        
         self.metadata = md.Metadata(traverseLogger)
         self.active = True
 
@@ -330,7 +329,7 @@ def callResourceURI(URILink):
 
     # only send token when we're required to chkauth, during a Session, and on Service and Secure
     if UseSSL and not nonService and AuthType == 'Session' and not noauthchk:
-        headers = {"X-Auth-Token": currentSession.getSessionKey()}
+        headers = {"X-Auth-Token": currentService.currentSession.getSessionKey()}
         headers.update(commonHeader)
     elif UseSSL and not nonService and AuthType == 'Token' and not noauthchk:
         headers = {"Authorization": "Bearer "+Token}
@@ -591,8 +590,6 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     return refDict
 
 
-
-
 def createResourceObject(name, uri, jsondata=None, typename=None, context=None, parent=None, isComplex=False):
     """
     Factory for resource object, move certain work here
@@ -657,7 +654,7 @@ class ResourceObj:
 
         if parent_type == 'MessageRegistryFile':
             traverseLogger.debug('{} is a Registry resource'.format(uri))
-            isRegistry = True
+            self.isRegistry = True
 
         # Check for @odata.id (todo: regex)
         odata_id = self.jsondata.get('@odata.id')
@@ -724,7 +721,6 @@ class ResourceObj:
         # get our metadata
         metadata = currentService.metadata
 
-        serviceRefs = metadata.get_service_refs()
         serviceSchemaSoup = metadata.get_soup()
 
         idtag = (typename, context)
@@ -751,20 +747,17 @@ class ResourceObj:
                 value_obj = PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)
 
-
         # get annotation
         if serviceSchemaSoup is not None:
             successService, annotationProps = getAnnotations(
                 metadata.get_schema_obj(), self.jsondata)
             self.additionalList.extend(annotationProps)
 
-
         # list illegitimate properties together
         self.unknownProperties = [k for k in self.jsondata if k not in propertyList +
                 [prop.propChild  for prop in self.additionalList] and '@odata' not in k]
 
         self.links = OrderedDict()
-        node = self.typeobj
 
         oem = config.get('oemcheck', True)
         self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList, oem))

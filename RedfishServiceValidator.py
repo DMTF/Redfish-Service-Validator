@@ -185,7 +185,6 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     # Check inside of complexType, treat it like an Entity
     complexMessages = OrderedDict()
     complexCounts = Counter()
-    propList = list()
 
     if 'OemObject' in propComplexObj.typeobj.fulltype:
         rsvLogger.error('{}: OemObjects are required to be typecast with @odata.type'.format(str(name)))
@@ -1029,7 +1028,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                              'FAIL')
         else:
             rsvLogger.warn('{} not defined in schema {} (check version, spelling and casing)'
-                            .format(key, innerPropType.snamespace))
+                            .format(key, SchemaNamespace))
             counts['unverifiedAdditional'] += 1
             messages[key] = (displayValue(item), '-',
                              '-',
