@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.1.3] - 2018-06-29
+- Fixed annotations being treated as unknown properties
+- Fixed handling of dynamic properties patterns that was introduced as part of the OEM object validation
+
 ## [1.1.2] - 2018-06-22
 - Added support for verifying OEM objects in responses
 
