@@ -53,8 +53,12 @@ def validateActions(name: str, val: dict, propTypeObj: rst.PropType, payloadType
     actionsDict = {act.name: (val.get(act, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
 
     if 'Oem' in val:
-        for newAct in val['Oem']:
-            actionsDict['Oem.' + newAct] = (val['Oem'][newAct], None)
+        if rst.currentService.config.get('oemcheck'):
+            for newAct in val['Oem']:
+                actionsDict['Oem.' + newAct] = (val['Oem'][newAct], None)
+        else:
+            actionCounts['oemActionSkip'] += 1
+
 
     # For each action found, check action dictionary for existence and conformance
     # No action is required unless specified, target is not required unless specified
@@ -185,7 +189,6 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     # Check inside of complexType, treat it like an Entity
     complexMessages = OrderedDict()
     complexCounts = Counter()
-    propList = list()
 
     if 'OemObject' in propComplexObj.typeobj.fulltype:
         rsvLogger.error('{}: OemObjects are required to be typecast with @odata.type'.format(str(name)))
@@ -1029,7 +1032,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                              'FAIL')
         else:
             rsvLogger.warn('{} not defined in schema {} (check version, spelling and casing)'
-                            .format(key, innerPropType.snamespace))
+                            .format(key, SchemaNamespace))
             counts['unverifiedAdditional'] += 1
             messages[key] = (displayValue(item), '-',
                              '-',
