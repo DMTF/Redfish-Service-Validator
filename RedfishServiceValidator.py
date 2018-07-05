@@ -53,8 +53,12 @@ def validateActions(name: str, val: dict, propTypeObj: rst.PropType, payloadType
     actionsDict = {act.name: (val.get(act, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
 
     if 'Oem' in val:
-        for newAct in val['Oem']:
-            actionsDict['Oem.' + newAct] = (val['Oem'][newAct], None)
+        if rst.currentService.config.get('oemcheck'):
+            for newAct in val['Oem']:
+                actionsDict['Oem.' + newAct] = (val['Oem'][newAct], None)
+        else:
+            actionCounts['oemActionSkip'] += 1
+
 
     # For each action found, check action dictionary for existence and conformance
     # No action is required unless specified, target is not required unless specified
