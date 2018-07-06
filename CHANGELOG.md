@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.1.4] - 2018-07-06
+- Additional fixes to OEM object handling within Actions
+
 ## [1.1.3] - 2018-06-29
 - Fixed annotations being treated as unknown properties
 - Fixed handling of dynamic properties patterns that was introduced as part of the OEM object validation
