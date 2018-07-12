@@ -3,7 +3,6 @@
 # Copyright 2016 Distributed Management Task Force, Inc. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
-from bs4 import BeautifulSoup
 import requests
 import sys
 import re
@@ -21,7 +20,7 @@ import configparser
 
 import metadata as md
 from commonRedfish import *
-from rfSchema import getSchemaObject 
+import rfSchema
 
 
 traverseLogger = logging.getLogger(__name__)
@@ -519,7 +518,7 @@ class ResourceObj:
         self.context = context 
 
         # Get Schema object
-        schemaObj = getSchemaObject(acquiredtype, self.context)
+        schemaObj = rfSchema.getSchemaObject(acquiredtype, self.context)
         self.schemaObj = schemaObj
 
         if schemaObj is None:

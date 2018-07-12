@@ -1,5 +1,13 @@
 
 import traverseService as rst
+from collections import namedtuple
+from bs4 import BeautifulSoup
+from functools import lru_cache
+
+from commonRedfish import *
+import traverseService as rst
+
+config = []
 
 @lru_cache(maxsize=64)
 def getSchemaDetails(SchemaType, SchemaURI):
@@ -11,6 +19,7 @@ def getSchemaDetails(SchemaType, SchemaURI):
     return: (success boolean, a Soup object)
     """
     rst.traverseLogger.debug('getting Schema of {} {}'.format(SchemaType, SchemaURI))
+    currentService = rst.currentService
 
     if SchemaType is None:
         return False, None, None
@@ -31,7 +40,7 @@ def getSchemaDetails(SchemaType, SchemaURI):
             base_schema_uri, frag = tuple(SchemaURI.rsplit('#', 1))
         else:
             base_schema_uri, frag = SchemaURI, None
-        success, data, status, elapsed = callResourceURI(base_schema_uri)
+        success, data, status, elapsed = rst.callResourceURI(base_schema_uri)
         if success:
             soup = BeautifulSoup(data, "xml")
             # if frag, look inside xml for real target as a reference
@@ -76,6 +85,7 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
     # What are we looking for?  Parse from URI
     # if we're not able to use URI to get suffix, work with option fallback
     Alias = getNamespace(SchemaType).split('.')[0]
+    currentService = rst.currentService
     config = currentService.config
     SchemaLocation, SchemaSuffix = config['metadatafilepath'], config['schemasuffix']
     if SchemaURI is not None:
@@ -133,18 +143,17 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
     return False, None, None
 
 
-def check_redfish_extensions_alias(name, item):
+def check_redfish_extensions_alias(name, namespace, alias):
     """
     Check that edmx:Include for Namespace RedfishExtensions has the expected 'Redfish' Alias attribute
     :param name: the name of the resource
     :param item: the edmx:Include item for RedfishExtensions
     :return:
     """
-    alias = item.get('Alias')
     if alias is None or alias != 'Redfish':
         msg = ("In the resource {}, the {} namespace must have an alias of 'Redfish'. The alias is {}. " +
                "This may cause properties of the form [PropertyName]@Redfish.TermName to be unrecognized.")
-        rst.traverseLogger.error(msg.format(name, item.get('Namespace'),
+        rst.traverseLogger.error(msg.format(name, namespace,
                              'missing' if alias is None else "'" + str(alias) + "'"))
 
 
@@ -156,23 +165,25 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     param metadata_dict: dictionary of service metadata, compare with
     return: dictionary
     """
+    includeTuple = namedtuple('include', ['Namespace', 'Uri'])
     refDict = {}
 
     maintag = soup.find("edmx:Edmx", recursive=False)
-    refs = maintag.find_all('edmx:Reference', recursive=False)
-    for ref in refs:
+    reftags = maintag.find_all('edmx:Reference', recursive=False)
+    for ref in reftags:
         includes = ref.find_all('edmx:Include', recursive=False)
         for item in includes:
-            if item.get('Namespace') is None or ref.get('Uri') is None:
+            uri = ref.get('Uri')
+            ns, alias = (item.get(x) for x in ['Namespace', 'Alias'])
+            if ns is None or uri is None:
                 rst.traverseLogger.error("Reference incorrect for: {}".format(item))
                 continue
-            if item.get('Alias') is not None:
-                refDict[item['Alias']] = (item['Namespace'], ref['Uri'])
-            else:
-                refDict[item['Namespace']] = (item['Namespace'], ref['Uri'])
+            if alias is None:
+                alias = ns
+            refDict[alias] = includeTuple(ns, uri)
             # Check for proper Alias for RedfishExtensions
-            if name == '$metadata' and item.get('Namespace').startswith('RedfishExtensions.'):
-                check_redfish_extensions_alias(name, item)
+            if name == '$metadata' and ns.startswith('RedfishExtensions.'):
+                check_bool = check_redfish_extensions_alias(name, ns, alias)
 
     cntref = len(refDict)
     if metadata_dict is not None:
@@ -260,7 +271,6 @@ def getSchemaObject(typename, uri, metadata=None):
     result = getSchemaDetails(typename, uri)
     success, soup = result[0], result[1]
     origin = result[2]
-
 
     if success is False:
         return None

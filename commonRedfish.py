@@ -3,6 +3,15 @@
 """
 
 versionpattern = 'v[0-9]_[0-9]_[0-9]'
+urlpattern = 'v[0-9]_[0-9]_[0-9]'
+
+def parseURL(string: str):
+    """parseURL
+
+    :param string: url in question
+    :type string: str
+    """
+
 
 def getNamespace(string: str):
     """getNamespace

@@ -1165,7 +1165,7 @@ def main(arglist=None, direct_parser=None):
     
     # clear cache from any other runs
     rst.callResourceURI.cache_clear()
-    rst.getSchemaDetails.cache_clear()
+    rst.rfSchema.getSchemaDetails.cache_clear()
 
     # set up config
     if direct_parser is not None:
@@ -1299,7 +1299,7 @@ def main(arglist=None, direct_parser=None):
     rsvLogger.info(finalCounts)
 
     # dump cache info to debug log
-    rsvLogger.debug('getSchemaDetails() -> {}'.format(rst.getSchemaDetails.cache_info()))
+    rsvLogger.debug('getSchemaDetails() -> {}'.format(rst.rfSchema.getSchemaDetails.cache_info()))
     rsvLogger.debug('callResourceURI() -> {}'.format(rst.callResourceURI.cache_info()))
 
     if not success:
