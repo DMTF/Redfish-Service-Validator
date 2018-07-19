@@ -1185,7 +1185,7 @@ def main(arglist=None, direct_parser=None):
     else:
         try:
             rst.setByArgparse(args)
-        except Exception as ex:
+        except Exception:
             rsvLogger.exception("Something went wrong")  # Printout FORMAT
             return 1, None, 'Config Exception'
 
@@ -1214,7 +1214,12 @@ def main(arglist=None, direct_parser=None):
     rsvLogger.addHandler(fh)  # Printout FORMAT
 
     # Then start service
-    currentService = rst.startService()
+    try:
+        currentService = rst.startService()
+    except Exception as ex:
+        rsvLogger.error("Service could not be started: {}".format(ex))  # Printout FORMAT
+        return 1, None, 'Service Exception'
+
     metadata = currentService.metadata
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
 
