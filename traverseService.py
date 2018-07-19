@@ -224,6 +224,7 @@ class rfService():
             certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
             self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
+            self.currentSession.startSession()
         self.metadata = md.Metadata(traverseLogger)
         self.active = True
 
