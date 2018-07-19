@@ -1,6 +1,10 @@
+
+import re
+
 """
  Power.1.1.1.Power , Power.v1_0_0.Power
 """
+
 
 versionpattern = 'v[0-9]_[0-9]_[0-9]'
 urlpattern = 'v[0-9]_[0-9]_[0-9]'
@@ -11,6 +15,13 @@ def parseURL(string: str):
     :param string: url in question
     :type string: str
     """
+    pass
+
+def isNonService(uri):
+    """
+    Checks if a uri is within the service
+    """
+    return uri is not None and 'http' in uri[:8]
 
 
 def getNamespace(string: str):
@@ -33,7 +44,8 @@ def getVersion(string: str):
     :param string:  A type/namespace string
     :type string: str
     """
-    return re.search(versionpattern, item).group()
+    regcap = re.search(versionpattern, string)
+    return regcap.group() if regcap else None
 
 
 def getNamespaceUnversioned(string: str):

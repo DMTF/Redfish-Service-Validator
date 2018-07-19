@@ -19,21 +19,15 @@
     <edmx:Include Namespace="RedfishExtensions.v1_0_0" Alias="Redfish"/>
     <edmx:Include Namespace="Validation.v1_0_0" Alias="Validation"/>
   </edmx:Reference>
-  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/Resource_v1.xml">
-    <edmx:Include Namespace="Resource"/>
-    <edmx:Include Namespace="Resource.v1_0_0"/>
-  </edmx:Reference>
-  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/Thermal_v1.xml">
-    <edmx:Include Namespace="Thermal"/>
-  </edmx:Reference>
-  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/Power_v1.xml">
-    <edmx:Include Namespace="Power"/>
+  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/ExampleResource_v1.xml">
+    <edmx:Include Namespace="ExampleResource"/>
+    <edmx:Include Namespace="ExampleResource.v1_0_0"/>
   </edmx:Reference>
 
   <edmx:DataServices>
 
     <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example">
-      <EntityType Name="Example" BaseType="Resource.v1_0_0.Resource" Abstract="true">
+      <EntityType Name="Example" BaseType="ExampleResource.v1_0_0.ExampleResource" Abstract="true">
         <Annotation Term="OData.Description" String="The Example schema represents the physical components of a system.  This resource represents the sheet-metal confined spaces and logical zones such as racks, enclosures, chassis and all other containers. Subsystems (like sensors) that operate outside of a system's data plane (meaning the resources are not accessible to software running on the system) are linked either directly or indirectly through this resource."/>
         <Annotation Term="OData.LongDescription" String="This resource shall be used to represent a chassis or other physical enclosure for a Redfish implementation."/>
         <Annotation Term="Capabilities.InsertRestrictions">
@@ -54,9 +48,9 @@
         </Annotation>
       </EntityType>
 
-      <Action Name="Reset" IsBound="true">
+      <Action Name="ExampleAction" IsBound="true">
         <Parameter Name="Example" Type="Example.v1_0_0.Actions"/>
-        <Parameter Name="ResetType" Type="Resource.ResetType">
+        <Parameter Name="ResetType" Type="ExampleResource.ResetType">
           <Annotation Term="OData.Description" String="The type of reset to be performed."/>
           <Annotation Term="OData.LongDescription" String="This parameter shall define the type of reset to be performed.  The service may accept a request without the parameter and perform an implementation specific default reset."/>
         </Parameter>
@@ -68,23 +62,61 @@
 
     <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_0_0">
       <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <TypeDefinition Name="UnderlyingExample" UnderlyingType="Edm.String">
+      </TypeDefinition>
+      <TypeDefinition Name="DeprecatedEnum" UnderlyingType="Edm.String">
+        <Annotation Term="Redfish.Enumeration">
+          <Collection>
+            <Record>
+              <PropertyValue Property="Member" String="On"/>
+              <Annotation Term="OData.Description" String="A platform security sensor."/>
+            </Record>
+            <Record>
+              <PropertyValue Property="Member" String="Off"/>
+              <Annotation Term="OData.Description" String="A temperature sensor."/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </TypeDefinition>
+      <EnumType Name="ExampleEnum">
+        <Member Name="On">
+          <Annotation Term="OData.Description" String="An equipment rack, typically a 19-inch wide freestanding unit."/>
+        </Member>
+        <Member Name="Off">
+          <Annotation Term="OData.Description" String="A chassis that does not fit any of these definitions."/>
+        </Member>
+      </EnumType>
 
       <EntityType Name="Example" BaseType="Example.Example">
-        <Property Name="ExampleType" Nullable="false" Type="Example.v1_0_0.ExampleType">
+        <Property Name="Enum" Nullable="false" Type="Example.v1_0_0.ExampleEnum">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="The type of physical form factor of the chassis."/>
-          <Annotation Term="OData.LongDescription" String="ExampleType shall indicate the physical form factor for the type of chassis."/>
           <Annotation Term="Redfish.Required"/>
         </Property>
-        <Property Name="Manufacturer" Type="Edm.String">
+        <Property Name="DeprecatedEnum" Nullable="false" Type="Example.v1_0_0.DeprecatedEnum">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="The manufacturer of this chassis."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be the name of the organization responsible for producing the chassis. This organization might be the entity from whom the chassis is purchased, but this is not necessarily true."/>
+          <Annotation Term="Redfish.Required"/>
         </Property>
-        <Property Name="IndicatorLED" Type="Example.v1_0_0.IndicatorLED">
-          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/ReadWrite"/>
-          <Annotation Term="OData.Description" String="The state of the indicator LED, used to identify the chassis."/>
-          <Annotation Term="OData.LongDescription" String="This value of this property shall contain the indicator light state for the indicator light associated with this system."/>
+        <Property Name="Status" Type="ExampleExampleResource.Status" Nullable="false"/>
+        <Property Name="String" Type="Edm.String">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="DateTimeOffset" Type="Edm.DateTimeOffset">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="Guid" Type="Edm.Guid">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="Int16" Type="Edm.Int16">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="Int32" Type="Edm.Int32">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="Int64" Type="Edm.Int64">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="Decimal" Type="Edm.Decimal">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
         <Property Name="Links" Type="Example.v1_0_0.Links" Nullable="false">
           <Annotation Term="OData.Description" String="Contains references to other resources that are related to this resource."/>
@@ -94,7 +126,6 @@
           <Annotation Term="OData.Description" String="The available actions for this resource."/>
           <Annotation Term="OData.LongDescription" String="The Actions property shall contain the available actions for this resource."/>
         </Property>
-        <Property Name="Status" Type="Resource.Status" Nullable="false"/>
         <NavigationProperty Name="LogServices" Type="LogServiceCollection.LogServiceCollection" ContainsTarget="true" Nullable="false">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="OData.Description" String="A reference to the logs for this chassis."/>
@@ -115,15 +146,9 @@
         </NavigationProperty>
       </EntityType>
 
-      <ComplexType Name="Links" BaseType="Resource.Links">
+      <ComplexType Name="Links" BaseType="ExampleResource.Links">
         <Annotation Term="OData.Description" String="Contains references to other resources that are related to this resource."/>
         <Annotation Term="OData.LongDescription" String="This type, as described by the Redfish Specification, shall contain references to resources that are related to, but not contained by (subordinate to), this resource."/>
-        <NavigationProperty Name="ComputerSystems" Type="Collection(ComputerSystem.ComputerSystem)">
-          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="An array of references to the computer systems contained in this chassis.  This will only reference ComputerSystems that are directly and wholly contained in this chassis."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be a reference to the resource that this physical container is associated with and shall reference a resource of type ComputerSystem.  If a ComputerSystem is also referenced in a Example that is referenced in a Contains link from this resource, that ComputerSystem shall not be referenced in this Example."/>
-          <Annotation Term="OData.AutoExpandReferences"/>
-        </NavigationProperty>
         <NavigationProperty Name="ManagedBy" Type="Collection(Manager.Manager)">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="OData.Description" String="An array of references to the Managers responsible for managing this chassis."/>
@@ -142,16 +167,10 @@
           <Annotation Term="OData.LongDescription" String="The value of this property shall be a reference to the resource that represents the chassis that this chassis contains and shall be of type Example."/>
           <Annotation Term="OData.AutoExpandReferences"/>
         </NavigationProperty>
-        <NavigationProperty Name="PoweredBy" Type="Collection(Resource.Item)">
+        <NavigationProperty Name="PoweredBy" Type="Collection(ExampleResource.Item)">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="OData.Description" String="An array of ID[s] of resources that power this chassis. Normally the ID will be a chassis or a specific set of Power Supplies."/>
           <Annotation Term="OData.LongDescription" String="The value of this property shall be an array of IDs containing pointers consistent with JSON pointer syntax to the resource that powers this chassis."/>
-          <Annotation Term="OData.AutoExpandReferences"/>
-        </NavigationProperty>
-        <NavigationProperty Name="CooledBy" Type="Collection(Resource.Item)">
-          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="An array of ID[s] of resources that cool this chassis. Normally the ID will be a chassis or a specific set of fans."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be an array of IDs containing pointers consistent with JSON pointer syntax to the resource that cools this chassis."/>
           <Annotation Term="OData.AutoExpandReferences"/>
         </NavigationProperty>
       </ComplexType>
@@ -168,93 +187,6 @@
         <Annotation Term="OData.Description" String="The available OEM specific actions for this resource."/>
         <Annotation Term="OData.LongDescription" String="This type shall contain any additional OEM actions for this resource."/>
       </ComplexType>
-
-      <EnumType Name="ExampleType">
-        <Member Name="Rack">
-          <Annotation Term="OData.Description" String="An equipment rack, typically a 19-inch wide freestanding unit."/>
-        </Member>
-        <Member Name="Blade">
-          <Annotation Term="OData.Description" String="An enclosed or semi-enclosed, typically vertically-oriented, system chassis which must be plugged into a multi-system chassis to function normally."/>
-        </Member>
-        <Member Name="Enclosure">
-          <Annotation Term="OData.Description" String="A generic term for a chassis that does not fit any other description."/>
-        </Member>
-        <Member Name="StandAlone">
-          <Annotation Term="OData.Description" String="A single, free-standing system, commonly called a tower or desktop chassis."/>
-        </Member>
-        <Member Name="RackMount">
-          <Annotation Term="OData.Description" String="A single system chassis designed specifically for mounting in an equipment rack."/>
-        </Member>
-        <Member Name="Card">
-          <Annotation Term="OData.Description" String="A loose device or circuit board intended to be installed in a system or other enclosure."/>
-        </Member>
-        <Member Name="Cartridge">
-          <Annotation Term="OData.Description" String="A small self-contained system intended to be plugged into a multi-system chassis."/>
-        </Member>
-        <Member Name="Row">
-          <Annotation Term="OData.Description" String="A collection of equipment racks."/>
-        </Member>
-        <Member Name="Pod">
-          <Annotation Term="OData.Description" String="A collection of equipment racks in a large, likely transportable, container."/>
-        </Member>
-        <Member Name="Expansion">
-          <Annotation Term="OData.Description" String="A chassis which expands the capabilities or capacity of another chassis."/>
-        </Member>
-        <Member Name="Sidecar">
-          <Annotation Term="OData.Description" String="A chassis that mates mechanically with another chassis to expand its capabilities or capacity."/>
-        </Member>
-        <Member Name="Zone">
-          <Annotation Term="OData.Description" String="A logical division or portion of a physical chassis that contains multiple devices or systems that cannot be physically separated."/>
-        </Member>
-        <Member Name="Sled">
-          <Annotation Term="OData.Description" String="An enclosed or semi-enclosed, system chassis which must be plugged into a multi-system chassis to function normally similar to a blade type chassis."/>
-        </Member>
-        <Member Name="Shelf">
-          <Annotation Term="OData.Description" String="An enclosed or semi-enclosed, typically horizontally-oriented, system chassis which must be plugged into a multi-system chassis to function normally."/>
-        </Member>
-        <Member Name="Drawer">
-          <Annotation Term="OData.Description" String="An enclosed or semi-enclosed, typically horizontally-oriented, system chassis which may be slid into a multi-system chassis."/>
-        </Member>
-        <Member Name="Module">
-          <Annotation Term="OData.Description" String="A small, typically removable, chassis or card which contains devices for a particular subsystem or function."/>
-        </Member>
-        <Member Name="Component">
-          <Annotation Term="OData.Description" String="A small chassis, card, or device which contains devices for a particular subsystem or function."/>
-        </Member>
-        <Member Name="IPBasedDrive">
-          <Annotation Term="OData.Description" String="A chassis in a drive form factor with IP-based network connections."/>
-        </Member>
-        <Member Name="RackGroup">
-          <Annotation Term="OData.Description" String="A group of racks which form a single entity or share infrastructure."/>
-        </Member>
-        <Member Name="StorageEnclosure">
-          <Annotation Term="OData.Description" String="A chassis which encloses storage."/>
-        </Member>
-        <Member Name="Other">
-          <Annotation Term="OData.Description" String="A chassis that does not fit any of these definitions."/>
-        </Member>
-      </EnumType>
-
-      <!-- These are all supported LED statuses. -->
-      <EnumType Name="IndicatorLED">
-        <Member Name="Unknown">
-          <Annotation Term="OData.Description" String="The state of the Indicator LED cannot be determined."/>
-          <Annotation Term="OData.LongDescription" String="This value shall represent the Indicator LED is in an unknown state.  The service shall reject PATCH or PUT requests containing this value by returning HTTP 400 (Bad Request)."/>
-          <Annotation Term="Redfish.Deprecated" String="This value has been Deprecated in favor of returning null if the state is unknown."/>
-        </Member>
-        <Member Name="Lit">
-          <Annotation Term="OData.Description" String="The Indicator LED is lit."/>
-          <Annotation Term="OData.LongDescription" String="This value shall represent the Indicator LED is in a solid on state.  If this value is not supported by the service, the service shall reject PATCH or PUT requests containing this value by returning HTTP 400 (Bad Request)."/>
-        </Member>
-        <Member Name="Blinking">
-          <Annotation Term="OData.Description" String="The Indicator LED is blinking."/>
-          <Annotation Term="OData.LongDescription" String="This value shall represent the Indicator LED is in a blinking state where the LED is being turned on and off in repetition.  If this value is not supported by the service, the service shall reject PATCH or PUT requests containing this value by returning HTTP 400 (Bad Request)."/>
-        </Member>
-        <Member Name="Off">
-          <Annotation Term="OData.Description" String="The Indicator LED is off."/>
-          <Annotation Term="OData.LongDescription" String="This value shall represent the Indicator LED is in a solid off state.  If this value is not supported by the service, the service shall reject PATCH or PUT requests containing this value by returning HTTP 400 (Bad Request)."/>
-        </Member>
-      </EnumType>
 
     </Schema>
 
@@ -402,7 +334,7 @@
     <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_2_0">
       <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
       <EntityType Name="Example" BaseType="Example.v1_1_2.Example">
-        <Property Name="Location" Type="Resource.Location" Nullable="false"/>
+        <Property Name="Location" Type="ExampleResource.Location" Nullable="false"/>
       </EntityType>
 
       <ComplexType Name="Links" BaseType="Example.v1_0_0.Links">
@@ -553,10 +485,10 @@
       <EntityType Name="Example" BaseType="Example.v1_4_1.Example"/>
 
       <ComplexType Name="Links" BaseType="Example.v1_4_0.Links">
-        <NavigationProperty Name="ResourceBlocks" Type="Collection(ResourceBlock.ResourceBlock)">
+        <NavigationProperty Name="ExampleResourceBlocks" Type="Collection(ExampleResourceBlock.ExampleResourceBlock)">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="An array of references to the Resource Blocks located in this Example."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be an array of references of type ResourceBlock that are contained in this Example."/>
+          <Annotation Term="OData.Description" String="An array of references to the ExampleResource Blocks located in this Example."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall be an array of references of type ExampleResourceBlock that are contained in this Example."/>
           <Annotation Term="OData.AutoExpandReferences"/>
         </NavigationProperty>
       </ComplexType>
@@ -590,7 +522,7 @@
     <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_7_0">
       <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
       <EntityType Name="Example" BaseType="Example.v1_6_0.Example">
-        <Property Name="UUID" Type="Resource.UUID">
+        <Property Name="UUID" Type="ExampleResource.UUID">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="OData.Description" String="The Universal Unique Identifier (UUID) for this Example."/>
           <Annotation Term="OData.LongDescription" String="The value of this property shall contain the universal unique identifier number for the chassis."/>

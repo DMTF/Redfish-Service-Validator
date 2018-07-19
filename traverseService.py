@@ -217,7 +217,7 @@ class rfService():
         self.currentSession = None
         if not config.get('usessl', True) and not config['forceauth']:
             if config['username'] not in ['', None] or config['password'] not in ['', None]:
-                traverseLogger.warn('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
+                traverseLogger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
                 config['username'] = ''
                 config['password'] = ''
         if AuthType == 'Session':
@@ -320,7 +320,7 @@ def callResourceURI(URILink):
                     payload = json.loads(f.read())
                 payload = navigateJsonFragment(payload, URILink)
     if nonService and config['servicemode']:
-        traverseLogger.warn('Disallowed out of service URI')
+        traverseLogger.warning('Disallowed out of service URI')
         return False, None, -1, 0
 
     # rs-assertion: do not send auth over http
@@ -397,12 +397,12 @@ def callResourceURI(URILink):
         traverseLogger.debug("output: ", exc_info=True)
     except requests.exceptions.RequestException as e:
         traverseLogger.error("Request has encounted a problem when getting resource {}".format(URILink))
-        traverseLogger.warn("output: ", exc_info=True)
+        traverseLogger.warning("output: ", exc_info=True)
     except AuthenticationError as e:
         raise  # re-raise exception
     except Exception as ex:
         traverseLogger.error("A problem when getting resource has occurred {}".format(URILink))
-        traverseLogger.warn("output: ", exc_info=True)
+        traverseLogger.warning("output: ", exc_info=True)
 
     if payload is not None and CacheMode == 'Fallback':
         return True, payload, -1, 0
@@ -468,13 +468,6 @@ class ResourceObj:
             traverseLogger.error("Resource no longer a dictionary...")
             raise ValueError
 
-        # Check if this is a Registry resource
-        parent_type = parent.typeobj.stype if parent is not None and parent.typeobj is not None else None
-
-        if parent_type == 'MessageRegistryFile':
-            traverseLogger.debug('{} is a Registry resource'.format(uri))
-            isRegistry = True
-
         # Check for @odata.id (todo: regex)
         odata_id = self.jsondata.get('@odata.id')
         if odata_id is None and not isComplex:
@@ -493,13 +486,14 @@ class ResourceObj:
         if acquiredtype is not typename and isComplex:
             context = None 
 
-        if jsondata.get('@odata.type') is not None:
-            currentService.metadata.add_service_namespace(getNamespace(jsondata.get('@odata.type')))
-        if jsondata.get('@odata.context') is not None:
-            # add the namespace to the set of namespaces referenced by this service
-            ns = getNamespace(jsondata.get('@odata.context').split('#')[-1])
-            if '/' not in ns and not ns.endswith('$entity'):
-                currentService.metadata.add_service_namespace(ns)
+        if currentService:
+            if jsondata.get('@odata.type') is not None:
+                currentService.metadata.add_service_namespace(getNamespace(jsondata.get('@odata.type')))
+            if jsondata.get('@odata.context') is not None:
+                # add the namespace to the set of namespaces referenced by this service
+                ns = getNamespace(jsondata.get('@odata.context').split('#')[-1])
+                if '/' not in ns and not ns.endswith('$entity'):
+                    currentService.metadata.add_service_namespace(ns)
 
         # Provide a context for this (todo: regex)
         if context is None:
@@ -518,17 +512,17 @@ class ResourceObj:
         self.context = context 
 
         # Get Schema object
-        schemaObj = rfSchema.getSchemaObject(acquiredtype, self.context)
-        self.schemaObj = schemaObj
+        self.schemaObj = rfSchema.getSchemaObject(acquiredtype, self.context)
 
-        if schemaObj is None:
-            traverseLogger.error("validateURI: No schema XML for {} {} {}".format(typename, acquiredtype, self.context))
+        if self.schemaObj is None:
+            traverseLogger.error("ResourceObject creation: No schema XML for {} {} {}".format(typename, acquiredtype, self.context))
+            raise ValueError
 
         # Use string comprehension to get highest type
         if acquiredtype is typename:
-            acquiredtype = schemaObj.getHighestType(typename)
+            acquiredtype = self.schemaObj.getHighestType(typename)
             if not isComplex:
-                traverseLogger.warn(
+                traverseLogger.warning(
                     'No @odata.type present, assuming highest type {}'.format(typename))
 
         # Check if we provide a valid type (todo: regex)
@@ -538,17 +532,14 @@ class ResourceObj:
         self.initiated = True
 
         # get our metadata
-        metadata = currentService.metadata
-
-        serviceRefs = metadata.get_service_refs()
-        serviceSchemaSoup = metadata.get_soup()
+        metadata = currentService.metadata if currentService else None
 
         idtag = (typename, context)
         if idtag in ResourceObj.robjcache:
             self.typeobj = ResourceObj.robjcache[idtag]
         else:
             self.typeobj = PropType(
-                typename, schemaObj, topVersion=getNamespace(typename))
+                typename, self.schemaObj, topVersion=getNamespace(typename))
 
         self.propertyList = self.typeobj.getProperties(self.jsondata)
         propertyList = [prop.propChild for prop in self.propertyList]
@@ -569,7 +560,7 @@ class ResourceObj:
 
 
         # get annotation
-        if serviceSchemaSoup is not None:
+        if metadata is not None:
             successService, annotationProps = getAnnotations(
                 metadata.get_schema_obj(), self.jsondata)
             self.additionalList.extend(annotationProps)
@@ -580,14 +571,15 @@ class ResourceObj:
                 [prop.propChild  for prop in self.additionalList] and '@odata' not in k]
 
         self.links = OrderedDict()
-        node = self.typeobj
 
         oem = config.get('oemcheck', True)
-        self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList, oem))
+        sample = config.get('sample')
+        linklimits = config.get('linklimits', {})
+        self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList, oem, linklimits, sample))
 
         self.links.update(getAllLinks(
-            self.jsondata, self.additionalList, schemaObj, context=context, linklimits=currentService.config.get('linklimits',{}),
-            sample_size=currentService.config['sample'], oemCheck=oem))
+            self.jsondata, self.additionalList, self.schemaObj, context=context, linklimits=linklimits,
+            sample_size=sample, oemCheck=oem))
 
     def getResourceProperties(self):
         allprops = self.propertyList + self.additionalList[:min(len(self.additionalList), 100)]
@@ -658,7 +650,7 @@ class PropType:
             traverseLogger.exception("Something went wrong")
             traverseLogger.error(
                 '{}:  Getting type failed for {}'.format(str(self.fulltype), str(baseType)))
-            return
+            raise ex
 
         self.initiated = True
 
@@ -674,13 +666,11 @@ class PropType:
                 node = node.parent
             raise StopIteration
 
-    def getLinksFromType(self, jsondata, context, propList=None, oemCheck=True):
+    def getLinksFromType(self, jsondata, context, propList=None, oemCheck=True, linklimits={}, sample=None):
         node = self
         links = OrderedDict()
         while node is not None:
-            links.update(getAllLinks(
-                jsondata, node.getProperties(jsondata) if propList is None else propList, node.schemaObj, context=context, linklimits=currentService.config.get('linklimits',{}),
-                sample_size=currentService.config['sample'], oemCheck=oemCheck))
+            links.update(getAllLinks(jsondata, node.getProperties(jsondata) if propList is None else propList, node.schemaObj, context=context, linklimits=linklimits, sample_size=sample, oemCheck=oemCheck))
             node = node.parent
         return links
         
@@ -714,7 +704,6 @@ def getTypeDetails(schemaObj, SchemaAlias, topVersion=None):
     """
     Gets list of surface level properties for a given SchemaType,
     """
-    metadata = currentService.metadata
     PropertyList = list()
     ActionList = list()
     PropertyPattern = None
@@ -732,14 +721,9 @@ def getTypeDetails(schemaObj, SchemaAlias, topVersion=None):
     innerschema = soup.find('Schema', attrs={'Namespace': SchemaNamespace})
 
     if innerschema is None:
-        uri = metadata.get_schema_uri(SchemaNamespace)
-        if uri is None:
-            if '.' in SchemaNamespace:
-                uri = metadata.get_schema_uri(SchemaNamespace.split('.', 1)[0])
-            else:
-                uri = metadata.get_schema_uri(SchemaType)
+        uri = schemaObj.origin
         traverseLogger.error('Schema namespace {} not found in schema file {}. Will not be able to gather type details.'
-                             .format(SchemaNamespace, uri if uri is not None else SchemaType))
+                             .format(SchemaNamespace, uri))
         return PropertyList, ActionList, False, PropertyPattern
 
     element = innerschema.find(['EntityType', 'ComplexType'], attrs={'Name': SchemaType}, recursive=False)
@@ -826,7 +810,7 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
         ownerSchema = soup.find('Schema', attrs={'Namespace': OwnerNamespace})
 
         if ownerSchema is None:
-            traverseLogger.warn(
+            traverseLogger.warning(
                 "getPropertyDetails: Schema could not be acquired,  {}".format(OwnerNamespace))
             return None
 
@@ -904,7 +888,7 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
             success, propertySoup, uri = True, soup, 'of parent'
 
         if not success:
-            traverseLogger.warn(
+            traverseLogger.warning(
                 "getPropertyDetails: Could not acquire appropriate Schema for this item, {} {} {}".format(propertyOwner, PropertyNamespace, propertyName))
             return propEntry
 
@@ -912,7 +896,7 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
         propertySchema = propertySoup.find(
             'Schema', attrs={'Namespace': PropertyNamespace})
         if propertySchema is None:
-            traverseLogger.warn('Schema element with Namespace attribute of {} not found in schema file {}'
+            traverseLogger.warning('Schema element with Namespace attribute of {} not found in schema file {}'
                                  .format(PropertyNamespace, uri))
             break
         propertyTypeTag = propertySchema.find(

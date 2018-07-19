@@ -1,0 +1,13 @@
+
+{
+    "@odata.type":"#Example.v1_0_0.Example",
+    "DeprecatedEnum":"None",
+    "Enum":"None",
+    "String":0,
+    "DateTimeOffset":"None",
+    "Guid":"None",
+    "Int16":"None",
+    "Int32":"None",
+    "Int64":"None",
+    "Decimal":"None"
+} 

@@ -1,10 +1,12 @@
 {
-    "DeprecatedEnum":"None",
-    "Enum":"None",
+    "@odata.type":"#Example.v1_0_0.Example",
+    "DeprecatedEnum":"On",
+    "Enum":"Off",
     "String":"None",
     "DateTimeOffset":"None",
     "Guid":"None",
-    "Int16":"None",
-    "Int32":"None",
-    "Int64":"None"
+    "Int16":10,
+    "Int32":20,
+    "Int64":30,
+    "Decimal":1.1
 } 

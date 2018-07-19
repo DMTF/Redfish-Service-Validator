@@ -643,7 +643,7 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
 
     # why not actually check oem
     # rs-assertion: 7.4.7.2
-    if 'Oem' in PropertyName and not rst.currentService.config.get('oemcheck', False):
+    if 'Oem' in PropertyName and not rst.config.get('oemcheck', False):
         rsvLogger.verboseout('\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts

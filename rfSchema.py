@@ -1,10 +1,9 @@
 
-import traverseService as rst
 from collections import namedtuple
 from bs4 import BeautifulSoup
 from functools import lru_cache
 
-from commonRedfish import *
+from commonRedfish import getType, getNamespace, isNonService, getNamespaceUnversioned, getVersion
 import traverseService as rst
 
 config = []
@@ -14,17 +13,20 @@ def getSchemaDetails(SchemaType, SchemaURI):
     """
     Find Schema file for given Namespace.
 
-    param arg1: Schema Namespace, such as ServiceRoot
+    param SchemaType: Schema Namespace, such as ServiceRoot
     param SchemaURI: uri to grab schema, given LocalOnly is False
-    return: (success boolean, a Soup object)
+    return: (success boolean, a Soup object, origin)
     """
     rst.traverseLogger.debug('getting Schema of {} {}'.format(SchemaType, SchemaURI))
     currentService = rst.currentService
 
     if SchemaType is None:
         return False, None, None
+    
+    if currentService is None:
+        return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
-    if currentService.active and getNamespace(SchemaType) in currentService.metadata.schema_store:
+    elif currentService.active and getNamespace(SchemaType) in currentService.metadata.schema_store:
         result = currentService.metadata.schema_store[getNamespace(SchemaType)]
         if result is not None:
             return True, result.soup, result.origin
@@ -76,31 +78,34 @@ def getSchemaDetails(SchemaType, SchemaURI):
     if ServiceOnly:
         rst.traverseLogger.debug("This program is currently SERVICE ONLY")
     if not LocalOnly and not ServiceOnly and isNonService(SchemaURI):
-        rst.traverseLogger.warn("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
+        rst.traverseLogger.warning("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
     return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
 
 def getSchemaDetailsLocal(SchemaType, SchemaURI):
-    # Use local if no URI or LocalOnly
-    # What are we looking for?  Parse from URI
-    # if we're not able to use URI to get suffix, work with option fallback
-    Alias = getNamespace(SchemaType).split('.')[0]
-    currentService = rst.currentService
-    config = currentService.config
+    """
+    Find Schema file for given Namespace, from local directory
+
+    param SchemaType: Schema Namespace, such as ServiceRoot
+    param SchemaURI: uri to grab schem (generate information from it)
+    return: (success boolean, a Soup object, origin)
+    """
+    Alias = getNamespaceUnversioned(SchemaType)
+    config = rst.config
     SchemaLocation, SchemaSuffix = config['metadatafilepath'], config['schemasuffix']
     if SchemaURI is not None:
         uriparse = SchemaURI.split('/')[-1].split('#')
         xml = uriparse[0]
     else:
-        rst.traverseLogger.warn("SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
+        rst.traverseLogger.warning("SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
         return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix)
     rst.traverseLogger.debug((SchemaType, SchemaURI, SchemaLocation + '/' + xml))
-    pout = Alias + SchemaSuffix if xml is None else xml
+    filestring = Alias + SchemaSuffix if xml is None else xml
     try:
         # get file
-        filehandle = open(SchemaLocation + '/' + xml, "r")
-        data = filehandle.read()
-        filehandle.close()
+        with open(SchemaLocation + '/' + xml, "r") as filehandle:
+            data = filehandle.read()
+
         # get tags
         soup = BeautifulSoup(data, "xml")
         edmxTag = soup.find('edmx:Edmx', recursive=False)
@@ -109,12 +114,13 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
         SchemaNamespace = child['Namespace']
         FoundAlias = SchemaNamespace.split(".")[0]
         rst.traverseLogger.debug(FoundAlias)
+
         if '/redfish/v1/$metadata' in SchemaURI:
             if len(uriparse) > 1:
                 frag = getNamespace(SchemaType)
                 frag = frag.split('.', 1)[0]
                 refType, refLink = getReferenceDetails(
-                    soup, name=SchemaLocation+'/'+pout).get(frag, (None, None))
+                    soup, name=SchemaLocation + '/' + filestring).get(frag, (None, None))
                 if refLink is not None:
                     rst.traverseLogger.debug('Entering {} inside {}, pulled from $metadata'.format(refType, refLink))
                     return getSchemaDetails(refType, refLink)
@@ -122,24 +128,26 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
                     rst.traverseLogger.error('Could not find item in $metadata {}'.format(frag))
                     return False, None, None
             else:
-                return True, soup, "local" + SchemaLocation + '/' + pout
+                return True, soup, "local" + SchemaLocation + '/' + filestring
+
         if FoundAlias in Alias:
-            return True, soup, "local" + SchemaLocation + '/' + pout
-    except FileNotFoundError as ex:
+            return True, soup, "local" + SchemaLocation + '/' + filestring
+
+    except FileNotFoundError:
         # if we're looking for $metadata locally... ditch looking for it, go straight to file
         if '/redfish/v1/$metadata' in SchemaURI and Alias != '$metadata':
-            rst.traverseLogger.warn("Unable to find a harddrive stored $metadata at {}, defaulting to {}".format(SchemaLocation, Alias + SchemaSuffix))
+            rst.traverseLogger.warning("Unable to find a harddrive stored $metadata at {}, defaulting to {}".format(SchemaLocation, Alias + SchemaSuffix))
             return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix)
         else:
             rst.traverseLogger.warn
             (
-                "Schema file {} not found in {}".format(pout, SchemaLocation))
+                "Schema file {} not found in {}".format(filestring, SchemaLocation))
             if Alias == '$metadata':
-                rst.traverseLogger.warn(
+                rst.traverseLogger.warning(
                     "If $metadata cannot be found, Annotations may be unverifiable")
     except Exception as ex:
         rst.traverseLogger.error("A problem when getting a local schema has occurred {}".format(SchemaURI))
-        rst.traverseLogger.warn("output: ", exc_info=True)
+        rst.traverseLogger.warning("output: ", exc_info=True)
     return False, None, None
 
 
@@ -148,14 +156,15 @@ def check_redfish_extensions_alias(name, namespace, alias):
     Check that edmx:Include for Namespace RedfishExtensions has the expected 'Redfish' Alias attribute
     :param name: the name of the resource
     :param item: the edmx:Include item for RedfishExtensions
-    :return:
+    :return: bool
     """
     if alias is None or alias != 'Redfish':
         msg = ("In the resource {}, the {} namespace must have an alias of 'Redfish'. The alias is {}. " +
                "This may cause properties of the form [PropertyName]@Redfish.TermName to be unrecognized.")
         rst.traverseLogger.error(msg.format(name, namespace,
                              'missing' if alias is None else "'" + str(alias) + "'"))
-
+        return False
+    return True
 
 def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     """
@@ -201,20 +210,33 @@ class rfSchema:
         self.name = name
 
     def getSchemaFromReference(self, namespace):
+        """getSchemaFromReference
+
+        Get SchemaObj from generated references
+
+        :param namespace: Namespace of reference
+        """
         tup = self.refs.get(namespace)
         tupVersionless = self.refs.get(getNamespace(namespace))
         if tup is None:
             if tupVersionless is None:
-                rst.traverseLogger.warn('No such reference {} in {}'.format(namespace, self.origin))
+                rst.traverseLogger.warning('No such reference {} in {}'.format(namespace, self.origin))
                 return None
             else:
                 tup = tupVersionless
-                rst.traverseLogger.warn('No such reference {} in {}, using unversioned'.format(namespace, self.origin))
+                rst.traverseLogger.warning('No such reference {} in {}, using unversioned'.format(namespace, self.origin))
         typ, uri = tup
         newSchemaObj = getSchemaObject(typ, uri)
         return newSchemaObj
 
-    def getTypeTagInSchema(self, currentType, tagType):
+    def getTypeTagInSchema(self, currentType, tagType=['EntityType', 'ComplexType']):
+        """getTypeTagInSchema
+        
+        Get type tag in schema
+
+        :param currentType: type string
+        :param tagType: Array or single string containing the xml tag name
+        """
         pnamespace, ptype = getNamespace(currentType), getType(currentType)
         soup = self.soup
 
@@ -229,6 +251,13 @@ class rfSchema:
         return currentEntity
 
     def getParentType(self, currentType, tagType=['EntityType', 'ComplexType']):
+        """getParentType
+
+        Get parent of this Entity/ComplexType
+
+        :param currentType: type string
+        :param tagType: Array or single string containing the xml tag name 
+        """
         currentType = currentType.replace('#', '')
         typetag = self.getTypeTagInSchema(currentType, tagType)
         if typetag is not None: 
@@ -251,28 +280,51 @@ class rfSchema:
         else:
             return False, None, None
 
-    def getHighestType(self, acquiredtype):
-        typesoup = self.soup
+    def getHighestType(self, acquiredtype: str, limit=None):
+        """getHighestType
+
+        get Highest possible version for given type
+
+        :param acquiredtype: Type available
+        :param limit: Version string limit (full namespace or just version 'v1_x_x')
+        """
         typelist = list()
-        for schema in typesoup.find_all('Schema'):
+
+        if limit is not None:
+            if getVersion(limit) is None:
+                rst.traverseLogger.warning('Limiting namespace has no version, erasing: {}'.format(limit))
+                limit = None
+            else:
+                limit = getVersion(limit)
+
+        for schema in self.soup.find_all('Schema'):
             newNamespace = schema.get('Namespace')
-            typelist.append((newNamespace, schema))
-        for ns, schema in reversed(sorted(typelist)):
+            if limit is not None:
+                if getVersion(newNamespace) is None:
+                    continue
+                if getVersion(newNamespace) > limit:
+                    continue
+            if schema.find(['EntityType', 'ComplexType'], attrs={'Name': getType(acquiredtype)}, recursive=False):
+                typelist.append(newNamespace)
+                
+        for ns in reversed(sorted(typelist)):
             rst.traverseLogger.debug(
                 "{}   {}".format(ns, getType(acquiredtype)))
-            if schema.find(['EntityType', 'ComplexType'], attrs={'Name': getType(acquiredtype)}, recursive=False):
-                acquiredtype = ns + '.' + getType(acquiredtype)
-                break
+            acquiredtype = ns + '.' + getType(acquiredtype)
+            return acquiredtype
         return acquiredtype
 
 
 def getSchemaObject(typename, uri, metadata=None):
+    """getSchemaObject
 
-    result = getSchemaDetails(typename, uri)
-    success, soup = result[0], result[1]
-    origin = result[2]
+    Wrapper for getting an rfSchema object
 
-    if success is False:
-        return None
-    return rfSchema(soup, uri, origin, metadata=metadata, name=typename) 
+    :param typename: Type with namespace of schema
+    :param uri: Context/URI of metadata/schema containing reference to namespace
+    :param metadata: parent refs of service
+    """
+    success, soup, origin = getSchemaDetails(typename, uri) 
+
+    return rfSchema(soup, uri, origin, metadata=metadata, name=typename) if success else None
 
