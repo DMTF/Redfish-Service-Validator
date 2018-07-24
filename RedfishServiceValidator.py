@@ -888,11 +888,7 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
                 'PASS' if paramPass else 'FAIL')
     return success, messages
 
-
-def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None, parent=None):
-    # rs-assertion: 9.4.1
-    # Initial startup here
-
+def setupLoggingCaptures():
     class WarnFilter(logging.Filter):
         def filter(self, rec):
             return rec.levelno == logging.WARN
@@ -912,6 +908,24 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     rsvLogger.addHandler(errh)  # Printout FORMAT
     rsvLogger.addHandler(warnh)  # Printout FORMAT
 
+    yield
+
+    rsvLogger.removeHandler(errh)  # Printout FORMAT
+    rsvLogger.removeHandler(warnh)  # Printout FORMAT
+    warnstrings = warnMessages.getvalue()
+    warnMessages.close()
+    errorstrings = errorMessages.getvalue()
+    errorMessages.close()
+
+    print( warnstrings, errorstrings)
+    yield warnstrings, errorstrings
+
+
+def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None, parent=None):
+    # rs-assertion: 9.4.1
+    # Initial startup here
+    lc = setupLoggingCaptures()
+    next(lc)
     # Start
     rsvLogger.verboseout("\n*** %s, %s", uriName, URI)  # Printout FORMAT
     rsvLogger.info("\n*** %s", URI)  # Printout FORMAT
@@ -921,8 +935,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     messages = OrderedDict()
     success = True
 
-    results[uriName] = {'uri':URI, 'success':False, 'counts':counts, 'messages':messages, 'errors':errorMessages,\
-            'warns': warnMessages, 'rtime':'', 'context':'', 'fulltype':''}
+    results[uriName] = {'uri':URI, 'success':False, 'counts':counts,\
+            'messages':messages, 'errors':'', 'warns': '',\
+            'rtime':'', 'context':'', 'fulltype':''}
 
     # check for @odata mandatory stuff
     # check for version numbering problems
@@ -946,33 +961,21 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if not successPayload:
         counts['failPayloadError'] += 1
         rsvLogger.error(str(URI) + ': payload error, @odata property non-conformant',)  # Printout FORMAT
-        # rsvLogger.removeHandler(errh)  # Printout FORMAT
-        # return False, counts, results, None, propResourceObj
-    # Generate dictionary of property info
 
+    # Generate dictionary of property info
     try:
         propResourceObj = rst.createResourceObject(
             uriName, URI, expectedJson, expectedType, expectedSchema, parent)
         if not propResourceObj:
             counts['problemResource'] += 1
-            rsvLogger.removeHandler(errh)  # Printout FORMAT
-            rsvLogger.removeHandler(warnh)  # Printout FORMAT
-            results[uriName]['warns'] = warnMessages.getvalue()
-            warnMessages.close()
-            results[uriName]['errors'] = errorMessages.getvalue()
-            errorMessages.close()
+            results[uriName]['warns'], results[uriName]['errors'] = next(lc)
             return False, counts, results, None, None
     except AuthenticationError as e:
         raise  # re-raise exception
     except Exception as e:
         rsvLogger.exception("")  # Printout FORMAT
         counts['exceptionResource'] += 1
-        rsvLogger.removeHandler(errh)  # Printout FORMAT
-        rsvLogger.removeHandler(warnh)  # Printout FORMAT
-        results[uriName]['warns'] = warnMessages.getvalue()
-        warnMessages.close()
-        results[uriName]['errors'] = errorMessages.getvalue()
-        errorMessages.close()
+        results[uriName]['warns'], results[uriName]['errors'] = next(lc)
         return False, counts, results, None, None
     counts['passGet'] += 1
 
@@ -984,6 +987,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results[uriName]['samplemapped'] = (str(sample_string))
     results[uriName]['rtime'] = propResourceObj.rtime
     results[uriName]['context'] = propResourceObj.context
+    results[uriName]['origin'] = propResourceObj.schemaObj.origin
     results[uriName]['fulltype'] = propResourceObj.typeobj.fulltype
     results[uriName]['success'] = True
 
@@ -1051,7 +1055,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         if key not in jsonData:
             rsvLogger.verboseout(fmt % (key, messages[key][3]))  # Printout FORMAT
 
-    pass_val = len(errorMessages.getvalue()) == 0
+    results[uriName]['warns'], results[uriName]['errors'] = next(lc)
+
+    pass_val = len(results[uriName]['errors']) == 0
     for key in counts:
         if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             pass_val = False
@@ -1063,12 +1069,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # Get all links available
 
     rsvLogger.debug(propResourceObj.links)  # Printout FORMAT
-    rsvLogger.removeHandler(errh)  # Printout FORMAT
-    rsvLogger.removeHandler(warnh)  # Printout FORMAT
-    results[uriName]['warns'] = warnMessages.getvalue()
-    warnMessages.close()
-    results[uriName]['errors'] = errorMessages.getvalue()
-    errorMessages.close()
+
     return True, counts, results, propResourceObj.links, propResourceObj
 
 

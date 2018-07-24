@@ -9,6 +9,7 @@ import RedfishLogo as logo
 import html
 
 
+
 def wrapTag(string, tag='div', attr=None):
     string = str(string)
     ltag, rtag = '<{}>'.format(tag), '</{}>'.format(tag)
@@ -16,20 +17,27 @@ def wrapTag(string, tag='div', attr=None):
         ltag = '<{} {}>'.format(tag, attr)
     return ltag + string + rtag
 
+
+# hack in tagnames into module namespace
+for tagName in ['tr', 'td', 'th', 'div', 'b', 'table', 'body', 'head']:
+    globals()[tagName] = lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)
+
+
 def infoBlock(strings, split='<br/>', ffunc=None):
     if isinstance(strings, dict):
-        infos = [wrapTag('{}: '.format(y), 'b') + str(x) for y,x in strings.items()]
+        infos = [b('{}: '.format(y)) + str(x) for y,x in strings.items()]
     else:
         infos = strings
     return split.join([ffunc(*x) for x in enumerate(infos)] if ffunc is not None else infos)
 
+
 def tableBlock(lines, titles, widths=None, ffunc=None):
     widths = widths if widths is not None else [100 for x in range(len(titles))]
     attrlist = ['style="width:{}%"'.format(str(x)) for x in widths]
-    tableHeader = wrapTag(''.join([wrapTag(x,'th',y) for x,y in zip(titles,attrlist)]), 'tr')
+    tableHeader = tr(''.join([th(x,y) for x,y in zip(titles,attrlist)]))
     for line in lines:
-        tableHeader += wrapTag(''.join([ffunc(cnt, x) if ffunc is not None else wrapTag(x,'td') for cnt, x in enumerate(line)]), 'tr')
-    return wrapTag(tableHeader, 'table')
+        tableHeader += tr(''.join([ffunc(cnt, x) if ffunc is not None else td(x) for cnt, x in enumerate(line)]))
+    return table(tableHeader)
 
 
 def applySuccessColor(num, entry):
@@ -54,7 +62,7 @@ def applyInfoSuccessColor(num, entry):
         style = 'class="warn"'
     else:
         style = None
-    return wrapTag(entry, attr=style)
+    return div(entry, attr=style)
 
 
 def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
@@ -90,10 +98,8 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
             </head>'
     htmlStrBodyHeader = \
         '<tr><th>' \
-        '<h2>##### Redfish Conformance Test Report #####</h2>' \
+        '<h2></h2>' \
         '<br>' \
-        '<h4><img align="center" alt="DMTF Redfish Logo" height="203" width="288"' \
-        'src="data:image/gif;base64,' + logo.logo + '"></h4>' \
         '<br>' \
         '<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
         'https://github.com/DMTF/Redfish-Service-Validator</a>' \
@@ -101,11 +107,6 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
         '<br>' + startTick.strftime('%c') + \
         '<br>(Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + ')' \
         '' \
-        '<h4>This tool is provided and maintained by the DMTF. ' \
-        'For feedback, please open issues<br>in the tool\'s Github repository: ' \
-        '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">' \
-        'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>' \
-        '</th></tr>' \
         '<tr><th>' \
         '<h4>System: <a href="' + ConfigURI + '">' + ConfigURI + '</a> Description: ' + sysDescription + '</h4>' \
         '</th></tr>' \
@@ -114,8 +115,24 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
         '<h4>' + str(config_str.replace('\n', '<br>')) + '</h4>' \
         '</th></tr>' \
         ''
+    htmlStrBodyHeader = ''
+    # Logo and logname
+    infos = [wrapTag('##### Redfish Conformance Test Report #####', 'h2')]
+    infos.append(wrapTag('<img align="center" alt="DMTF Redfish Logo" height="203" width="288"' \
+        'src="data:image/gif;base64,' + logo.logo + '">', 'h4'))
+    infos.append('<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
+        'https://github.com/DMTF/Redfish-Service-Validator</a></h4>')
+    infos.append('Tool Version: {}'.format(tool_version))
+    infos.append(startTick.strftime('%c'))
+    infos.append('(Run time: {})'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
+    infos.append('<h4>This tool is provided and maintained by the DMTF. ' \
+        'For feedback, please open issues<br>in the tool\'s Github repository: ' \
+        '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">' \
+        'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>')
+    htmlStrBodyHeader += tr(th(infoBlock(infos)))
 
-    htmlStr = rst.currentService.metadata.to_html()
+
+    htmlPage = rst.currentService.metadata.to_html()
     for cnt, item in enumerate(results):
         entry = []
         val = results[item]
@@ -127,30 +144,30 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
             namespace = getNamespace(prop_type)
             type_name = getType(prop_type)
 
-        infos = [str(val[x]) for x in ['uri', 'samplemapped'] if val[x] not in ['',None]]
+        infos = [str(val.get(x)) for x in ['uri', 'samplemapped'] if val.get(x) not in ['',None]]
         infos.append(rtime)
         infos.append(type_name)
-        uriTag = wrapTag(wrapTag(infoBlock(infos, '&ensp;'), 'th', 'class="titlerow bluebg"'), 'tr')
+        uriTag = tr(th(infoBlock(infos, '&ensp;'), 'class="titlerow bluebg"'))
         entry.append(uriTag)
 
         # info block
-        infos = [str(val[x]) for x in ['uri'] if val[x] not in ['',None]]
+        infos = [str(val.get(x)) for x in ['uri'] if val.get(x) not in ['',None]]
         infos.append(rtime)
-        infos.append(wrapTag('Show Results', attr='class="button warn" onClick="document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');"'.format(cnt)))
-        buttonTag = wrapTag(infoBlock(infos), 'td', 'class="title" style="width:40%"')
+        infos.append(div('Show Results', attr='class="button warn" onClick="document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');"'.format(cnt)))
+        buttonTag = td(infoBlock(infos), 'class="title" style="width:30%"')
 
-        infos = [str(val[x]) for x in ['context', 'fulltype']]
-        infos = {y: x for x,y in zip(infos, ['Schema File: ', 'Resource Type: '])}
-        infosTag = wrapTag(infoBlock(infos), 'td', 'class="titlesub log" style="width:30%"')
+        infos = [str(val.get(x)) for x in ['context', 'origin', 'fulltype']]
+        infos = {y: x for x,y in zip(infos, ['Context', 'File Origin', 'Resource Type'])}
+        infosTag = td(infoBlock(infos), 'class="titlesub log" style="width:40%"')
 
         success = val['success']
         if success:
-            getTag = wrapTag('GET Success', 'td', 'class="pass"')
+            getTag = td('GET Success', 'class="pass"')
         else:
-            getTag = wrapTag('GET Failure', 'td', 'class="fail"')
+            getTag = td('GET Failure', 'class="fail"')
 
 
-        countsTag = wrapTag(infoBlock(val['counts'], split='', ffunc=applyInfoSuccessColor), 'td', 'class="log"')
+        countsTag = td(infoBlock(val['counts'], split='', ffunc=applyInfoSuccessColor), 'class="log"')
 
         rhead = ''.join([buttonTag, infosTag, getTag, countsTag])
         for x in [('tr',), ('table', 'class=titletable'), ('td', 'class=titlerow'), ('tr')]:
@@ -164,31 +181,30 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
         tableHeader = tableBlock(rows, titles, widths, ffunc=applySuccessColor)
 
         #    lets wrap table and errors and warns into one single column table
-        for x in [('td',), ('tr',)]:
-            tableHeader = wrapTag(tableHeader, *x)
+        tableHeader = tr(td((tableHeader)))
 
         # warns and errors
         errors = val['errors']
         if len(errors) == 0:
             errors = 'No errors'
         infos = errors.split('\n')
-        errorTags = wrapTag(wrapTag(infoBlock(infos), 'td', 'class="fail log"'), 'tr')
+        errorTags = tr(td(infoBlock(infos), 'class="fail log"'))
 
         warns = val['warns']
         if len(warns) == 0:
             warns = 'No warns'
         infos = warns.split('\n')
-        warnTags = wrapTag(wrapTag(infoBlock(infos), 'td', 'class="warn log"'), 'tr')
+        warnTags = tr(td(infoBlock(infos), 'class="warn log"'))
 
         tableHeader += errorTags
         tableHeader += warnTags
-        tableHeader = wrapTag(tableHeader, 'table')
-        tableHeader = wrapTag(tableHeader, 'td','class="results" id=\'resNum{}\''.format(cnt))
+        tableHeader = table(tableHeader)
+        tableHeader = td(tableHeader, 'class="results" id=\'resNum{}\''.format(cnt))
 
         entry.append(tableHeader)
 
         # append
-        htmlPage += ''.join([wrapTag(x, 'tr') for x in entry])
+        htmlPage += ''.join([tr(x) for x in entry])
 
     return wrapTag(wrapTag(htmlStrTop + wrapTag(htmlStrBodyHeader + htmlPage, 'table'), 'body'), 'html')
 
