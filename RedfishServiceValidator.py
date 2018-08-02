@@ -1238,7 +1238,8 @@ def main(arglist=None, direct_parser=None):
     # start printing
     rsvLogger.info('ConfigURI: ' + ConfigURI)
     rsvLogger.info('System Info: ' + sysDescription)  # Printout FORMAT
-    rsvLogger.info(', '.join(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description'])))))
+    rsvLogger.info('\n'.join(
+        ['{}: {}'.format(x, config[x]) for x in sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description'])))]))
     rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))  # Printout FORMAT
 
     # Start main
