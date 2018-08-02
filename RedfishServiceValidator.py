@@ -133,9 +133,9 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
                     .format((success, uri, status, delay), (propType, propCollectionType), data))
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
     generics = ['Resource.ItemOrCollection', 'Resource.ResourceCollection', 'Resource.Item']
-    if propCollectionType in generics or propType in generics and success:
+    if (propCollectionType in generics or propType in generics) and success:
         return True
-    if success:
+    elif success:
         # Attempt to grab an appropriate type to test against and its schema
         # Default lineup: payload type, collection type, property type
         currentType = data.get('@odata.type', propCollectionType)
@@ -147,14 +147,13 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             success, baseObj = True, schemaObj
         elif baseLink is not None:
             baseObj = schemaObj.getSchemaFromReference(rst.getNamespaceUnversioned(currentType))
-            success = schemaObj is not None
+            success = baseObj is not None
         else:
             success = False
         rsvLogger.debug('success = {}, currentType = {}, baseLink = {}'.format(success, currentType, baseLink))
 
         # Recurse through parent types, gather type hierarchy to check against
         if currentType is not None and success:
-
             currentType = currentType.replace('#', '')
             allTypes = []
             while currentType not in allTypes and success:
@@ -596,21 +595,14 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
     Given a dictionary of properties, check the validitiy of each item, and return a
     list of counted properties
 
-    :param soup:
+    :param schemaObj:
     :param PropertyName:
     :param PropertyItem:
     :param decoded:
-    :param refs:
     :param ParentItem:
     :param parentURI:
     """
-    """
 
-    param arg1: property name
-    param arg2: property item dictionary
-    param arg3: json payload
-    param arg4: refs
-    """
     resultList = OrderedDict()
     counts = Counter()
     soup, refs = schemaObj.soup, schemaObj.refs
@@ -646,7 +638,7 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
 
     # why not actually check oem
     # rs-assertion: 7.4.7.2
-    if 'Oem' in PropertyName and not rst.currentService.config.get('oemcheck', False):
+    if 'Oem' in PropertyName and not rst.config.get('oemcheck', False):
         rsvLogger.verboseout('\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts
@@ -694,7 +686,7 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
     if validDeprecated is not None:
         deprecatedPass = False
         counts['warnDeprecated'] += 1
-        rsvLogger.warning('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String','')))
+        rsvLogger.warning('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String', '')))
 
     validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
         int(validMaxAttr['Int']) if validMaxAttr is not None else None
@@ -1182,7 +1174,7 @@ def main(arglist=None, direct_parser=None):
 
     # clear cache from any other runs
     rst.callResourceURI.cache_clear()
-    rst.getSchemaDetails.cache_clear()
+    rst.rfSchema.getSchemaDetails.cache_clear()
 
     # set up config
     if direct_parser is not None:
@@ -1319,7 +1311,7 @@ def main(arglist=None, direct_parser=None):
     rsvLogger.info(finalCounts)
 
     # dump cache info to debug log
-    rsvLogger.debug('getSchemaDetails() -> {}'.format(rst.getSchemaDetails.cache_info()))
+    rsvLogger.debug('getSchemaDetails() -> {}'.format(rst.rfSchema.getSchemaDetails.cache_info()))
     rsvLogger.debug('callResourceURI() -> {}'.format(rst.callResourceURI.cache_info()))
 
     if not success:

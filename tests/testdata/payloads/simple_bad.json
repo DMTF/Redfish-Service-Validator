@@ -1,0 +1,16 @@
+{
+    "@odata.type":"#Example.v1_0_0.Example",
+    "pDeprecatedEnum":"None",
+    "pDeprecatedEnum2":0,
+    "pEnum":"None",
+    "pString":0,
+    "pDateTimeOffset":"None",
+    "pGuid":"None",
+    "pInt16":"None",
+    "pInt32":"None",
+    "pInt64":"None",
+    "pInt64Low":-10,
+    "pInt64High":99,
+    "pDecimal":"None",
+    "pPrimitive":{}
+}
