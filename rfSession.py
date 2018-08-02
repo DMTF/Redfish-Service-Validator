@@ -81,13 +81,15 @@ class rfSession:
             if response.text is not None:
                 self.logger.info('Response body from session creation:')
                 self.logger.info('{}'.format(response.text))
-            self.logger.debug('Headers: {}'.format(response.headers))
+            self.logger.info('Headers: {}'.format(response.headers))
             if statusCode in [400, 401]:
                 self.logger.error('Error creating session. Status code "{} {}". Check supplied username and password.'
                                   .format(statusCode, responses[statusCode]))
+                raise ValueError('Bad Username or Password')
             else:
                 self.logger.error('Error creating session. Status code "{} {}".'
                                   .format(statusCode, responses[statusCode]))
+                raise ValueError('Bad response from service')
 
         return success
 

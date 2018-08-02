@@ -86,16 +86,6 @@ def startService():
     currentService = rfService(config)
     return currentService
 
-
-def configToStr():
-    config_str = ""
-    for cnt, item in enumerate(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))), 1):
-        config_str += "{}: {},  ".format(str(item), str(config[item] if config[item] != '' else 'None'))
-        if cnt % 6 == 0:
-            config_str += '\n'
-    return config_str
-
-
 def convertConfigParserToDict(configpsr):
     cdict = {}
     for category in configpsr:
@@ -228,7 +218,7 @@ class rfService():
             certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
             self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
-
+            self.currentSession.startSession()
         self.metadata = md.Metadata(traverseLogger)
         self.active = True
 
@@ -469,6 +459,9 @@ class ResourceObj:
             traverseLogger.error("Resource no longer a dictionary...")
             raise ValueError('This Resource is no longer a Dictionary')
 
+        # Check if this is a Registry resource
+        parent_type = parent.typeobj.stype if parent is not None and parent.typeobj is not None else None
+
         # Check for @odata.id (todo: regex)
         odata_id = self.jsondata.get('@odata.id')
         if odata_id is None and not isComplex:
@@ -559,12 +552,10 @@ class ResourceObj:
                 value_obj = PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)
 
-
         # get annotation
         successService, annotationProps = getAnnotations(metadata, self.jsondata)
         if successService:
             self.additionalList.extend(annotationProps)
-
 
         # list illegitimate properties together
         self.unknownProperties = [k for k in self.jsondata if k not in propertyList +
@@ -584,7 +575,6 @@ class ResourceObj:
     def getResourceProperties(self):
         allprops = self.propertyList + self.additionalList[:min(len(self.additionalList), 100)]
         return allprops
-
 
 class PropItem:
     def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None):

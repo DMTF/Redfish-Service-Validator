@@ -21,7 +21,7 @@ from tohtml import renderHtml, writeHtml
 
 from metadata import setup_schema_pack
 
-tool_version = '1.1.3'
+tool_version = '1.1.4'
 
 rsvLogger = rst.getLogger()
 
@@ -53,8 +53,12 @@ def validateActions(name: str, val: dict, propTypeObj: rst.PropType, payloadType
     actionsDict = {act.name: (val.get(act, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
 
     if 'Oem' in val:
-        for newAct in val['Oem']:
-            actionsDict['Oem.' + newAct] = (val['Oem'][newAct], None)
+        if rst.currentService.config.get('oemcheck'):
+            for newAct in val['Oem']:
+                actionsDict['Oem.' + newAct] = (val['Oem'][newAct], None)
+        else:
+            actionCounts['oemActionSkip'] += 1
+
 
     # For each action found, check action dictionary for existence and conformance
     # No action is required unless specified, target is not required unless specified
@@ -184,7 +188,6 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     # Check inside of complexType, treat it like an Entity
     complexMessages = OrderedDict()
     complexCounts = Counter()
-    propList = list()
 
     if 'OemObject' in propComplexObj.typeobj.fulltype:
         rsvLogger.error('{}: OemObjects are required to be typecast with @odata.type'.format(str(name)))
@@ -877,11 +880,7 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
                 'PASS' if paramPass else 'FAIL')
     return success, messages
 
-
-def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None, parent=None):
-    # rs-assertion: 9.4.1
-    # Initial startup here
-
+def setupLoggingCaptures():
     class WarnFilter(logging.Filter):
         def filter(self, rec):
             return rec.levelno == logging.WARN
@@ -901,6 +900,24 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     rsvLogger.addHandler(errh)  # Printout FORMAT
     rsvLogger.addHandler(warnh)  # Printout FORMAT
 
+    yield
+
+    rsvLogger.removeHandler(errh)  # Printout FORMAT
+    rsvLogger.removeHandler(warnh)  # Printout FORMAT
+    warnstrings = warnMessages.getvalue()
+    warnMessages.close()
+    errorstrings = errorMessages.getvalue()
+    errorMessages.close()
+
+    print( warnstrings, errorstrings)
+    yield warnstrings, errorstrings
+
+
+def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None, parent=None):
+    # rs-assertion: 9.4.1
+    # Initial startup here
+    lc = setupLoggingCaptures()
+    next(lc)
     # Start
     rsvLogger.verboseout("\n*** %s, %s", uriName, URI)  # Printout FORMAT
     rsvLogger.info("\n*** %s", URI)  # Printout FORMAT
@@ -910,8 +927,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     messages = OrderedDict()
     success = True
 
-    results[uriName] = {'uri':URI, 'success':False, 'counts':counts, 'messages':messages, 'errors':errorMessages,\
-            'warns': warnMessages, 'rtime':'', 'context':'', 'fulltype':''}
+    results[uriName] = {'uri':URI, 'success':False, 'counts':counts,\
+            'messages':messages, 'errors':'', 'warns': '',\
+            'rtime':'', 'context':'', 'fulltype':''}
 
     # check for @odata mandatory stuff
     # check for version numbering problems
@@ -935,25 +953,21 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if not successPayload:
         counts['failPayloadError'] += 1
         rsvLogger.error(str(URI) + ': payload error, @odata property non-conformant',)  # Printout FORMAT
-        # rsvLogger.removeHandler(errh)  # Printout FORMAT
-        # return False, counts, results, None, propResourceObj
-    # Generate dictionary of property info
 
+    # Generate dictionary of property info
     try:
         propResourceObj = rst.createResourceObject(
             uriName, URI, expectedJson, expectedType, expectedSchema, parent)
         if not propResourceObj:
             counts['problemResource'] += 1
-            rsvLogger.removeHandler(errh)  # Printout FORMAT
-            rsvLogger.removeHandler(warnh)  # Printout FORMAT
+            results[uriName]['warns'], results[uriName]['errors'] = next(lc)
             return False, counts, results, None, None
     except AuthenticationError as e:
         raise  # re-raise exception
     except Exception as e:
         rsvLogger.exception("")  # Printout FORMAT
         counts['exceptionResource'] += 1
-        rsvLogger.removeHandler(errh)  # Printout FORMAT
-        rsvLogger.removeHandler(warnh)  # Printout FORMAT
+        results[uriName]['warns'], results[uriName]['errors'] = next(lc)
         return False, counts, results, None, None
     counts['passGet'] += 1
 
@@ -961,9 +975,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     sample_string = rst.uri_sample_map.get(URI)
     sample_string = sample_string + ', ' if sample_string is not None else ''
 
-    results[uriName]['uri'] = (str(URI) + ' ({}response time: {}s)'.format(sample_string, propResourceObj.rtime))
+    results[uriName]['uri'] = (str(URI))
+    results[uriName]['samplemapped'] = (str(sample_string))
     results[uriName]['rtime'] = propResourceObj.rtime
     results[uriName]['context'] = propResourceObj.context
+    results[uriName]['origin'] = propResourceObj.schemaObj.origin
     results[uriName]['fulltype'] = propResourceObj.typeobj.fulltype
     results[uriName]['success'] = True
 
@@ -1021,7 +1037,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                              'FAIL')
         else:
             rsvLogger.warn('{} not defined in schema {} (check version, spelling and casing)'
-                            .format(key, innerPropType.snamespace))
+                            .format(key, SchemaNamespace))
             counts['unverifiedAdditional'] += 1
             messages[key] = (displayValue(item), '-',
                              '-',
@@ -1031,7 +1047,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         if key not in jsonData:
             rsvLogger.verboseout(fmt % (key, messages[key][3]))  # Printout FORMAT
 
-    pass_val = len(errorMessages.getvalue()) == 0
+    results[uriName]['warns'], results[uriName]['errors'] = next(lc)
+
+    pass_val = len(results[uriName]['errors']) == 0
     for key in counts:
         if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             pass_val = False
@@ -1043,8 +1061,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # Get all links available
 
     rsvLogger.debug(propResourceObj.links)  # Printout FORMAT
-    rsvLogger.removeHandler(errh)  # Printout FORMAT
-    rsvLogger.removeHandler(warnh)  # Printout FORMAT
+
     return True, counts, results, propResourceObj.links, propResourceObj
 
 
@@ -1174,7 +1191,7 @@ def main(arglist=None, direct_parser=None):
     else:
         try:
             rst.setByArgparse(args)
-        except Exception as ex:
+        except Exception:
             rsvLogger.exception("Something went wrong")  # Printout FORMAT
             return 1, None, 'Config Exception'
 
@@ -1196,22 +1213,24 @@ def main(arglist=None, direct_parser=None):
         os.makedirs(logpath)
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    fh.setLevel(args.debug_logging)
-    if args.debug_logging != logging.DEBUG:
-        fh.setLevel(args.verbose_checks)
+    fh.setLevel(min(args.debug_logging, args.verbose_checks))
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)  # Printout FORMAT
 
     # Then start service
-    currentService = rst.startService()
+    try:
+        currentService = rst.startService()
+    except Exception as ex:
+        rsvLogger.error("Service could not be started: {}".format(ex))  # Printout FORMAT
+        return 1, None, 'Service Exception'
+
     metadata = currentService.metadata
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
-
 
     # start printing
     rsvLogger.info('ConfigURI: ' + ConfigURI)
     rsvLogger.info('System Info: ' + sysDescription)  # Printout FORMAT
-    rsvLogger.info(rst.configToStr())
+    rsvLogger.info(', '.join(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description'])))))
     rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))  # Printout FORMAT
 
     # Start main
@@ -1264,9 +1283,9 @@ def main(arglist=None, direct_parser=None):
                 counters_all_pass = False
                 break
         error_messages_present = False
-        if results[item]['errors'] is not None and len(results[item]['errors'].getvalue()) > 0:
+        if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
             error_messages_present = True
-        if results[item]['warns'] is not None and len(results[item]['warns'].getvalue()) > 0:
+        if results[item]['warns'] is not None and len(results[item]['warns']) > 0:
             innerCounts['warningPresent'] = 1
         if counters_all_pass and error_messages_present:
             innerCounts['failErrorPresent'] = 1
