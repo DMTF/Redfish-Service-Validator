@@ -105,7 +105,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
     Validates an entity based on its uri given
     """
     rsvLogger.debug('validateEntity: name = {}'.format(name))
-    
+
     # check for required @odata.id
     if '@odata.id' not in val:
         if autoExpand:
@@ -113,7 +113,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
         else:
             default = parentURI + '/{}'.format(name)
         rsvLogger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, default))
-        if parentURI == "": 
+        if parentURI == "":
             return False
         uri = default
     else:
@@ -129,9 +129,9 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
                     .format((success, uri, status, delay), (propType, propCollectionType), data))
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
     generics = ['Resource.ItemOrCollection', 'Resource.ResourceCollection', 'Resource.Item']
-    if propCollectionType in generics or propType in generics and success:
+    if (propCollectionType in generics or propType in generics) and success:
         return True
-    if success:
+    elif success:
         # Attempt to grab an appropriate type to test against and its schema
         # Default lineup: payload type, collection type, property type
         currentType = data.get('@odata.type', propCollectionType)
@@ -143,14 +143,13 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             success, baseObj = True, schemaObj
         elif baseLink is not None:
             baseObj = schemaObj.getSchemaFromReference(rst.getNamespaceUnversioned(currentType))
-            success = schemaObj is not None
+            success = baseObj is not None
         else:
             success = False
         rsvLogger.debug('success = {}, currentType = {}, baseLink = {}'.format(success, currentType, baseLink))
 
         # Recurse through parent types, gather type hierarchy to check against
         if currentType is not None and success:
-            
             currentType = currentType.replace('#', '')
             allTypes = []
             while currentType not in allTypes and success:
@@ -509,7 +508,7 @@ def displayValue(val, autoExpandName=None):
     """
     Convert input val to a simple, human readable value
     :param val: the value to be displayed
-    :param autoExpand: optional, name of JSON Object if it is a referenceable member 
+    :param autoExpand: optional, name of JSON Object if it is a referenceable member
     :return: the simplified value to display
     """
     if val is None:
@@ -593,21 +592,14 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
     Given a dictionary of properties, check the validitiy of each item, and return a
     list of counted properties
 
-    :param soup:
+    :param schemaObj:
     :param PropertyName:
     :param PropertyItem:
     :param decoded:
-    :param refs:
     :param ParentItem:
     :param parentURI:
     """
-    """
 
-    param arg1: property name
-    param arg2: property item dictionary
-    param arg3: json payload
-    param arg4: refs
-    """
     resultList = OrderedDict()
     counts = Counter()
     soup, refs = schemaObj.soup, schemaObj.refs
@@ -687,11 +679,11 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
     paramPass = propNullablePass = deprecatedPass = True
 
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
-    validDeprecated = PropertyItem.get('Redfish.Deprecated') 
+    validDeprecated = PropertyItem.get('Redfish.Deprecated')
     if validDeprecated is not None:
         deprecatedPass = False
         counts['warnDeprecated'] += 1
-        rsvLogger.warning('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String','')))
+        rsvLogger.warning('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String', '')))
 
     validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
         int(validMaxAttr['Int']) if validMaxAttr is not None else None
@@ -974,7 +966,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results[uriName]['context'] = propResourceObj.context
     results[uriName]['fulltype'] = propResourceObj.typeobj.fulltype
     results[uriName]['success'] = True
-    
+
     rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.stype, propResourceObj.rtime)  # Printout FORMAT
 
     # If this is an AttributeRegistry, load it for later use
@@ -986,14 +978,14 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             if namespace == '#AttributeRegistry' and type_name == 'AttributeRegistry':
                 loadAttributeRegDict(odata_type, propResourceObj.jsondata)
 
-    for prop in propResourceObj.getResourceProperties(): 
+    for prop in propResourceObj.getResourceProperties():
         try:
             propMessages, propCounts = checkPropertyConformance(propResourceObj.schemaObj, prop.name, prop.propDict, propResourceObj.jsondata, parentURI=URI)
             if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in propResourceObj.typeobj.fulltype:
                 modified_entry = list(propMessages['@Redfish.Copyright'])
                 modified_entry[-1] = 'FAIL'
                 propMessages['@Redfish.Copyright'] = tuple(modified_entry)
-                rsvLogger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations') 
+                rsvLogger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
             messages.update(propMessages)
             counts.update(propCounts)
         except AuthenticationError as e:
@@ -1016,9 +1008,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         item = jsonData[key]
         rsvLogger.verboseout(fmt % (  # Printout FORMAT
             key, messages[key][3] if key in messages else 'Exists, no schema check'))
-        
+
     allowAdditional = propResourceObj.typeobj.additional
-    for key in [k for k in jsonData if k not in messages and k not in propResourceObj.unknownProperties] + propResourceObj.unknownProperties: 
+    for key in [k for k in jsonData if k not in messages and k not in propResourceObj.unknownProperties] + propResourceObj.unknownProperties:
         # note: extra messages for "unchecked" properties
         if not allowAdditional:
             rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
@@ -1124,7 +1116,7 @@ def main(arglist=None, direct_parser=None):
     Main program
     """
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
-    
+
     # config
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
 
@@ -1162,7 +1154,7 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
 
     args = argget.parse_args(arglist)
-    
+
     # clear cache from any other runs
     rst.callResourceURI.cache_clear()
     rst.rfSchema.getSchemaDetails.cache_clear()
@@ -1195,7 +1187,7 @@ def main(arglist=None, direct_parser=None):
         proxies = {}
         proxies['http'] = httpprox if httpprox != "" else None
         proxies['https'] = httpsprox if httpsprox != "" else None
-        setup_schema_pack(config['schema_pack'], config['metadatafilepath'], proxies, config['timeout']) 
+        setup_schema_pack(config['schema_pack'], config['metadatafilepath'], proxies, config['timeout'])
 
     # Logging config
     logpath = config['logpath']
@@ -1225,7 +1217,7 @@ def main(arglist=None, direct_parser=None):
     # Start main
     status_code = 1
     jsonData = None
-   
+
     # Determine runner
     pmode, ppath = config.get('payloadmode', 'Default'), config.get('payloadfilepath')
     if pmode not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
@@ -1288,13 +1280,13 @@ def main(arglist=None, direct_parser=None):
             continue
         if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             fails += finalCounts[key]
-        
+
     html_str = renderHtml(results, finalCounts, tool_version, startTick, nowTick)
-    
+
     lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
 
     writeHtml(html_str, lastResultsPage)
-    
+
     success = success and not (fails > 0)
     rsvLogger.info(finalCounts)
 

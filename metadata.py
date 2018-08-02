@@ -21,6 +21,7 @@ EDMX_TAGS = ['DataServices', 'Edmx', 'Include', 'Reference']
 
 live_zip_uri = 'http://redfish.dmtf.org/schemas/DSP8010_2018.1.zip'
 
+
 def setup_schema_pack(uri, local_dir, proxies, timeout):
     rst.traverseLogger.info('Unpacking schema pack...')
     if uri == 'latest':
@@ -31,7 +32,7 @@ def setup_schema_pack(uri, local_dir, proxies, timeout):
         elapsed = response.elapsed.total_seconds()
         statusCode = response.status_code
         rst.traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode,
-                             expCode, response.headers, elapsed))
+                                                                        expCode, response.headers, elapsed))
         if statusCode in expCode:
             if not zipfile.is_zipfile(BytesIO(response.content)):
                 pass
@@ -39,7 +40,7 @@ def setup_schema_pack(uri, local_dir, proxies, timeout):
                 zf = zipfile.ZipFile(BytesIO(response.content))
                 for name in zf.namelist():
                     if '.xml' in name:
-                        cpath = '{}/{}'.format(local_dir, name.split('/')[-1]) 
+                        cpath = '{}/{}'.format(local_dir, name.split('/')[-1])
                         rst.traverseLogger.debug((name, cpath))
                         item = zf.open(name)
                         with open(cpath, 'wb') as f:
@@ -121,6 +122,8 @@ class Metadata(object):
 
         start = time.time()
         self.schema_obj = rst.rfSchema.getSchemaObject(Metadata.schema_type, Metadata.metadata_uri)
+        self.md_soup = None
+        self.service_refs = None
         uri = Metadata.metadata_uri
 
         self.elapsed_secs = time.time() - start
@@ -157,8 +160,6 @@ class Metadata(object):
                 if self.schema_store[name] is not None:
                     for ref in self.schema_store[name].refs:
                         pass
-
-
         else:
             logger.warning('Metadata: getSchemaDetails() did not return success')
 

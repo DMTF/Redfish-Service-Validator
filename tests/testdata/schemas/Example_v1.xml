@@ -86,36 +86,84 @@
           <Annotation Term="OData.Description" String="A chassis that does not fit any of these definitions."/>
         </Member>
       </EnumType>
-
-      <EntityType Name="Example" BaseType="Example.Example">
-        <Property Name="Enum" Nullable="false" Type="Example.v1_0_0.ExampleEnum">
+      <ComplexType Name="ComplexInner">
+        <Annotation Term="OData.AdditionalProperties" Bool="false"/>
+        <Property Name="cEnum" Nullable="false" Type="Example.v1_0_0.ExampleEnum">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="Redfish.Required"/>
         </Property>
-        <Property Name="DeprecatedEnum" Nullable="false" Type="Example.v1_0_0.DeprecatedEnum">
+        <Property Name="cDeprecatedEnum" Nullable="false" Type="Example.v1_0_0.DeprecatedEnum">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="Redfish.Required"/>
+        </Property>
+        <Property Name="cDeprecatedEnum2" Nullable="false" Type="Example.v1_0_0.DeprecatedEnum">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="Redfish.Required"/>
         </Property>
         <Property Name="Status" Type="ExampleExampleResource.Status" Nullable="false"/>
-        <Property Name="String" Type="Edm.String">
+        <Property Name="cString" Type="Edm.String">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
-        <Property Name="DateTimeOffset" Type="Edm.DateTimeOffset">
+        <Property Name="cDateTimeOffset" Type="Edm.DateTimeOffset">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
-        <Property Name="Guid" Type="Edm.Guid">
+        <Property Name="cGuid" Type="Edm.Guid">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
-        <Property Name="Int16" Type="Edm.Int16">
+        <Property Name="cInt16" Type="Edm.Int16">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
-        <Property Name="Int32" Type="Edm.Int32">
+        <Property Name="cInt32" Type="Edm.Int32">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
-        <Property Name="Int64" Type="Edm.Int64">
+        <Property Name="cInt64" Type="Edm.Int64">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
-        <Property Name="Decimal" Type="Edm.Decimal">
+        <Property Name="cDecimal" Type="Edm.Decimal">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+      </ComplexType>
+
+      <EntityType Name="Example" BaseType="Example.Example">
+        <Property Name="pEnum" Nullable="false" Type="Example.v1_0_0.ExampleEnum">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="Redfish.Required"/>
+        </Property>
+        <Property Name="pDeprecatedEnum" Nullable="false" Type="Example.v1_0_0.DeprecatedEnum">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="Redfish.Required"/>
+        </Property>
+        <Property Name="Status" Type="ExampleExampleResource.Status" Nullable="false"/>
+        <Property Name="pString" Type="Edm.String">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="pDateTimeOffset" Type="Edm.DateTimeOffset">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="pGuid" Type="Edm.Guid">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="pInt16" Type="Edm.Int16">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="pInt32" Type="Edm.Int32">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="pInt64" Type="Edm.Int64">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="pInt64Low" Type="Edm.Int64">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="Validation.Minimum" Int="0"/>
+        </Property>
+        <Property Name="pInt64High" Type="Edm.Int64">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="Validation.Maximum" Int="10"/>
+        </Property>
+        <Property Name="pDecimal" Type="Edm.Decimal">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+        </Property>
+        <Property Name="pPrimitive" Type="Edm.Primitive">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
         <Property Name="Links" Type="Example.v1_0_0.Links" Nullable="false">
@@ -126,6 +174,9 @@
           <Annotation Term="OData.Description" String="The available actions for this resource."/>
           <Annotation Term="OData.LongDescription" String="The Actions property shall contain the available actions for this resource."/>
         </Property>
+        <Property Name="ComplexInner" Type="Example.v1_0_0.ComplexInner" Nullable="false">
+        </Property>
+
         <NavigationProperty Name="LogServices" Type="LogServiceCollection.LogServiceCollection" ContainsTarget="true" Nullable="false">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="OData.Description" String="A reference to the logs for this chassis."/>

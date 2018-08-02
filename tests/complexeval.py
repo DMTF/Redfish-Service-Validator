@@ -46,3 +46,13 @@ class ValidatorTest(TestCase):
                 propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop.propDict, rsc.jsondata, parentURI='')
                 print(propMessages)
                 print(propCounts)
+
+    def test_example_complex(self):
+        with open('tests/testdata/payloads/simple_complex.json') as f:
+            example_json = json.load(f) 
+        
+        rsc = rst.ResourceObj('test', 'test', example_json, None, None, None, False)
+        for prop in rsc.getResourceProperties(): 
+                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop.propDict, rsc.jsondata, parentURI='')
+                print(propMessages)
+                print(propCounts)
