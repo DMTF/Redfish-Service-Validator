@@ -1221,9 +1221,7 @@ def main(arglist=None, direct_parser=None):
         os.makedirs(logpath)
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    fh.setLevel(args.debug_logging)
-    if args.debug_logging != logging.DEBUG:
-        fh.setLevel(args.verbose_checks)
+    fh.setLevel(min(args.debug_logging, args.verbose_checks))
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)  # Printout FORMAT
 
@@ -1237,11 +1235,10 @@ def main(arglist=None, direct_parser=None):
     metadata = currentService.metadata
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
 
-
     # start printing
     rsvLogger.info('ConfigURI: ' + ConfigURI)
     rsvLogger.info('System Info: ' + sysDescription)  # Printout FORMAT
-    rsvLogger.info(rst.configToStr())
+    rsvLogger.info(', '.join(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description'])))))
     rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))  # Printout FORMAT
 
     # Start main

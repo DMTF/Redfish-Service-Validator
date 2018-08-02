@@ -57,7 +57,7 @@ argparse2configparser = {
         'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
         'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
         'linklimit': 'linklimit', 'sample': 'sample', 'nooemcheck': '!oemcheck'
-        } 
+        }
 
 configset = {
         "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
@@ -71,7 +71,7 @@ defaultconfig = {
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
         'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry':20}, 'sample': 0, 'schema_pack': None, 'forceauth': False
-        } 
+        }
 
 config = dict(defaultconfig)
 
@@ -84,13 +84,6 @@ def startService():
     currentService = rfService(config)
     return currentService
 
-def configToStr():
-    config_str = ""
-    for cnt, item in enumerate(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))), 1):
-        config_str += "{}: {},  ".format(str(item), str(config[item] if config[item] != '' else 'None'))
-        if cnt % 6 == 0:
-            config_str += '\n'
-    return config_str
 
 def convertConfigParserToDict(configpsr):
     cdict = {}
@@ -170,7 +163,7 @@ def setConfig(cdict):
 
     config['configuri'] = ('https' if config.get('usessl', True) else 'http') + '://' + config['targetip']
     config['certificatecheck'] = config.get('certificatecheck', True) and config.get('usessl', True)
-    
+
     defaultlinklimit.update(config['linklimit'])
     config['linklimit'] = defaultlinklimit
 
@@ -213,7 +206,7 @@ class rfService():
 
         ChkCert = config['certificatecheck']
         AuthType = config['authtype']
-            
+
         self.currentSession = None
         if not config.get('usessl', True) and not config['forceauth']:
             if config['username'] not in ['', None] or config['password'] not in ['', None]:
@@ -232,7 +225,7 @@ class rfService():
         if self.currentSession is not None and self.currentSession.started:
             self.currentSession.killSession()
         self.active = False
-            
+
 
 def isNonService(uri):
     """
@@ -251,9 +244,9 @@ def navigateJsonFragment(decoded, URILink):
             if isinstance(decoded, dict):
                 decoded = decoded.get(item)
             elif isinstance(decoded, list):
-                if not item.isdigit(): 
+                if not item.isdigit():
                     traverseLogger.error("This is an Array, but this is not an index, aborting: {} {}".format(URILink, item))
-                    return None 
+                    return None
                 decoded = decoded[int(item)] if int(item) < len(decoded) else None
         if not isinstance(decoded, dict):
             traverseLogger.error(
@@ -597,7 +590,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
     """
     traverseLogger.debug(
         'Creating ResourceObject {} {} {}'.format(name, uri, typename))
-    
+
     # Create json from service or from given
     if jsondata is None and not isComplex:
         success, jsondata, status, rtime = callResourceURI(uri)
@@ -616,11 +609,11 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
             traverseLogger.debug("ComplexType does not have val")
         return None
 
-    newResource = ResourceObj(name, uri, jsondata, typename, context, parent, isComplex) 
+    newResource = ResourceObj(name, uri, jsondata, typename, context, parent, isComplex)
     newResource.rtime = rtime
 
     return newResource
-    
+
 
 class ResourceObj:
     robjcache = {}
@@ -643,7 +636,7 @@ class ResourceObj:
 
         # Check if we provide a valid json
         self.jsondata = jsondata
-        
+
         traverseLogger.debug("payload: {}".format(json.dumps(self.jsondata, indent=4, sort_keys=True)))
 
         if not isinstance(self.jsondata, dict):
@@ -673,7 +666,7 @@ class ResourceObj:
                 '{}:  Json does not contain @odata.type or NavType'.format(uri))
             raise ValueError
         if acquiredtype is not typename and isComplex:
-            context = None 
+            context = None
 
         if jsondata.get('@odata.type') is not None:
             currentService.metadata.add_service_namespace(getNamespace(jsondata.get('@odata.type')))
@@ -697,7 +690,7 @@ class ResourceObj:
             if isComplex:
                 context = createContext(acquiredtype)
 
-        self.context = context 
+        self.context = context
 
         # Get Schema object
         schemaObj = getSchemaObject(acquiredtype, self.context)
@@ -741,7 +734,7 @@ class ResourceObj:
         if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
             prop_pattern = propTypeObj.propPattern.get('Pattern', '.*')
             prop_type = propTypeObj.propPattern.get('Type','Resource.OemObject')
-         
+
             regex = re.compile(prop_pattern)
             for key in [k for k in self.jsondata if k not in propertyList and regex.match(k)]:
                 val = self.jsondata.get(key)
@@ -771,12 +764,12 @@ class ResourceObj:
         allprops = self.propertyList + self.additionalList[:min(len(self.additionalList), 100)]
         return allprops
 
-        
+
 class rfSchema:
     def __init__(self, soup, context, origin, metadata=None, name='xml'):
         self.soup = soup
         self.refs = getReferenceDetails(soup, metadata, name)
-        self.context = context 
+        self.context = context
         self.origin = origin
         self.name = name
 
@@ -802,7 +795,7 @@ class rfSchema:
             'Schema', attrs={'Namespace': pnamespace})
 
         if currentSchema is None:
-            return None 
+            return None
 
         currentEntity = currentSchema.find(tagType, attrs={'Name': ptype}, recursive=False)  # BS4 line
 
@@ -811,23 +804,23 @@ class rfSchema:
     def getParentType(self, currentType, tagType=['EntityType', 'ComplexType']):
         currentType = currentType.replace('#', '')
         typetag = self.getTypeTagInSchema(currentType, tagType)
-        if typetag is not None: 
+        if typetag is not None:
             currentType = typetag.get('BaseType')
             if currentType is None:
                 return False, None, None
             typetag = self.getTypeTagInSchema(currentType, tagType)
-            if typetag is not None: 
+            if typetag is not None:
                 return True, self, currentType
             else:
                 namespace = getNamespace(currentType)
                 schemaObj = self.getSchemaFromReference(namespace)
-                if schemaObj is None: 
+                if schemaObj is None:
                     return False, None, None
-                propSchema = schemaObj.soup.find(  
+                propSchema = schemaObj.soup.find(
                     'Schema', attrs={'Namespace': namespace})
                 if propSchema is None:
                     return False, None, None
-                return True, schemaObj, currentType 
+                return True, schemaObj, currentType
         else:
             return False, None, None
 
@@ -855,7 +848,7 @@ def getSchemaObject(typename, uri, metadata=None):
 
     if success is False:
         return None
-    return rfSchema(soup, uri, origin, metadata=metadata, name=typename) 
+    return rfSchema(soup, uri, origin, metadata=metadata, name=typename)
 
 class PropItem:
     def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None):
@@ -907,10 +900,10 @@ class PropType:
         try:
             newPropList, newActionList, self.additional, self.propPattern = getTypeDetails(
                 currentSchemaObj, baseType, topVersion)
-            
+
             self.propList.extend(newPropList)
             self.actionList.extend(newActionList)
-            
+
             success, currentSchemaObj, baseType = currentSchemaObj.getParentType(baseType)
             if success:
                 self.parent = PropType(
@@ -946,7 +939,7 @@ class PropType:
                 sample_size=currentService.config['sample'], oemCheck=oemCheck))
             node = node.parent
         return links
-        
+
     def getProperties(self, jsondata):
         node = self
         props = []
@@ -968,7 +961,7 @@ class PropType:
 
 
 def getTypeDetails(schemaObj, SchemaAlias, topVersion=None):
-    # spits out information on the type we have, prone to issues if references/soup is ungettable, this shouldn't be ran without it 
+    # spits out information on the type we have, prone to issues if references/soup is ungettable, this shouldn't be ran without it
     #   has been prone to a lot of confusing errors: rehaul information that user expects to know before this point is reached
     # info: works undercover, but maybe can point out what type was generated and how many properties were found, if additional props allowed...
     # debug: all typegen info
@@ -982,7 +975,7 @@ def getTypeDetails(schemaObj, SchemaAlias, topVersion=None):
     ActionList = list()
     PropertyPattern = None
     additional = False
-    
+
     soup, refs = schemaObj.soup, schemaObj.refs
 
     SchemaNamespace, SchemaType = getNamespace(
@@ -1234,9 +1227,9 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                 #   if it does, use our new expectedType, else continue down parent types
                 #   until we exhaust all schematags in file
                 while currentSchema is not None:
-                    expectedType = currentVersion + '.' + PropertyType 
+                    expectedType = currentVersion + '.' + PropertyType
                     currentTypeTag = currentSchema.find(  # BS4 line
-                        'ComplexType', attrs={'Name': PropertyType}) 
+                        'ComplexType', attrs={'Name': PropertyType})
                     if currentTypeTag is not None:
                         baseType = expectedType
                         traverseLogger.debug('new type: ' + baseType)  # Printout FORMAT
@@ -1251,7 +1244,7 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                         continue
             propEntry['realtype'] = 'complex'
             if propEntry.get('isCollection') is None:
-                propEntry['typeprops'] = createResourceObject(propertyName, 'complex', val, context=schemaObj.context, typename=baseType, isComplex=True) 
+                propEntry['typeprops'] = createResourceObject(propertyName, 'complex', val, context=schemaObj.context, typename=baseType, isComplex=True)
             else:
                 val = val if val is not None else {}
                 propEntry['typeprops'] = [createResourceObject(propertyName, 'complex', item, context=schemaObj.context, typename=baseType, isComplex=True) for item in val]
@@ -1334,7 +1327,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
     """
     linkList = OrderedDict()
     if linklimits is None:
-        linklimits = {} 
+        linklimits = {}
     # check keys in propertyDictionary
     # if it is a Nav property, check that it exists
     #   if it is not a Nav Collection, add it to list
@@ -1361,7 +1354,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
             ownerNS = propx.propOwner.split('.')[0]
             ownerType = propx.propOwner.split('.')[-1]
 
-            if isNav: 
+            if isNav:
                 if insideItem is not None:
                     if cType is not None:
                         cTypeName = getType(cType)

@@ -23,9 +23,9 @@ for tagName in ['tr', 'td', 'th', 'div', 'b', 'table', 'body', 'head']:
     globals()[tagName] = lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)
 
 
-def infoBlock(strings, split='<br/>', ffunc=None):
+def infoBlock(strings, split='<br/>', ffunc=None, sort=True):
     if isinstance(strings, dict):
-        infos = [b('{}: '.format(y)) + str(x) for y,x in strings.items()]
+        infos = [b('{}: '.format(y)) + str(x) for y,x in (sorted(strings.items()) if sort else strings.items())]
     else:
         infos = strings
     return split.join([ffunc(*x) for x in enumerate(infos)] if ffunc is not None else infos)
@@ -68,7 +68,7 @@ def applyInfoSuccessColor(num, entry):
 def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
     # Render html
     config = rst.config
-    config_str = rst.configToStr()
+    config_str = ', '.join(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))))
     rsvLogger = rst.getLogger()
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
     logpath = config['logpath']
@@ -98,16 +98,6 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
             </head>'
     htmlStrBodyHeader = \
         '<tr><th>' \
-        '<h2></h2>' \
-        '<br>' \
-        '<br>' \
-        '<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
-        'https://github.com/DMTF/Redfish-Service-Validator</a>' \
-        '<br>Tool Version: ' + tool_version + \
-        '<br>' + startTick.strftime('%c') + \
-        '<br>(Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + ')' \
-        '' \
-        '<tr><th>' \
         '<h4>System: <a href="' + ConfigURI + '">' + ConfigURI + '</a> Description: ' + sysDescription + '</h4>' \
         '</th></tr>' \
         '<tr><th>' \
@@ -118,18 +108,30 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
     htmlStrBodyHeader = ''
     # Logo and logname
     infos = [wrapTag('##### Redfish Conformance Test Report #####', 'h2')]
-    infos.append(wrapTag('<img align="center" alt="DMTF Redfish Logo" height="203" width="288"' \
-        'src="data:image/gif;base64,' + logo.logo + '">', 'h4'))
-    infos.append('<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
-        'https://github.com/DMTF/Redfish-Service-Validator</a></h4>')
+    infos.append(wrapTag('<img align="center" alt="DMTF Redfish Logo" height="203" width="288"'
+                         'src="data:image/gif;base64,' + logo.logo + '">', 'h4'))
+    infos.append('<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">'
+                 'https://github.com/DMTF/Redfish-Service-Validator</a></h4>')
     infos.append('Tool Version: {}'.format(tool_version))
     infos.append(startTick.strftime('%c'))
-    infos.append('(Run time: {})'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
-    infos.append('<h4>This tool is provided and maintained by the DMTF. ' \
-        'For feedback, please open issues<br>in the tool\'s Github repository: ' \
-        '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">' \
-        'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>')
+    infos.append('(Run time: {})'.format(
+        str(nowTick-startTick).rsplit('.', 1)[0]))
+    infos.append('<h4>This tool is provided and maintained by the DMTF. '
+                 'For feedback, please open issues<br>in the tool\'s Github repository: '
+                 '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">'
+                 'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>')
+
     htmlStrBodyHeader += tr(th(infoBlock(infos)))
+
+    infos = {'System': ConfigURI, 'Description': sysDescription}
+    htmlStrBodyHeader += tr(th(infoBlock(infos)))
+
+    infos = {x: config[x] for x in config if x not in ['systeminfo', 'targetip', 'password', 'description']}
+    block = tr(th(infoBlock(infos, '|||')))
+    for num, block in enumerate(block.split('|||'), 1):
+        sep = '<br/>' if num % 4 == 0 else ',&ensp;'
+        sep = '' if num == len(infos) else sep
+        htmlStrBodyHeader += block + sep
 
 
     htmlPage = rst.currentService.metadata.to_html()
