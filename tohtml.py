@@ -4,21 +4,78 @@
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 import traverseService as rst
+from commonRedfish import *
 import RedfishLogo as logo
 import html
 
-def resultTupleToDict():
-    pass 
+
+
+def wrapTag(string, tag='div', attr=None):
+    string = str(string)
+    ltag, rtag = '<{}>'.format(tag), '</{}>'.format(tag)
+    if attr is not None:
+        ltag = '<{} {}>'.format(tag, attr)
+    return ltag + string + rtag
+
+
+# hack in tagnames into module namespace
+for tagName in ['tr', 'td', 'th', 'div', 'b', 'table', 'body', 'head']:
+    globals()[tagName] = lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)
+
+
+def infoBlock(strings, split='<br/>', ffunc=None, sort=True):
+    if isinstance(strings, dict):
+        infos = [b('{}: '.format(y)) + str(x) for y,x in (sorted(strings.items()) if sort else strings.items())]
+    else:
+        infos = strings
+    return split.join([ffunc(*x) for x in enumerate(infos)] if ffunc is not None else infos)
+
+
+def tableBlock(lines, titles, widths=None, ffunc=None):
+    widths = widths if widths is not None else [100 for x in range(len(titles))]
+    attrlist = ['style="width:{}%"'.format(str(x)) for x in widths]
+    tableHeader = tr(''.join([th(x,y) for x,y in zip(titles,attrlist)]))
+    for line in lines:
+        tableHeader += tr(''.join([ffunc(cnt, x) if ffunc is not None else td(x) for cnt, x in enumerate(line)]))
+    return table(tableHeader)
+
+
+def applySuccessColor(num, entry):
+    if num < 4:
+        return wrapTag(entry, 'td')
+    success_col = str(entry)
+    if 'FAIL' in str(success_col).upper():
+        entry = '<td class="fail center">' + str(success_col) + '</td>'
+    elif 'DEPRECATED' in str(success_col).upper():
+        entry = '<td class="warn center">' + str(success_col) + '</td>'
+    elif 'PASS' in str(success_col).upper():
+        entry = '<td class="pass center">' + str(success_col) + '</td>'
+    else:
+        entry = '<td class="center">' + str(success_col) + '</td>'
+    return entry
+
+
+def applyInfoSuccessColor(num, entry):
+    if 'fail' in entry or 'exception' in entry:
+        style = 'class="fail"'
+    elif 'warn' in entry:
+        style = 'class="warn"'
+    else:
+        style = None
+    return div(entry, attr=style)
+
 
 def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
     # Render html
     config = rst.config
-    config_str = rst.configToStr()
+    config_str = ', '.join(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))))
     rsvLogger = rst.getLogger()
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
     logpath = config['logpath']
 
-    htmlStrTop = '<html><head><title>Conformance Test Summary</title>\
+    # wrap html
+    htmlPage = ''
+    htmlStrTop = '<head><title>Conformance Test Summary</title>\
             <style>\
             .pass {background-color:#99EE99}\
             .fail {background-color:#EE9999}\
@@ -39,25 +96,7 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
             .titletable {width:100%}\
             </style>\
             </head>'
-
     htmlStrBodyHeader = \
-        '<body><table><tr><th>' \
-        '<h2>##### Redfish Conformance Test Report #####</h2>' \
-        '<br>' \
-        '<h4><img align="center" alt="DMTF Redfish Logo" height="203" width="288"' \
-        'src="data:image/gif;base64,' + logo.logo + '"></h4>' \
-        '<br>' \
-        '<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">' \
-        'https://github.com/DMTF/Redfish-Service-Validator</a>' \
-        '<br>Tool Version: ' + tool_version + \
-        '<br>' + startTick.strftime('%c') + \
-        '<br>(Run time: ' + str(nowTick-startTick).rsplit('.', 1)[0] + ')' \
-        '' \
-        '<h4>This tool is provided and maintained by the DMTF. ' \
-        'For feedback, please open issues<br>in the tool\'s Github repository: ' \
-        '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">' \
-        'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>' \
-        '</th></tr>' \
         '<tr><th>' \
         '<h4>System: <a href="' + ConfigURI + '">' + ConfigURI + '</a> Description: ' + sysDescription + '</h4>' \
         '</th></tr>' \
@@ -66,85 +105,111 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
         '<h4>' + str(config_str.replace('\n', '<br>')) + '</h4>' \
         '</th></tr>' \
         ''
+    htmlStrBodyHeader = ''
+    # Logo and logname
+    infos = [wrapTag('##### Redfish Conformance Test Report #####', 'h2')]
+    infos.append(wrapTag('<img align="center" alt="DMTF Redfish Logo" height="203" width="288"'
+                         'src="data:image/gif;base64,' + logo.logo + '">', 'h4'))
+    infos.append('<h4><a href="https://github.com/DMTF/Redfish-Service-Validator">'
+                 'https://github.com/DMTF/Redfish-Service-Validator</a></h4>')
+    infos.append('Tool Version: {}'.format(tool_version))
+    infos.append(startTick.strftime('%c'))
+    infos.append('(Run time: {})'.format(
+        str(nowTick-startTick).rsplit('.', 1)[0]))
+    infos.append('<h4>This tool is provided and maintained by the DMTF. '
+                 'For feedback, please open issues<br>in the tool\'s Github repository: '
+                 '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">'
+                 'https://github.com/DMTF/Redfish-Service-Validator/issues</a></h4>')
 
-    htmlStr = rst.currentService.metadata.to_html()
+    htmlStrBodyHeader += tr(th(infoBlock(infos)))
 
-    rsvLogger.info(len(results))
+    infos = {'System': ConfigURI, 'Description': sysDescription}
+    htmlStrBodyHeader += tr(th(infoBlock(infos)))
+
+    infos = {x: config[x] for x in config if x not in ['systeminfo', 'targetip', 'password', 'description']}
+    block = tr(th(infoBlock(infos, '|||')))
+    for num, block in enumerate(block.split('|||'), 1):
+        sep = '<br/>' if num % 4 == 0 else ',&ensp;'
+        sep = '' if num == len(infos) else sep
+        htmlStrBodyHeader += block + sep
+
+
+    htmlPage = rst.currentService.metadata.to_html()
     for cnt, item in enumerate(results):
-        type_name = ''
-        prop_type = results[item]['fulltype']
+        entry = []
+        val = results[item]
+        rtime = '(response time: {})'.format(val['rtime'])
+
+        # uri block
+        prop_type = val['fulltype']
         if prop_type is not None:
-            namespace = prop_type.replace('#', '').rsplit('.', 1)[0]
-            type_name = prop_type.replace('#', '').rsplit('.', 1)[-1]
-            if '.' in namespace:
-                type_name += ' ' + namespace.split('.', 1)[-1]
-        htmlStr += '<tr><th class="titlerow bluebg"><b>{}</b> ({})</th></tr>'.format(results[item]['uri'], type_name)
-        htmlStr += '<tr><td class="titlerow"><table class="titletable"><tr>'
-        htmlStr += '<td class="title" style="width:40%"><div>{}</div>\
-                <div class="button warn" onClick="document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');">Show results</div>\
-                </td>'.format(results[item]['uri'], cnt, cnt)
-        htmlStr += '<td class="titlesub log" style="width:30%"><div><b>Schema File:</b> {}</div><div><b>Resource Type:</b> {}</div></td>'.format(results[item]['context'], type_name)
-        htmlStr += '<td style="width:10%"' + \
-            ('class="pass"> GET Success' if results[item]['success'] else 'class="fail"> GET Failure') + '</td>'
-        htmlStr += '<td style="width:10%">'
+            namespace = getNamespace(prop_type)
+            type_name = getType(prop_type)
 
-        innerCounts = results[item]['counts']
+        infos = [str(val.get(x)) for x in ['uri', 'samplemapped'] if val.get(x) not in ['',None]]
+        infos.append(rtime)
+        infos.append(type_name)
+        uriTag = tr(th(infoBlock(infos, '&ensp;'), 'class="titlerow bluebg"'))
+        entry.append(uriTag)
 
-        for countType in sorted(innerCounts.keys()):
-            if 'problem' in countType or 'fail' in countType or 'exception' in countType:
-                rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, str(results[item]['uri']).split(' ')[0]))  # Printout FORMAT
-            innerCounts[countType] += 0
-            if 'fail' in countType or 'exception' in countType:
-                style = 'class="fail log"'
-            elif 'warn' in countType:
-                style = 'class="warn log"'
-            else:
-                style = 'class=log'
-            htmlStr += '<div {style}>{p}: {q}</div>'.format(
-                    p=countType,
-                    q=innerCounts.get(countType, 0),
-                    style=style)
-        htmlStr += '</td></tr>'
-        htmlStr += '</table></td></tr>'
-        htmlStr += '<tr><td class="results" id=\'resNum{}\'><table><tr><td><table><tr><th style="width:15%">Property Name</th> <th>Value</th> <th>Type</th> <th style="width:10%">Exists?</th> <th style="width:10%">Result</th> <tr>'.format(cnt)
-        if results[item]['messages'] is not None:
-            messages = results[item]['messages']
-            for i in messages:
-                htmlStr += '<tr>'
-                htmlStr += '<td>' + str(i) + '</td>'
-                for j in messages[i][:-1]:
-                    htmlStr += '<td >' + str(j) + '</td>'
-                # only color-code the last ("Success") column
-                success_col = messages[i][-1]
-                if 'FAIL' in str(success_col).upper():
-                    htmlStr += '<td class="fail center">' + str(success_col) + '</td>'
-                elif 'DEPRECATED' in str(success_col).upper():
-                    htmlStr += '<td class="warn center">' + str(success_col) + '</td>'
-                elif 'PASS' in str(success_col).upper():
-                    htmlStr += '<td class="pass center">' + str(success_col) + '</td>'
-                else:
-                    htmlStr += '<td class="center">' + str(success_col) + '</td>'
-                htmlStr += '</tr>'
-        htmlStr += '</table></td></tr>'
-        if results[item]['errors'] is not None:
-            htmlStr += '<tr><td class="fail log">' + html.escape(results[item]['errors'].getvalue()).replace('\n', '<br />') + '</td></tr>'
-            results[item]['errors'].close()
-        if results[item]['warns'] is not None:
-            htmlStr += '<tr><td class="warn log">' + html.escape(results[item]['warns'].getvalue()).replace('\n', '<br />') + '</td></tr>'
-            results[item]['warns'].close()
-        htmlStr += '<tr><td>---</td></tr></table></td></tr>'
+        # info block
+        infos = [str(val.get(x)) for x in ['uri'] if val.get(x) not in ['',None]]
+        infos.append(rtime)
+        infos.append(div('Show Results', attr='class="button warn" onClick="document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');"'.format(cnt)))
+        buttonTag = td(infoBlock(infos), 'class="title" style="width:30%"')
 
-    htmlStr += '</table></body></html>'
+        infos = [str(val.get(x)) for x in ['context', 'origin', 'fulltype']]
+        infos = {y: x for x,y in zip(infos, ['Context', 'File Origin', 'Resource Type'])}
+        infosTag = td(infoBlock(infos), 'class="titlesub log" style="width:40%"')
 
-    htmlStrTotal = '<tr><td><div>Final counts: '
-    for countType in sorted(finalCounts.keys()):
-        htmlStrTotal += '{p}: {q},   '.format(p=countType, q=finalCounts.get(countType, 0))
-    htmlStrTotal += '</div><div class="button warn" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results resultsShow\'};">Expand All</div>'
-    htmlStrTotal += '</div><div class="button fail" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results\'};">Collapse All</div>'
+        success = val['success']
+        if success:
+            getTag = td('GET Success', 'class="pass"')
+        else:
+            getTag = td('GET Failure', 'class="fail"')
 
-    htmlPage = htmlStrTop + htmlStrBodyHeader + htmlStrTotal + htmlStr
 
-    return htmlPage
+        countsTag = td(infoBlock(val['counts'], split='', ffunc=applyInfoSuccessColor), 'class="log"')
+
+        rhead = ''.join([buttonTag, infosTag, getTag, countsTag])
+        for x in [('tr',), ('table', 'class=titletable'), ('td', 'class=titlerow'), ('tr')]:
+            rhead = wrapTag(''.join(rhead), *x)
+        entry.append(rhead)
+
+        # actual table
+        rows = [[m] + list(val['messages'][m]) for m in val['messages']]
+        titles = ['Property Name', 'Value', 'Type', 'Exists', 'Result']
+        widths = ['15','30','30','10','15']
+        tableHeader = tableBlock(rows, titles, widths, ffunc=applySuccessColor)
+
+        #    lets wrap table and errors and warns into one single column table
+        tableHeader = tr(td((tableHeader)))
+
+        # warns and errors
+        errors = val['errors']
+        if len(errors) == 0:
+            errors = 'No errors'
+        infos = errors.split('\n')
+        errorTags = tr(td(infoBlock(infos), 'class="fail log"'))
+
+        warns = val['warns']
+        if len(warns) == 0:
+            warns = 'No warns'
+        infos = warns.split('\n')
+        warnTags = tr(td(infoBlock(infos), 'class="warn log"'))
+
+        tableHeader += errorTags
+        tableHeader += warnTags
+        tableHeader = table(tableHeader)
+        tableHeader = td(tableHeader, 'class="results" id=\'resNum{}\''.format(cnt))
+
+        entry.append(tableHeader)
+
+        # append
+        htmlPage += ''.join([tr(x) for x in entry])
+
+    return wrapTag(wrapTag(htmlStrTop + wrapTag(htmlStrBodyHeader + htmlPage, 'table'), 'body'), 'html')
+
 
 
 def writeHtml(string, path):

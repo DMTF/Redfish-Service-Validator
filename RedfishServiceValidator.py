@@ -109,7 +109,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
     Validates an entity based on its uri given
     """
     rsvLogger.debug('validateEntity: name = {}'.format(name))
-    
+
     # check for required @odata.id
     if '@odata.id' not in val:
         if autoExpand:
@@ -117,7 +117,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
         else:
             default = parentURI + '/{}'.format(name)
         rsvLogger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, default))
-        if parentURI == "": 
+        if parentURI == "":
             return False
         uri = default
     else:
@@ -154,7 +154,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
 
         # Recurse through parent types, gather type hierarchy to check against
         if currentType is not None and success:
-            
+
             currentType = currentType.replace('#', '')
             allTypes = []
             while currentType not in allTypes and success:
@@ -512,7 +512,7 @@ def displayValue(val, autoExpandName=None):
     """
     Convert input val to a simple, human readable value
     :param val: the value to be displayed
-    :param autoExpand: optional, name of JSON Object if it is a referenceable member 
+    :param autoExpand: optional, name of JSON Object if it is a referenceable member
     :return: the simplified value to display
     """
     if val is None:
@@ -690,7 +690,7 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
     paramPass = propNullablePass = deprecatedPass = True
 
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
-    validDeprecated = PropertyItem.get('Redfish.Deprecated') 
+    validDeprecated = PropertyItem.get('Redfish.Deprecated')
     if validDeprecated is not None:
         deprecatedPass = False
         counts['warnDeprecated'] += 1
@@ -888,11 +888,7 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
                 'PASS' if paramPass else 'FAIL')
     return success, messages
 
-
-def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None, parent=None):
-    # rs-assertion: 9.4.1
-    # Initial startup here
-
+def setupLoggingCaptures():
     class WarnFilter(logging.Filter):
         def filter(self, rec):
             return rec.levelno == logging.WARN
@@ -912,6 +908,24 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     rsvLogger.addHandler(errh)  # Printout FORMAT
     rsvLogger.addHandler(warnh)  # Printout FORMAT
 
+    yield
+
+    rsvLogger.removeHandler(errh)  # Printout FORMAT
+    rsvLogger.removeHandler(warnh)  # Printout FORMAT
+    warnstrings = warnMessages.getvalue()
+    warnMessages.close()
+    errorstrings = errorMessages.getvalue()
+    errorMessages.close()
+
+    print( warnstrings, errorstrings)
+    yield warnstrings, errorstrings
+
+
+def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None, parent=None):
+    # rs-assertion: 9.4.1
+    # Initial startup here
+    lc = setupLoggingCaptures()
+    next(lc)
     # Start
     rsvLogger.verboseout("\n*** %s, %s", uriName, URI)  # Printout FORMAT
     rsvLogger.info("\n*** %s", URI)  # Printout FORMAT
@@ -921,8 +935,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     messages = OrderedDict()
     success = True
 
-    results[uriName] = {'uri':URI, 'success':False, 'counts':counts, 'messages':messages, 'errors':errorMessages,\
-            'warns': warnMessages, 'rtime':'', 'context':'', 'fulltype':''}
+    results[uriName] = {'uri':URI, 'success':False, 'counts':counts,\
+            'messages':messages, 'errors':'', 'warns': '',\
+            'rtime':'', 'context':'', 'fulltype':''}
 
     # check for @odata mandatory stuff
     # check for version numbering problems
@@ -946,25 +961,21 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     if not successPayload:
         counts['failPayloadError'] += 1
         rsvLogger.error(str(URI) + ': payload error, @odata property non-conformant',)  # Printout FORMAT
-        # rsvLogger.removeHandler(errh)  # Printout FORMAT
-        # return False, counts, results, None, propResourceObj
-    # Generate dictionary of property info
 
+    # Generate dictionary of property info
     try:
         propResourceObj = rst.createResourceObject(
             uriName, URI, expectedJson, expectedType, expectedSchema, parent)
         if not propResourceObj:
             counts['problemResource'] += 1
-            rsvLogger.removeHandler(errh)  # Printout FORMAT
-            rsvLogger.removeHandler(warnh)  # Printout FORMAT
+            results[uriName]['warns'], results[uriName]['errors'] = next(lc)
             return False, counts, results, None, None
     except AuthenticationError as e:
         raise  # re-raise exception
     except Exception as e:
         rsvLogger.exception("")  # Printout FORMAT
         counts['exceptionResource'] += 1
-        rsvLogger.removeHandler(errh)  # Printout FORMAT
-        rsvLogger.removeHandler(warnh)  # Printout FORMAT
+        results[uriName]['warns'], results[uriName]['errors'] = next(lc)
         return False, counts, results, None, None
     counts['passGet'] += 1
 
@@ -972,12 +983,14 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     sample_string = rst.uri_sample_map.get(URI)
     sample_string = sample_string + ', ' if sample_string is not None else ''
 
-    results[uriName]['uri'] = (str(URI) + ' ({}response time: {}s)'.format(sample_string, propResourceObj.rtime))
+    results[uriName]['uri'] = (str(URI))
+    results[uriName]['samplemapped'] = (str(sample_string))
     results[uriName]['rtime'] = propResourceObj.rtime
     results[uriName]['context'] = propResourceObj.context
+    results[uriName]['origin'] = propResourceObj.schemaObj.origin
     results[uriName]['fulltype'] = propResourceObj.typeobj.fulltype
     results[uriName]['success'] = True
-    
+
     rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.stype, propResourceObj.rtime)  # Printout FORMAT
 
     # If this is an AttributeRegistry, load it for later use
@@ -989,14 +1002,14 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             if namespace == '#AttributeRegistry' and type_name == 'AttributeRegistry':
                 loadAttributeRegDict(odata_type, propResourceObj.jsondata)
 
-    for prop in propResourceObj.getResourceProperties(): 
+    for prop in propResourceObj.getResourceProperties():
         try:
             propMessages, propCounts = checkPropertyConformance(propResourceObj.schemaObj, prop.name, prop.propDict, propResourceObj.jsondata, parentURI=URI)
             if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in propResourceObj.typeobj.fulltype:
                 modified_entry = list(propMessages['@Redfish.Copyright'])
                 modified_entry[-1] = 'FAIL'
                 propMessages['@Redfish.Copyright'] = tuple(modified_entry)
-                rsvLogger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations') 
+                rsvLogger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
             messages.update(propMessages)
             counts.update(propCounts)
         except AuthenticationError as e:
@@ -1019,9 +1032,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         item = jsonData[key]
         rsvLogger.verboseout(fmt % (  # Printout FORMAT
             key, messages[key][3] if key in messages else 'Exists, no schema check'))
-        
+
     allowAdditional = propResourceObj.typeobj.additional
-    for key in [k for k in jsonData if k not in messages and k not in propResourceObj.unknownProperties] + propResourceObj.unknownProperties: 
+    for key in [k for k in jsonData if k not in messages and k not in propResourceObj.unknownProperties] + propResourceObj.unknownProperties:
         # note: extra messages for "unchecked" properties
         if not allowAdditional:
             rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
@@ -1042,7 +1055,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         if key not in jsonData:
             rsvLogger.verboseout(fmt % (key, messages[key][3]))  # Printout FORMAT
 
-    pass_val = len(errorMessages.getvalue()) == 0
+    results[uriName]['warns'], results[uriName]['errors'] = next(lc)
+
+    pass_val = len(results[uriName]['errors']) == 0
     for key in counts:
         if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             pass_val = False
@@ -1054,8 +1069,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # Get all links available
 
     rsvLogger.debug(propResourceObj.links)  # Printout FORMAT
-    rsvLogger.removeHandler(errh)  # Printout FORMAT
-    rsvLogger.removeHandler(warnh)  # Printout FORMAT
+
     return True, counts, results, propResourceObj.links, propResourceObj
 
 
@@ -1127,7 +1141,7 @@ def main(arglist=None, direct_parser=None):
     Main program
     """
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
-    
+
     # config
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
 
@@ -1165,7 +1179,7 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
 
     args = argget.parse_args(arglist)
-    
+
     # clear cache from any other runs
     rst.callResourceURI.cache_clear()
     rst.getSchemaDetails.cache_clear()
@@ -1198,7 +1212,7 @@ def main(arglist=None, direct_parser=None):
         proxies = {}
         proxies['http'] = httpprox if httpprox != "" else None
         proxies['https'] = httpsprox if httpsprox != "" else None
-        setup_schema_pack(config['schema_pack'], config['metadatafilepath'], proxies, config['timeout']) 
+        setup_schema_pack(config['schema_pack'], config['metadatafilepath'], proxies, config['timeout'])
 
     # Logging config
     logpath = config['logpath']
@@ -1207,9 +1221,7 @@ def main(arglist=None, direct_parser=None):
         os.makedirs(logpath)
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    fh.setLevel(args.debug_logging)
-    if args.debug_logging != logging.DEBUG:
-        fh.setLevel(args.verbose_checks)
+    fh.setLevel(min(args.debug_logging, args.verbose_checks))
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)  # Printout FORMAT
 
@@ -1223,17 +1235,17 @@ def main(arglist=None, direct_parser=None):
     metadata = currentService.metadata
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
 
-
     # start printing
     rsvLogger.info('ConfigURI: ' + ConfigURI)
     rsvLogger.info('System Info: ' + sysDescription)  # Printout FORMAT
-    rsvLogger.info(rst.configToStr())
+    rsvLogger.info('\n'.join(
+        ['{}: {}'.format(x, config[x]) for x in sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description'])))]))
     rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))  # Printout FORMAT
 
     # Start main
     status_code = 1
     jsonData = None
-   
+
     # Determine runner
     pmode, ppath = config.get('payloadmode', 'Default'), config.get('payloadfilepath')
     if pmode not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
@@ -1280,9 +1292,9 @@ def main(arglist=None, direct_parser=None):
                 counters_all_pass = False
                 break
         error_messages_present = False
-        if results[item]['errors'] is not None and len(results[item]['errors'].getvalue()) > 0:
+        if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
             error_messages_present = True
-        if results[item]['warns'] is not None and len(results[item]['warns'].getvalue()) > 0:
+        if results[item]['warns'] is not None and len(results[item]['warns']) > 0:
             innerCounts['warningPresent'] = 1
         if counters_all_pass and error_messages_present:
             innerCounts['failErrorPresent'] = 1
@@ -1296,13 +1308,13 @@ def main(arglist=None, direct_parser=None):
             continue
         if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             fails += finalCounts[key]
-        
+
     html_str = renderHtml(results, finalCounts, tool_version, startTick, nowTick)
-    
+
     lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
 
     writeHtml(html_str, lastResultsPage)
-    
+
     success = success and not (fails > 0)
     rsvLogger.info(finalCounts)
 
