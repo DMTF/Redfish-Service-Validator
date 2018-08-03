@@ -1,5 +1,11 @@
 # Change Log
 
+## [1.1.5] - 2018-08-03
+- Added missing start session
+- Added exceptions for bad credentials
+- Modified the report output to improve readability
+- Refactor areas of code to enable automated unit testing
+
 ## [1.1.4] - 2018-07-06
 - Additional fixes to OEM object handling within Actions
 
