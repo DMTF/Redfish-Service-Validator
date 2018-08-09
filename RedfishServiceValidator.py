@@ -182,7 +182,7 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     """
     rsvLogger.verboseout('\t***going into Complex')
     if not isinstance(val, dict):
-        rsvLogger.error(name + ': Complex item not a dictionary')  # Printout FORMAT
+        rsvLogger.error(name + ': Complex item not a dictionary')
         return False, None, None
 
     # Check inside of complexType, treat it like an Entity
@@ -809,7 +809,7 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
                 elif propRealType == 'entity':
                     paramPass = validateEntity(sub_item, val, propType, propCollectionType, schemaObj, autoExpand, parentURI)
                 else:
-                    rsvLogger.error("%s: This type is invalid %s" % (sub_item, propRealType))  # Printout FORMAT
+                    rsvLogger.error("%s: This type is invalid %s" % (sub_item, propRealType))
                     paramPass = False
 
         if not paramPass or not propMandatoryPass or not propNullablePass:
@@ -823,7 +823,7 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
                 'Yes' if propExists else 'No', result_str)
         if paramPass and propNullablePass and propMandatoryPass:
             counts['pass'] += 1
-            rsvLogger.verboseout("\tSuccess")  # Printout FORMAT
+            rsvLogger.verboseout("\tSuccess")
         else:
             counts['err.' + str(propType)] += 1
             if not paramPass:
@@ -832,12 +832,12 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
                 else:
                     counts['failProp'] += 1
             elif not propMandatoryPass:
-                rsvLogger.error("{}: Mandatory prop does not exist".format(sub_item))  # Printout FORMAT
+                rsvLogger.error("{}: Mandatory prop does not exist".format(sub_item))
                 counts['failMandatoryExist'] += 1
             elif not propNullablePass:
                 rsvLogger.error('{}: Property is null but is not Nullable'.format(sub_item))
                 counts['failNullable'] += 1
-            rsvLogger.verboseout("\tFAIL")  # Printout FORMAT
+            rsvLogger.verboseout("\tFAIL")
 
     return resultList, counts
 
@@ -872,7 +872,7 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
         else:
             paramPass = True
         if not paramPass:
-            rsvLogger.error(prefix + key + " @odata item not conformant: " + decoded[key])  # Printout FORMAT
+            rsvLogger.error(prefix + key + " @odata item not conformant: " + decoded[key])
             success = False
         messages[prefix + key] = (
                 decoded[key], display_type,
@@ -897,19 +897,18 @@ def setupLoggingCaptures():
     warnh.addFilter(WarnFilter())
     warnh.setFormatter(fmt)
 
-    rsvLogger.addHandler(errh)  # Printout FORMAT
-    rsvLogger.addHandler(warnh)  # Printout FORMAT
+    rsvLogger.addHandler(errh)
+    rsvLogger.addHandler(warnh)
 
     yield
 
-    rsvLogger.removeHandler(errh)  # Printout FORMAT
-    rsvLogger.removeHandler(warnh)  # Printout FORMAT
+    rsvLogger.removeHandler(errh)
+    rsvLogger.removeHandler(warnh)
     warnstrings = warnMessages.getvalue()
     warnMessages.close()
     errorstrings = errorMessages.getvalue()
     errorMessages.close()
 
-    print( warnstrings, errorstrings)
     yield warnstrings, errorstrings
 
 
@@ -919,9 +918,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     lc = setupLoggingCaptures()
     next(lc)
     # Start
-    rsvLogger.verboseout("\n*** %s, %s", uriName, URI)  # Printout FORMAT
-    rsvLogger.info("\n*** %s", URI)  # Printout FORMAT
-    rsvLogger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)  # Printout FORMAT
+    rsvLogger.verboseout("\n*** %s, %s", uriName, URI)
+    rsvLogger.info("\n*** %s", URI)
+    rsvLogger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)
     counts = Counter()
     results = OrderedDict()
     messages = OrderedDict()
@@ -952,7 +951,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     if not successPayload:
         counts['failPayloadError'] += 1
-        rsvLogger.error(str(URI) + ': payload error, @odata property non-conformant',)  # Printout FORMAT
+        rsvLogger.error(str(URI) + ': payload error, @odata property non-conformant',)
 
     # Generate dictionary of property info
     try:
@@ -985,7 +984,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results[uriName]['fulltype'] = propResourceObj.typeobj.fulltype
     results[uriName]['success'] = True
 
-    rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.stype, propResourceObj.rtime)  # Printout FORMAT
+    rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.stype, propResourceObj.rtime)
 
     # If this is an AttributeRegistry, load it for later use
     if isinstance(propResourceObj.jsondata, dict):
@@ -1020,11 +1019,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # List all items checked and unchecked
     # current logic does not check inside complex types
     fmt = '%-30s%30s'
-    rsvLogger.verboseout('%s, %s, %s', uriName, SchemaNamespace, SchemaType)  # Printout FORMAT
+    rsvLogger.verboseout('%s, %s, %s', uriName, SchemaNamespace, SchemaType)
 
     for key in jsonData:
         item = jsonData[key]
-        rsvLogger.verboseout(fmt % (  # Printout FORMAT
+        rsvLogger.verboseout(fmt % (
             key, messages[key][3] if key in messages else 'Exists, no schema check'))
 
     allowAdditional = propResourceObj.typeobj.additional
@@ -1047,7 +1046,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     for key in messages:
         if key not in jsonData:
-            rsvLogger.verboseout(fmt % (key, messages[key][3]))  # Printout FORMAT
+            rsvLogger.verboseout(fmt % (key, messages[key][3]))
 
     results[uriName]['warns'], results[uriName]['errors'] = next(lc)
 
@@ -1058,11 +1057,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             break
     rsvLogger.info("\t {}".format('PASS' if pass_val else' FAIL...'))
 
-    rsvLogger.verboseout('%s, %s', SchemaFullType, counts)  # Printout FORMAT
+    rsvLogger.verboseout('%s, %s', SchemaFullType, counts)
 
     # Get all links available
 
-    rsvLogger.debug(propResourceObj.links)  # Printout FORMAT
+    rsvLogger.debug(propResourceObj.links)
 
     return True, counts, results, propResourceObj.links, propResourceObj
 
@@ -1078,6 +1077,11 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     # debug:
     traverseLogger = rst.getLogger()
 
+    top = allLinks is None
+    if top:
+        allLinks = set()
+    allLinks.add(URI)
+
     def executeLink(linkItem, parent=None):
         linkURI, autoExpand, linkType, linkSchema, innerJson = linkItem
 
@@ -1087,13 +1091,9 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
         else:
             returnVal = validateURITree(
                     linkURI, uriName + ' -> ' + linkName, parent=parent, allLinks=allLinks)
-        traverseLogger.verboseout('%s, %s', linkName, returnVal[1])  # Printout FORMAT
+        traverseLogger.verboseout('%s, %s', linkName, returnVal[1])
         return returnVal
 
-    top = allLinks is None
-    if top:
-        allLinks = set()
-    allLinks.add(URI)
     refLinks = OrderedDict()
 
     validateSuccess, counts, results, links, thisobj = validateSingleURI(
@@ -1116,7 +1116,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     if top:
         for linkName in refLinks:
             if refLinks[linkName][0] not in allLinks:
-                traverseLogger.verboseout('%s, %s', linkName, refLinks[linkName])  # Printout FORMAT
+                traverseLogger.verboseout('%s, %s', linkName, refLinks[linkName])
                 counts['reflink'] += 1
             else:
                 continue
@@ -1219,13 +1219,13 @@ def main(arglist=None, direct_parser=None):
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
     fh.setLevel(min(args.debug_logging, args.verbose_checks))
     fh.setFormatter(fmt)
-    rsvLogger.addHandler(fh)  # Printout FORMAT
+    rsvLogger.addHandler(fh)
 
     # Then start service
     try:
         currentService = rst.startService()
     except Exception as ex:
-        rsvLogger.error("Service could not be started: {}".format(ex))  # Printout FORMAT
+        rsvLogger.error("Service could not be started: {}".format(ex))
         return 1, None, 'Service Exception'
 
     metadata = currentService.metadata
@@ -1233,10 +1233,10 @@ def main(arglist=None, direct_parser=None):
 
     # start printing
     rsvLogger.info('ConfigURI: ' + ConfigURI)
-    rsvLogger.info('System Info: ' + sysDescription)  # Printout FORMAT
+    rsvLogger.info('System Info: ' + sysDescription)
     rsvLogger.info('\n'.join(
         ['{}: {}'.format(x, config[x]) for x in sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description'])))]))
-    rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))  # Printout FORMAT
+    rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))
 
     # Start main
     status_code = 1
@@ -1275,7 +1275,7 @@ def main(arglist=None, direct_parser=None):
 
     finalCounts = Counter()
     nowTick = datetime.now()
-    rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))  # Printout FORMAT
+    rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
 
     finalCounts.update(metadata.get_counter())
     for item in results:
@@ -1284,9 +1284,13 @@ def main(arglist=None, direct_parser=None):
         # detect if there are error messages for this resource, but no failure counts; if so, add one to the innerCounts
         counters_all_pass = True
         for countType in sorted(innerCounts.keys()):
+            if innerCounts.get(countType) == 0:
+                continue
             if any(x in countType for x in ['problem', 'fail', 'bad', 'exception']):
                 counters_all_pass = False
-                break
+            if 'fail' in countType or 'exception' in countType:
+                rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, results[item][0].split(' ')[0]))
+            innerCounts[countType] += 0
         error_messages_present = False
         if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
             error_messages_present = True

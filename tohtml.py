@@ -133,6 +133,15 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
         sep = '' if num == len(infos) else sep
         htmlStrBodyHeader += block + sep
 
+    htmlStrTotal = '<div>Final counts: '
+    for countType in sorted(finalCounts.keys()):
+        if finalCounts.get(countType) == 0:
+            continue
+        htmlStrTotal += '{p}: {q},   '.format(p=countType, q=finalCounts.get(countType, 0))
+    htmlStrTotal += '</div><div class="button warn" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results resultsShow\'};">Expand All</div>'
+    htmlStrTotal += '</div><div class="button fail" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results\'};">Collapse All</div>'
+
+    htmlStrBodyHeader += tr(td(htmlStrTotal))
 
     htmlPage = rst.currentService.metadata.to_html()
     for cnt, item in enumerate(results):
