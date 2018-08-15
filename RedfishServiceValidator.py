@@ -966,6 +966,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         raise  # re-raise exception
     except Exception as e:
         rsvLogger.debug('Exception caught while creating ResourceObj', exc_info=1)
+        rsvLogger.error('Unable to gather property info for URI {}: {}'
+                        .format(URI, repr(e)))
         counts['exceptionResource'] += 1
         results[uriName]['warns'], results[uriName]['errors'] = next(lc)
         return False, counts, results, None, None
@@ -1183,6 +1185,7 @@ def main(arglist=None, direct_parser=None):
             rst.setConfig(cdict)
         except Exception as ex:
             rsvLogger.debug('Exception caught while parsing configuration', exc_info=1)
+            rsvLogger.error('Unable to parse configuration: {}'.format(repr(ex)))
             return 1, None, 'Config Parser Exception'
     elif args.config is None and args.ip is None:
         rsvLogger.info('No ip or config specified.')
@@ -1191,8 +1194,9 @@ def main(arglist=None, direct_parser=None):
     else:
         try:
             rst.setByArgparse(args)
-        except Exception:
+        except Exception as ex:
             rsvLogger.debug('Exception caught while parsing configuration', exc_info=1)
+            rsvLogger.error('Unable to parse configuration: {}'.format(repr(ex)))
             return 1, None, 'Config Exception'
 
     config = rst.config

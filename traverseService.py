@@ -1149,8 +1149,9 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                     else:
                         linkList.update(tp.links)
         traverseLogger.debug(str(linkList))
-    except Exception:
+    except Exception as e:
         traverseLogger.debug('Exception caught while getting all links', exc_info=1)
+        traverseLogger.error('Unexpected error while extracting links from payload: {}'.format(repr(e)))
     # contents of Registries may be needed to validate other resources (like Bios), so move to front of linkList
     if 'Registries.Registries' in linkList:
         linkList.move_to_end('Registries.Registries', last=False)
