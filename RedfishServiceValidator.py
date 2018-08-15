@@ -965,7 +965,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     except AuthenticationError as e:
         raise  # re-raise exception
     except Exception as e:
-        rsvLogger.exception("")  # Printout FORMAT
+        rsvLogger.debug('Exception caught while creating ResourceObj', exc_info=1)
         counts['exceptionResource'] += 1
         results[uriName]['warns'], results[uriName]['errors'] = next(lc)
         return False, counts, results, None, None
@@ -1007,7 +1007,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         except AuthenticationError as e:
             raise  # re-raise exception
         except Exception as ex:
-            rsvLogger.exception("Something went wrong")  # Printout FORMAT
+            rsvLogger.debug('Exception caught while validating single URI', exc_info=1)
             rsvLogger.error('%s: Could not finish check on this property' % (prop.name))  # Printout FORMAT
             counts['exceptionPropCheck'] += 1
 
@@ -1182,7 +1182,7 @@ def main(arglist=None, direct_parser=None):
             cdict = rst.convertConfigParserToDict(direct_parser)
             rst.setConfig(cdict)
         except Exception as ex:
-            rsvLogger.exception("Something went wrong")  # Printout FORMAT
+            rsvLogger.debug('Exception caught while parsing configuration', exc_info=1)
             return 1, None, 'Config Parser Exception'
     elif args.config is None and args.ip is None:
         rsvLogger.info('No ip or config specified.')
@@ -1192,7 +1192,7 @@ def main(arglist=None, direct_parser=None):
         try:
             rst.setByArgparse(args)
         except Exception:
-            rsvLogger.exception("Something went wrong")  # Printout FORMAT
+            rsvLogger.debug('Exception caught while parsing configuration', exc_info=1)
             return 1, None, 'Config Exception'
 
     config = rst.config
