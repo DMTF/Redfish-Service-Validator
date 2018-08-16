@@ -585,7 +585,7 @@ class PropItem:
                 schemaObj, propOwner, propChild, val, topVersion, customType)
             self.attr = self.propDict['attrs']
         except Exception:
-            traverseLogger.exception("Something went wrong")
+            traverseLogger.debug('Exception caught while creating new PropItem', exc_info=1)
             traverseLogger.error(
                     '{}:{} :  Could not get details on this property'.format(str(propOwner),str(propChild)))
             self.propDict = None
@@ -599,7 +599,7 @@ class PropAction:
             self.propOwner, self.propChild = propOwner, propChild
             self.actTag = act
         except Exception:
-            traverseLogger.exception("Something went wrong")
+            traverseLogger.debug('Exception caught while creating new PropAction', exc_info=1)
             traverseLogger.error(
                     '{}:{} :  Could not get details on this action'.format(str(propOwner),str(propChild)))
             self.actTag = None
@@ -637,7 +637,7 @@ class PropType:
                 if not self.additional:
                     self.additional = self.parent.additional
         except Exception as ex:
-            traverseLogger.exception("Something went wrong")
+            traverseLogger.debug('Exception caught while creating new PropType', exc_info=1)
             traverseLogger.error(
                 '{}:  Getting type failed for {}'.format(str(self.fulltype), str(baseType)))
             raise ex
@@ -1149,8 +1149,9 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                     else:
                         linkList.update(tp.links)
         traverseLogger.debug(str(linkList))
-    except Exception:
-        traverseLogger.exception("Something went wrong")
+    except Exception as e:
+        traverseLogger.debug('Exception caught while getting all links', exc_info=1)
+        traverseLogger.error('Unexpected error while extracting links from payload: {}'.format(repr(e)))
     # contents of Registries may be needed to validate other resources (like Bios), so move to front of linkList
     if 'Registries.Registries' in linkList:
         linkList.move_to_end('Registries.Registries', last=False)
