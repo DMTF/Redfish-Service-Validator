@@ -315,14 +315,15 @@ def callResourceURI(URILink):
         auth = None
 
     # only send token when we're required to chkauth, during a Session, and on Service and Secure
-    headers = {}.update(commonHeader)
+    headers = {}
+    headers.update(commonHeader)
     if not noauthchk and inService and UseSSL:
         traverseLogger.debug('successauthchk')
         if AuthType == 'Session':
             currentSession = currentService.currentSession
-            headers = headers.update({"X-Auth-Token": currentSession.getSessionKey()})
+            headers.update({"X-Auth-Token": currentSession.getSessionKey()})
         elif AuthType == 'Token':
-            headers = headers.update({"Authorization": "Bearer " + Token})
+            headers.update({"Authorization": "Bearer " + Token})
 
     if ExtraHeaders is not None:
         headers.update(ExtraHeaders)
