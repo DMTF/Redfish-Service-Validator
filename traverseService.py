@@ -15,13 +15,12 @@ import logging
 from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from http.client import responses
-import copy
 import configparser
+from urllib.parse import urlparse, urlunparse
 
 import metadata as md
-from commonRedfish import *
+from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, getVersion, navigateJsonFragment
 import rfSchema
-
 
 traverseLogger = logging.getLogger(__name__)
 traverseLogger.setLevel(logging.DEBUG)
@@ -74,6 +73,10 @@ defaultconfig = {
         'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry': 20}, 'sample': 0, 'schema_pack': None, 'forceauth': False
         }
 
+customval = {
+        'linklimit': lambda v: re.findall('[A-Za-z_]+:[0-9]+', v)
+        }
+
 config = dict(defaultconfig)
 
 configSet = False
@@ -97,8 +100,8 @@ def convertConfigParserToDict(configpsr):
                 continue
             if val.isdigit():
                 val = int(val)
-            elif option == 'linklimit':
-                val = re.findall('[A-Za-z_]+:[0-9]+', val)
+            elif option in customval:
+                val = customval[option](val)
             elif str(val).lower() in ['on', 'true', 'yes']:
                 val = True
             elif str(val).lower() in ['off', 'false', 'no']:
@@ -163,8 +166,12 @@ def setConfig(cdict):
 
     config.update(cdict)
 
-    config['configuri'] = ('https' if config.get('usessl', True) else 'http') + '://' + config['targetip']
     config['certificatecheck'] = config.get('certificatecheck', True) and config.get('usessl', True)
+
+    if 'extrajsonheaders' in config:
+        config['extrajsonheaders'] = json.loads(config['extrajsonheaders'])
+    if 'extraxmlheaders' in config:
+        config['extraxmlheaders']  = json.loads(config['extraxmlheaders'])
 
     defaultlinklimit.update(config['linklimit'])
     config['linklimit'] = defaultlinklimit
@@ -227,28 +234,23 @@ class rfService():
             self.currentSession.killSession()
         self.active = False
 
-def navigateJsonFragment(decoded, URILink):
-    if '#' in URILink:
-        URILink, frag = tuple(URILink.rsplit('#', 1))
-        fragNavigate = frag.split('/')
-        for item in fragNavigate:
-            if item == '':
-                continue
-            if isinstance(decoded, dict):
-                decoded = decoded.get(item)
-            elif isinstance(decoded, list):
-                if not item.isdigit():
-                    traverseLogger.error("This is an Array, but this is not an index, aborting: {} {}".format(URILink, item))
-                    return None
-                decoded = decoded[int(item)] if int(item) < len(decoded) else None
-        if not isinstance(decoded, dict):
-            traverseLogger.error(
-                "Decoded object no longer a dictionary {}".format(URILink))
-            return None
-    return decoded
+
+def getFromCache(URILink, CacheDir):
+    CacheDir = os.path.join(CacheDir + URILink)
+    if os.path.isfile(CacheDir):
+        with open(CacheDir) as f:
+            payload = f.read()
+    if os.path.isfile(os.path.join(CacheDir, 'index.xml')):
+        with open(os.path.join(CacheDir, 'index.xml')) as f:
+            payload = f.read()
+    if os.path.isfile(os.path.join(CacheDir, 'index.json')):
+        with open(os.path.join(CacheDir, 'index.json')) as f:
+            payload = json.loads(f.read())
+        payload = navigateJsonFragment(payload, URILink)
+    return payload
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def callResourceURI(URILink):
     """
     Makes a call to a given URI or URL
@@ -269,64 +271,58 @@ def callResourceURI(URILink):
     URILink = URILink.rstrip('/')
     config = currentService.config
     proxies = currentService.proxies
-    ConfigURI, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['configuri'], config['usessl'], config['authtype'], \
+    ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['targetip'], config['usessl'], config['authtype'], \
             config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
     CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
 
-    nonService = isNonService(URILink)
+    scheme, netloc, path, params, query, fragment = urlparse(URILink)
+    inService = scheme is '' and netloc is ''
+    scheme = ('https' if UseSSL else 'http') if scheme is '' else scheme
+    netloc = ConfigIP if netloc is '' else netloc
+    URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
+
     payload, statusCode, elapsed, auth, noauthchk = None, '', 0, None, True
 
     isXML = False
-    if "$metadata" in URILink or ".xml" in URILink:
+    if "$metadata" in URILink or ".xml" in URILink[:-5]:
         isXML = True
         traverseLogger.debug('Should be XML')
 
     ExtraHeaders = None
     if 'extrajsonheaders' in config and not isXML:
-        ExtraHeaders = eval(config['extrajsonheaders'])
+        ExtraHeaders = config['extrajsonheaders']
     elif 'extraxmlheaders' in config and isXML:
-        ExtraHeaders = eval(config['extraxmlheaders'])
+        ExtraHeaders = config['extraxmlheaders']
 
     # determine if we need to Auth...
-    if not nonService:
+    if inService:
         noauthchk =  URILink in ['/redfish', '/redfish/v1', '/redfish/v1/odata'] or\
             '/redfish/v1/$metadata' in URILink
-        if noauthchk:
-            traverseLogger.debug('dont chkauth')
-            auth = None
-        else:
-            auth = (config['username'], config['password'])
+
+        auth = None if noauthchk else (config['username'], config['password'])
+        traverseLogger.debug('dont chkauth' if noauthchk else 'chkauth')
+
         if CacheMode in ["Fallback", "Prefer"]:
-            CacheDir = os.path.join(CacheDir + URILink)
-            if os.path.isfile(CacheDir):
-                with open(CacheDir) as f:
-                    payload = f.read()
-            if os.path.isfile(os.path.join(CacheDir, 'index.xml')):
-                with open(os.path.join(CacheDir, 'index.xml')) as f:
-                    payload = f.read()
-            if os.path.isfile(os.path.join(CacheDir, 'index.json')):
-                with open(os.path.join(CacheDir, 'index.json')) as f:
-                    payload = json.loads(f.read())
-                payload = navigateJsonFragment(payload, URILink)
-    if nonService and config['servicemode']:
-        traverseLogger.warning('Disallowed out of service URI')
+            payload = getFromCache(URILink, CacheDir)
+
+    if not inService and config['servicemode']:
+        traverseLogger.warning('Disallowed out of service URI ' + URILink)
         return False, None, -1, 0
 
     # rs-assertion: do not send auth over http
     # remove UseSSL if necessary if you require unsecure auth
-    if (not UseSSL and not config['forceauth']) or nonService or AuthType != 'Basic':
+    if (not UseSSL and not config['forceauth']) or not inService or AuthType != 'Basic':
         auth = None
 
     # only send token when we're required to chkauth, during a Session, and on Service and Secure
-    if UseSSL and not nonService and AuthType == 'Session' and not noauthchk:
-        currentSession = currentService.currentSession
-        headers = {"X-Auth-Token": currentSession.getSessionKey()}
-        headers.update(commonHeader)
-    elif UseSSL and not nonService and AuthType == 'Token' and not noauthchk:
-        headers = {"Authorization": "Bearer "+Token}
-        headers.update(commonHeader)
-    else:
-        headers = copy.copy(commonHeader)
+    headers = {}.update(commonHeader)
+    if not noauthchk and inService and UseSSL:
+        traverseLogger.debug('successauthchk')
+        if AuthType == 'Session':
+            currentSession = currentService.currentSession
+            headers = headers.update({"X-Auth-Token": currentSession.getSessionKey()})
+        elif AuthType == 'Token':
+            headers = headers.update({"Authorization": "Bearer " + Token})
 
     if ExtraHeaders is not None:
         headers.update(ExtraHeaders)
@@ -334,14 +330,14 @@ def callResourceURI(URILink):
     certVal = ChkCertBundle if ChkCert and ChkCertBundle not in [None, ""] else ChkCert
 
     # rs-assertion: must have application/json or application/xml
-    traverseLogger.debug('callingResourceURI{}with authtype {} and ssl {}: {} {}'.format(
-        ' out of service ' if nonService else ' ', AuthType, UseSSL, URILink, headers))
+    traverseLogger.debug('callingResourceURI {}with authtype {} and ssl {}: {} {}'.format(
+        'out of service ' if not inService else '', AuthType, UseSSL, URILink, headers))
     try:
         if payload is not None and CacheMode == 'Prefer':
             return True, payload, -1, 0
-        response = requests.get(ConfigURI + URILink if not nonService else URILink,
+        response = requests.get(URLDest,
                                 headers=headers, auth=auth, verify=certVal, timeout=timeout,
-                                proxies=proxies if nonService else None)  # only proxy non-service
+                                proxies=proxies if not inService else None)  # only proxy non-service
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
         statusCode = response.status_code
@@ -349,26 +345,33 @@ def callResourceURI(URILink):
                              expCode, response.headers, elapsed))
         if statusCode in expCode:
             contenttype = response.headers.get('content-type')
-            if contenttype is not None and 'application/json' in contenttype:
-                traverseLogger.debug("This is a JSON response")
-                decoded = response.json(object_pairs_hook=OrderedDict)
-                # navigate fragment
-                decoded = navigateJsonFragment(decoded, URILink)
-                if decoded is None:
+            if contenttype is not None:
+                if 'application/json' in contenttype:
+                    traverseLogger.debug("This is a JSON response")
+                    decoded = response.json(object_pairs_hook=OrderedDict)
+                    # navigate fragment
+                    decoded = navigateJsonFragment(decoded, URILink)
+                    if decoded is None:
+                        traverseLogger.error(
+                                "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
+                elif 'application/xml' in contenttype:
+                    decoded = response.text
+                elif 'text/xml' in contenttype:
+                    # non-service schemas can use "text/xml" Content-Type
+                    if inService:
+                        traverseLogger.warn(
+                                "Incorrect content type 'text/xml' for file within service".format(URILink))
+                    decoded = response.text
+                else:
                     traverseLogger.error(
-                            "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
-            elif contenttype is not None and 'application/xml' in contenttype:
-                decoded = response.text
-            elif nonService and contenttype is not None and 'text/xml' in contenttype:
-                # non-service schemas can use "text/xml" Content-Type
-                decoded = response.text
+                            "This URI did NOT return XML or Json, this is not a Redfish resource (is this redirected?): {}".format(URILink))
+                    return False, response.text, statusCode, elapsed
             else:
-                traverseLogger.error(
-                        "This URI did NOT return XML or Json, this is not a Redfish resource (is this redirected?): {}".format(URILink))
-                return False, response.text, statusCode, elapsed
+                traverseLogger.error("Content-type not found in header: {}".format(URILink))
+
             return decoded is not None, decoded, statusCode, elapsed
         elif statusCode == 401:
-            if not nonService and AuthType in ['Basic', 'Token']:
+            if inService and AuthType in ['Basic', 'Token']:
                 if AuthType == 'Token':
                     cred_type = 'token'
                 else:
@@ -407,6 +410,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
         'Creating ResourceObject {} {} {}'.format(name, uri, typename))
 
     # Create json from service or from given
+    original_jsondata = jsondata
     if jsondata is None and not isComplex:
         success, jsondata, status, rtime = callResourceURI(uri)
         traverseLogger.debug('{}, {}, {}'.format(success, jsondata, status))
@@ -424,7 +428,80 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
             traverseLogger.debug("ComplexType does not have val")
         return None
 
-    newResource = ResourceObj(name, uri, jsondata, typename, context, parent, isComplex)
+    acquiredtype = jsondata.get('@odata.type', typename)
+    if acquiredtype is None:
+        traverseLogger.error(
+            '{}:  Json does not contain @odata.type or NavType'.format(uri))
+        return None
+
+    original_context = context
+    if context is None:
+        context = jsondata.get('@odata.context')
+        if context is None:
+            context = createContext(acquiredtype)
+
+    # Get Schema object
+    schemaObj = rfSchema.getSchemaObject(acquiredtype, context)
+    forceType = False
+
+    # get highest type if type is invalid
+    if schemaObj.getTypeTagInSchema(acquiredtype) is None:
+        if schemaObj.getTypeTagInSchema(getNamespaceUnversioned(acquiredtype)) is not None:
+            traverseLogger.error("Namespace version of type appears missing from SchemaXML, attempting highest type: {}".format(acquiredtype))
+            acquiredtype = schemaObj.getHighestType(getNamespaceUnversioned(acquiredtype))
+            typename = acquiredtype
+            forceType = True
+        else:
+            traverseLogger.error("Namespace appears nonexistent in SchemaXML: {}".format(acquiredtype))
+            return None
+
+    # check odata.id if it corresponds
+    odata_id = jsondata.get('@odata.id', '')
+
+    currentType = acquiredtype
+    baseObj = schemaObj
+    success = True
+    allTypes = []
+    while currentType not in allTypes and success:
+        allTypes.append(currentType)
+        success, baseObj, currentType = baseObj.getParentType(currentType, 'EntityType')
+        traverseLogger.debug('success = {}, currentType = {}'.format(success, currentType))
+
+    uri_item = uri
+    scheme, netloc, path, params, query, fragment = urlparse(uri_item)
+    scheme, netloc, path, params, query, fragment_odata = urlparse(odata_id)
+
+    if 'Resource.Resource' in allTypes:
+        if fragment is '':
+            if original_jsondata is None:
+                traverseLogger.debug('Acquired resource OK {}'.format(uri_item))
+            else:
+                traverseLogger.debug('Acquired resource thru AutoExpanded means {}'.format(uri_item))
+                traverseLogger.info('Regetting resource from URI {}'.format(uri_item))
+                return createResourceObject(name, uri_item, None, typename, context, parent, isComplex)
+        else:
+            if original_jsondata is None:
+                traverseLogger.warn('Acquired Resource.Resource type with fragment, could cause issues  {}'.format(uri_item))
+            else:
+                traverseLogger.warn('Found uri with fragment, which Resource.Resource types do not use {}'.format(uri_item))
+        if fragment_odata is '':
+            pass
+        else:
+            traverseLogger.warn('@odata.id should not have a fragment'.format(odata_id))
+
+
+    elif 'Resource.ReferenceableMember' in allTypes:
+        if fragment is not '':
+            pass
+        else:
+            traverseLogger.warn('No fragment, but ReferenceableMembers require it {}'.format(uri_item))
+        if fragment_odata is not '':
+            pass
+        else:
+            traverseLogger.warn('@odata.id should have a fragment'.format(odata_id))
+
+
+    newResource = ResourceObj(name, uri, jsondata, typename, original_context, parent, isComplex, forceType=forceType)
     newResource.rtime = rtime
 
     return newResource
@@ -433,7 +510,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
 class ResourceObj:
     robjcache = {}
 
-    def __init__(self, name: str, uri: str, jsondata: dict, typename: str, context: str, parent=None, isComplex=False):
+    def __init__(self, name: str, uri: str, jsondata: dict, typename: str, context: str, parent=None, isComplex=False, forceType=False):
         self.initiated = False
         self.parent = parent
         self.uri, self.name = uri, name
@@ -472,7 +549,7 @@ class ResourceObj:
                 traverseLogger.error('{}: Json does not contain @odata.id'.format(self.uri))
 
         # Get our real type (check for version)
-        acquiredtype = jsondata.get('@odata.type', typename)
+        acquiredtype = typename if forceType else jsondata.get('@odata.type', typename)
         if acquiredtype is None:
             traverseLogger.error(
                 '{}:  Json does not contain @odata.type or NavType'.format(uri))
@@ -492,16 +569,16 @@ class ResourceObj:
         # Provide a context for this (todo: regex)
         if context is None:
             context = self.jsondata.get('@odata.context')
-            if context is None and not isComplex:
+            if context is None:
                 context = createContext(acquiredtype)
                 if self.isRegistry:
                     # If this is a Registry resource, @odata.context is not required; do our best to construct one
                     traverseLogger.debug('{}: @odata.context missing from Registry resource; constructed context {}'
                                          .format(acquiredtype, context))
+                elif isComplex:
+                    pass
                 else:
                     traverseLogger.error('{}:  Json does not contain @odata.context'.format(uri))
-            if isComplex:
-                context = createContext(acquiredtype)
 
         self.context = context
 
@@ -513,7 +590,7 @@ class ResourceObj:
             raise ValueError
 
         # Use string comprehension to get highest type
-        if acquiredtype is typename:
+        if acquiredtype is typename and not forceType:
             acquiredtype = self.schemaObj.getHighestType(typename)
             if not isComplex:
                 traverseLogger.warning(
@@ -576,6 +653,7 @@ class ResourceObj:
         allprops = self.propertyList + self.additionalList[:min(len(self.additionalList), 100)]
         return allprops
 
+
 class PropItem:
     def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None):
         try:
@@ -591,6 +669,7 @@ class PropItem:
             self.propDict = None
             return
         pass
+
 
 class PropAction:
     def __init__(self, propOwner, propChild, act):

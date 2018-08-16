@@ -5,23 +5,27 @@ import re
  Power.1.1.1.Power , Power.v1_0_0.Power
 """
 
-
 versionpattern = 'v[0-9]_[0-9]_[0-9]'
-urlpattern = 'v[0-9]_[0-9]_[0-9]'
 
-def parseURL(string: str):
-    """parseURL
-
-    :param string: url in question
-    :type string: str
-    """
-    pass
-
-def isNonService(uri):
-    """
-    Checks if a uri is within the service
-    """
-    return uri is not None and 'http' in uri[:8]
+def navigateJsonFragment(decoded, URILink):
+    if '#' in URILink:
+        URILink, frag = tuple(URILink.rsplit('#', 1))
+        fragNavigate = frag.split('/')
+        for item in fragNavigate:
+            if item == '':
+                continue
+            if isinstance(decoded, dict):
+                decoded = decoded.get(item)
+            elif isinstance(decoded, list):
+                if not item.isdigit():
+                    traverseLogger.error("This is an Array, but this is not an index, aborting: {} {}".format(URILink, item))
+                    return None
+                decoded = decoded[int(item)] if int(item) < len(decoded) else None
+        if not isinstance(decoded, dict):
+            traverseLogger.error(
+                "Decoded object no longer a dictionary {}".format(URILink))
+            return None
+    return decoded
 
 
 def getNamespace(string: str):
@@ -50,7 +54,7 @@ def getVersion(string: str):
 
 def getNamespaceUnversioned(string: str):
     """getNamespaceUnversioned
-    
+
     Gives namespace of a type string, version NOT included
 
     :param string:

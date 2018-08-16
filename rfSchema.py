@@ -3,8 +3,9 @@ from collections import namedtuple
 from bs4 import BeautifulSoup
 from functools import lru_cache
 
-from commonRedfish import getType, getNamespace, isNonService, getNamespaceUnversioned, getVersion
+from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion
 import traverseService as rst
+from urllib.parse import urlparse, urlunparse
 
 config = []
 
@@ -22,7 +23,7 @@ def getSchemaDetails(SchemaType, SchemaURI):
 
     if SchemaType is None:
         return False, None, None
-    
+
     if currentService is None:
         return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
@@ -33,6 +34,9 @@ def getSchemaDetails(SchemaType, SchemaURI):
 
     config = currentService.config
     LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
+
+    scheme, netloc, path, params, query, fragment = urlparse(SchemaURI)
+    inService = scheme is None and netloc is None
 
     if (SchemaURI is not None and not LocalOnly) or (SchemaURI is not None and '/redfish/v1/$metadata' in SchemaURI):
         # Get our expected Schema file here
@@ -69,15 +73,15 @@ def getSchemaDetails(SchemaType, SchemaURI):
                     return getSchemaDetails(SchemaType, uri)
             else:
                 return True, soup, base_schema_uri
-        if isNonService(base_schema_uri) and ServiceOnly:
-            rst.traverseLogger.info("Nonservice URI skipped: {}".format(base_schema_uri))
+        if not inService and ServiceOnly:
+            rst.traverseLogger.debug("Nonservice URI skipped: {}".format(base_schema_uri))
         else:
             rst.traverseLogger.debug("SchemaURI called unsuccessfully: {}".format(base_schema_uri))
     if LocalOnly:
         rst.traverseLogger.debug("This program is currently LOCAL ONLY")
     if ServiceOnly:
         rst.traverseLogger.debug("This program is currently SERVICE ONLY")
-    if not LocalOnly and not ServiceOnly and isNonService(SchemaURI):
+    if not LocalOnly and not ServiceOnly and not inService:
         rst.traverseLogger.warning("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
     return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
@@ -205,7 +209,7 @@ class rfSchema:
     def __init__(self, soup, context, origin, metadata=None, name='xml'):
         self.soup = soup
         self.refs = getReferenceDetails(soup, metadata, name)
-        self.context = context 
+        self.context = context
         self.origin = origin
         self.name = name
 
@@ -231,7 +235,7 @@ class rfSchema:
 
     def getTypeTagInSchema(self, currentType, tagType=['EntityType', 'ComplexType']):
         """getTypeTagInSchema
-        
+
         Get type tag in schema
 
         :param currentType: type string
@@ -244,7 +248,7 @@ class rfSchema:
             'Schema', attrs={'Namespace': pnamespace})
 
         if currentSchema is None:
-            return None 
+            return None
 
         currentEntity = currentSchema.find(tagType, attrs={'Name': ptype}, recursive=False)  # BS4 line
 
@@ -256,27 +260,27 @@ class rfSchema:
         Get parent of this Entity/ComplexType
 
         :param currentType: type string
-        :param tagType: Array or single string containing the xml tag name 
+        :param tagType: Array or single string containing the xml tag name
         """
         currentType = currentType.replace('#', '')
         typetag = self.getTypeTagInSchema(currentType, tagType)
-        if typetag is not None: 
+        if typetag is not None:
             currentType = typetag.get('BaseType')
             if currentType is None:
                 return False, None, None
             typetag = self.getTypeTagInSchema(currentType, tagType)
-            if typetag is not None: 
+            if typetag is not None:
                 return True, self, currentType
             else:
                 namespace = getNamespace(currentType)
                 schemaObj = self.getSchemaFromReference(namespace)
-                if schemaObj is None: 
+                if schemaObj is None:
                     return False, None, None
-                propSchema = schemaObj.soup.find(  
+                propSchema = schemaObj.soup.find(
                     'Schema', attrs={'Namespace': namespace})
                 if propSchema is None:
                     return False, None, None
-                return True, schemaObj, currentType 
+                return True, schemaObj, currentType
         else:
             return False, None, None
 
@@ -306,7 +310,7 @@ class rfSchema:
                     continue
             if schema.find(['EntityType', 'ComplexType'], attrs={'Name': getType(acquiredtype)}, recursive=False):
                 typelist.append(newNamespace)
-                
+
         for ns in reversed(sorted(typelist)):
             rst.traverseLogger.debug(
                 "{}   {}".format(ns, getType(acquiredtype)))
@@ -324,7 +328,7 @@ def getSchemaObject(typename, uri, metadata=None):
     :param uri: Context/URI of metadata/schema containing reference to namespace
     :param metadata: parent refs of service
     """
-    success, soup, origin = getSchemaDetails(typename, uri) 
+    success, soup, origin = getSchemaDetails(typename, uri)
 
     return rfSchema(soup, uri, origin, metadata=metadata, name=typename) if success else None
 
