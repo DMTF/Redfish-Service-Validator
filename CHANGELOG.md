@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.1.6] - 2018-08-17
+- Fixed several cases where exception tracebacks were being printed in the output
+
 ## [1.1.5] - 2018-08-03
 - Added missing start session
 - Added exceptions for bad credentials
