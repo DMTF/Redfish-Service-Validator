@@ -2,6 +2,8 @@
 from collections import namedtuple
 from bs4 import BeautifulSoup
 from functools import lru_cache
+from collections import OrderedDict
+import re
 
 from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion
 import traverseService as rst
@@ -28,11 +30,11 @@ def getSchemaDetails(SchemaType, SchemaURI):
         return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
     elif currentService.active and getNamespace(SchemaType) in currentService.metadata.schema_store:
-        result = currentService.metadata.schema_store[getNamespace(SchemaType)]
+        result = rst.currentService.metadata.schema_store[getNamespace(SchemaType)]
         if result is not None:
             return True, result.soup, result.origin
 
-    config = currentService.config
+    config = rst.currentService.config
     LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
 
     scheme, netloc, path, params, query, fragment = urlparse(SchemaURI)
@@ -169,6 +171,7 @@ def check_redfish_extensions_alias(name, namespace, alias):
                              'missing' if alias is None else "'" + str(alias) + "'"))
         return False
     return True
+
 
 def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     """
@@ -319,6 +322,7 @@ class rfSchema:
         return acquiredtype
 
 
+@lru_cache(maxsize=64)
 def getSchemaObject(typename, uri, metadata=None):
     """getSchemaObject
 
@@ -331,4 +335,460 @@ def getSchemaObject(typename, uri, metadata=None):
     success, soup, origin = getSchemaDetails(typename, uri)
 
     return rfSchema(soup, uri, origin, metadata=metadata, name=typename) if success else None
+
+
+class PropType:
+    robjcache = {}
+    def __init__(self, typename, schemaObj):
+        # if we've generated this type, use it, else generate type
+        self.initiated = False
+        self.fulltype = typename
+        self.snamespace, self.stype = getNamespace(
+            self.fulltype), getType(self.fulltype)
+        self.schemaObj = schemaObj
+
+        self.parent = None
+
+        self.propList = []
+        self.actionList = []
+        self.propPattern = None
+        self.additional = False
+
+        # get all properties and actions in Type chain
+        success, currentSchemaObj, baseType = True, self.schemaObj, self.fulltype
+        try:
+            newPropList, newActionList, self.additional, self.propPattern = getTypeDetails(
+                currentSchemaObj, baseType)
+
+            self.propList.extend(newPropList)
+            self.actionList.extend(newActionList)
+
+            success, currentSchemaObj, baseType = currentSchemaObj.getParentType(baseType)
+            if success:
+                self.parent = PropType(baseType, currentSchemaObj)
+                if not self.additional:
+                    self.additional = self.parent.additional
+        except Exception as ex:
+            rst.traverseLogger.debug('Exception caught while creating new PropType', exc_info=1)
+            rst.traverseLogger.error(
+                '{}:  Getting type failed for {}'.format(str(self.fulltype), str(baseType)))
+            raise ex
+
+        self.initiated = True
+
+    def getTypeChain(self):
+        if self.fulltype is None:
+            raise StopIteration
+        else:
+            node = self
+            tlist = []
+            while node is not None:
+                tlist.append(node.fulltype)
+                yield node.fulltype
+                node = node.parent
+            raise StopIteration
+
+    def getLinksFromType(self, jsondata, context, propList=None, oemCheck=True, linklimits={}, sample=None):
+        node = self
+        links = OrderedDict()
+        if propList is not None:
+            links.update(rst.getAllLinks(jsondata, propList, node.schemaObj, context=context, linklimits=linklimits, sample_size=sample, oemCheck=oemCheck))
+        else:
+            while node is not None:
+                links.update(rst.getAllLinks(jsondata, node.getProperties(jsondata), node.schemaObj, context=context, linklimits=linklimits, sample_size=sample, oemCheck=oemCheck))
+                node = node.parent
+        return links
+
+    def getProperties(self, jsondata, topVersion=None):
+        node = self
+        props = []
+        while node is not None:
+            for prop in node.propList:
+                schemaObj, newPropOwner, newProp = prop
+                val = jsondata.get(newProp, 'n/a')
+                props.append(PropItem(schemaObj, newPropOwner, newProp, val, topVersion))
+            node = node.parent
+        return props
+
+    def getActions(self):
+        node = self
+        while node is not None:
+            for prop in node.actionList:
+                yield prop
+            node = node.parent
+        raise StopIteration
+
+
+def getTypeDetails(schemaObj, SchemaAlias):
+    """
+    Gets list of surface level properties for a given SchemaType,
+    """
+    PropertyList = list()
+    ActionList = list()
+    PropertyPattern = None
+    additional = False
+
+    soup, refs = schemaObj.soup, schemaObj.refs
+
+    SchemaNamespace, SchemaType = getNamespace(
+        SchemaAlias), getType(SchemaAlias)
+
+    rst.traverseLogger.debug("Generating type: {}".format(SchemaAlias))
+    rst.traverseLogger.debug("Schema is {}, {}".format(
+                        SchemaType, SchemaNamespace))
+
+    innerschema = soup.find('Schema', attrs={'Namespace': SchemaNamespace})
+
+    if innerschema is None:
+        uri = schemaObj.origin
+        rst.traverseLogger.error('Schema namespace {} not found in schema file {}. Will not be able to gather type details.'
+                             .format(SchemaNamespace, uri))
+        return PropertyList, ActionList, False, PropertyPattern
+
+    element = innerschema.find(['EntityType', 'ComplexType'], attrs={'Name': SchemaType}, recursive=False)
+
+    if element is None:
+        uri = schemaObj.origin
+        rst.traverseLogger.error('Element {} not found in schema namespace {}. Will not be able to gather type details.'
+                             .format(SchemaType, SchemaNamespace))
+        return PropertyList, ActionList, False, PropertyPattern
+
+    rst.traverseLogger.debug("___")
+    rst.traverseLogger.debug(element.get('Name'))
+    rst.traverseLogger.debug(element.attrs)
+    rst.traverseLogger.debug(element.get('BaseType'))
+
+    additionalElement = element.find(
+        'Annotation', attrs={'Term': 'OData.AdditionalProperties'})
+    additionalElementOther = element.find(
+        'Annotation', attrs={'Term': 'Redfish.DynamicPropertyPatterns'})
+    if additionalElement is not None:
+        additional = additionalElement.get('Bool', False)
+        if additional in ['false', 'False', False]:
+            additional = False
+        if additional in ['true', 'True']:
+            additional = True
+    else:
+        additional = False
+    if additionalElementOther is not None:
+        # create PropertyPattern dict containing pattern and type for DynamicPropertyPatterns validation
+        rst.traverseLogger.debug('getTypeDetails: Redfish.DynamicPropertyPatterns found, element = {}, SchemaAlias = {}'
+                             .format(element, SchemaAlias))
+        pattern_elem = additionalElementOther.find("PropertyValue", Property="Pattern")
+        pattern = prop_type = None
+        if pattern_elem is not None:
+            pattern = pattern_elem.get("String")
+        type_elem = additionalElementOther.find("PropertyValue", Property="Type")
+        if type_elem is not None:
+            prop_type = type_elem.get("String")
+        rst.traverseLogger.debug('getTypeDetails: pattern = {}, type = {}'.format(pattern, prop_type))
+        if pattern is not None and prop_type is not None:
+            PropertyPattern = dict()
+            PropertyPattern['Pattern'] = pattern
+            PropertyPattern['Type'] = prop_type
+        additional = True
+
+    # get properties
+    usableProperties = element.find_all(['NavigationProperty', 'Property'], recursive=False)
+
+    for innerelement in usableProperties:
+        rst.traverseLogger.debug(innerelement['Name'])
+        rst.traverseLogger.debug(innerelement.get('Type'))
+        rst.traverseLogger.debug(innerelement.attrs)
+        newPropOwner = SchemaAlias if SchemaAlias is not None else 'SomeSchema'
+        newProp = innerelement['Name']
+        rst.traverseLogger.debug("ADDING :::: {}:{}".format(newPropOwner, newProp))
+        PropertyList.append(
+             (schemaObj, newPropOwner, newProp))
+
+    # get actions
+    usableActions = innerschema.find_all(['Action'], recursive=False)
+
+    for act in usableActions:
+        newPropOwner = getNamespace(SchemaAlias) if SchemaAlias is not None else 'SomeSchema'
+        newProp = act['Name']
+        rst.traverseLogger.debug("ADDING ACTION :::: {}:{}".format(newPropOwner, newProp))
+        ActionList.append(
+             PropAction(newPropOwner, newProp, act))
+
+    return PropertyList, ActionList, additional, PropertyPattern
+
+
+def getTypeObject(typename, schemaObj):
+
+    idtag = (typename, schemaObj.origin)
+    if idtag in PropType.robjcache:
+        return robjcache[idtag]
+
+    typename = typename.strip('#')
+    if schemaObj.getTypeTagInSchema(typename) is None:
+        if schemaObj.getTypeTagInSchema(getNamespaceUnversioned(typename)) is None:
+            rst.traverseLogger.error("Namespace appears nonexistent in SchemaXML: {}".format(typename))
+            return None
+
+    acquiredtype = schemaObj.getHighestType(typename)
+    if acquiredtype != typename:
+        return getTypeObject(acquiredtype, schemaObj)
+    else:
+        newType = PropType(typename, schemaObj)
+        PropType.robjcache[idtag] = newType
+        return newType
+
+
+
+class PropItem:
+    def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None):
+        try:
+            self.name = propOwner + ':' + propChild
+            self.propOwner, self.propChild = propOwner, propChild
+            self.val = val
+            self.valid = topVersion is None or \
+                    (getNamespaceUnversioned(propOwner) in topVersion and getNamespace(propOwner) <= topVersion)\
+                    or getNamespaceUnversioned(propOwner) not in topVersion
+            self.exists = val != 'n/a'
+            self.propDict = getPropertyDetails(
+                schemaObj, propOwner, propChild, val, topVersion, customType)
+            self.attr = self.propDict['attrs']
+
+        except Exception as ex:
+            rst.traverseLogger.debug('Exception caught while creating new PropItem', exc_info=1)
+            rst.traverseLogger.error(
+                    '{}:{} :  Could not get details on this property ({})'.format(str(propOwner), str(propChild), str(ex)))
+            self.propDict = None
+            self.attr = None
+            return
+        pass
+
+
+class PropAction:
+    def __init__(self, propOwner, propChild, act):
+        try:
+            self.name = '#{}.{}'.format(propOwner, propChild)
+            self.propOwner, self.propChild = propOwner, propChild
+            self.actTag = act
+        except Exception:
+            rst.traverseLogger.debug('Exception caught while creating new PropAction', exc_info=1)
+            rst.traverseLogger.error(
+                    '{}:{} :  Could not get details on this action'.format(str(propOwner),str(propChild)))
+            self.actTag = None
+
+
+def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=None, customType=None):
+    """
+    Get dictionary of tag attributes for properties given, including basetypes.
+
+    param arg1: soup data
+    param arg2: references
+    ...
+    """
+
+    propEntry = dict()
+    propEntry['val'] = val
+    if val == 'n/a':
+        val = None
+    OwnerNamespace, OwnerType = getNamespace(propertyOwner), getType(propertyOwner)
+    rst.traverseLogger.debug('___')
+    rst.traverseLogger.debug('{}, {}:{}'.format(OwnerNamespace, propertyOwner, propertyName))
+
+    soup, refs = schemaObj.soup, schemaObj.refs
+
+    if customType is None:
+        # Get Schema of the Owner that owns this prop
+        ownerSchema = soup.find('Schema', attrs={'Namespace': OwnerNamespace})
+
+        if ownerSchema is None:
+            rst.traverseLogger.warning(
+                "getPropertyDetails: Schema could not be acquired,  {}".format(OwnerNamespace))
+            return None
+
+        # Get Entity of Owner, then the property of the Property we're targeting
+        ownerEntity = ownerSchema.find(
+            ['EntityType', 'ComplexType'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+
+        # check if this property is a nav property
+        # Checks if this prop is an annotation
+        success, propertySoup, propertyRefs, propertyFullType = True, soup, refs, OwnerType
+
+        if '@' not in propertyName:
+            propEntry['isTerm'] = False  # not an @ annotation
+            propertyTag = ownerEntity.find(
+                ['NavigationProperty', 'Property'], attrs={'Name': propertyName}, recursive=False)  # BS4 line
+
+            # start adding attrs and props together
+            propertyInnerTags = propertyTag.find_all()  # BS4 line
+            for tag in propertyInnerTags:
+                propEntry[tag['Term']] = tag.attrs
+            propertyFullType = propertyTag.get('Type')
+        else:
+            propEntry['isTerm'] = True
+            ownerEntity = ownerSchema.find(
+                ['Term'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+            if ownerEntity is None:
+                ownerEntity = ownerSchema.find(
+                    ['EntityType', 'ComplexType'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+            propertyTag = ownerEntity
+            propertyFullType = propertyTag.get('Type', propertyOwner)
+
+        propEntry['isNav'] = propertyTag.name == 'NavigationProperty'
+        propEntry['attrs'] = propertyTag.attrs
+        rst.traverseLogger.debug(propEntry)
+
+        propEntry['realtype'] = 'none'
+
+    else:
+        propertyFullType = customType
+        propEntry['realtype'] = 'none'
+        propEntry['attrs'] = dict()
+        propEntry['attrs']['Type'] = customType
+        metadata = rst.currentService.metadata
+        serviceRefs = rst.currentService.metadata.get_service_refs()
+        serviceSchemaSoup = rst.currentService.metadata.get_soup()
+        success, propertySoup, propertyRefs, propertyFullType = True, serviceSchemaSoup, serviceRefs, customType
+
+    # find the real type of this, by inheritance
+    while propertyFullType is not None:
+        rst.traverseLogger.debug("HASTYPE")
+        PropertyNamespace, PropertyType = getNamespace(propertyFullType), getType(propertyFullType)
+
+        rst.traverseLogger.debug('{}, {}'.format(PropertyNamespace, propertyFullType))
+
+        # Type='Collection(Edm.String)'
+        # If collection, check its inside type
+        if re.match('Collection\(.*\)', propertyFullType) is not None:
+            if val is not None and not isinstance(val, list):
+                raise TypeError('This collection is not a List: {}'.format(val))
+            propertyFullType = propertyFullType.replace('Collection(', "").replace(')', "")
+            propEntry['isCollection'] = propertyFullType
+            continue
+        else:
+            if val is not None and isinstance(val, list) and propEntry.get('isCollection') is None :
+                raise TypeError('This item should not be a List')
+
+        # If basic, just pass itself
+        if 'Edm' in propertyFullType:
+            propEntry['realtype'] = propertyFullType
+            break
+
+        # get proper soup, check if this Namespace is the same as its Owner, otherwise find its SchemaXml
+        if PropertyNamespace.split('.')[0] != OwnerNamespace.split('.')[0]:
+            schemaObj = schemaObj.getSchemaFromReference(PropertyNamespace)
+            success = schemaObj is not None
+            if success:
+                propertySoup = schemaObj.soup
+                propertyRefs = schemaObj.refs
+        else:
+            success, propertySoup, uri = True, soup, 'of parent'
+
+        if not success:
+            rst.traverseLogger.warning(
+                "getPropertyDetails: Could not acquire appropriate Schema for this item, {} {} {}".format(propertyOwner, PropertyNamespace, propertyName))
+            return propEntry
+
+        # traverse tags to find the type
+        propertySchema = propertySoup.find(
+            'Schema', attrs={'Namespace': PropertyNamespace})
+        if propertySchema is None:
+            rst.traverseLogger.warning('Schema element with Namespace attribute of {} not found in schema file {}'
+                                 .format(PropertyNamespace, uri))
+            break
+        propertyTypeTag = propertySchema.find(
+            ['EnumType', 'ComplexType', 'EntityType', 'TypeDefinition'], attrs={'Name': PropertyType}, recursive=False)
+        nameOfTag = propertyTypeTag.name if propertyTypeTag is not None else 'None'
+
+        # perform more logic for each type
+        if nameOfTag == 'TypeDefinition': # Basic type
+            # This piece of code is rather simple UNLESS this is an "enumeration"
+            #   this is a unique deprecated enum, labeled as Edm.String
+
+            propertyFullType = propertyTypeTag.get('UnderlyingType')
+            isEnum = propertyTypeTag.find(  # BS4 line
+                'Annotation', attrs={'Term': 'Redfish.Enumeration'}, recursive=False)
+
+            if propertyFullType == 'Edm.String' and isEnum is not None:
+                propEntry['realtype'] = 'deprecatedEnum'
+                propEntry['typeprops'] = list()
+                memberList = isEnum.find(  # BS4 line
+                    'Collection').find_all('PropertyValue')  # BS4 line
+
+                for member in memberList:
+                    propEntry['typeprops'].append(member.get('String'))
+                rst.traverseLogger.debug("{}".format(propEntry['typeprops']))
+                break
+            else:
+                continue
+
+        elif nameOfTag == 'ComplexType': # go deeper into this type
+            rst.traverseLogger.debug("go deeper in type")
+
+            # We need to find the highest existence of this type vs topVersion schema
+            # not ideal, but works for this solution
+            success, baseSoup, baseRefs, baseType = True, propertySoup, propertyRefs, propertyFullType
+
+            # If we're outside of our normal Soup, then do something different, otherwise elif
+            if PropertyNamespace.split('.')[0] != OwnerNamespace.split('.')[0] and not customType:
+                typelist = []
+                schlist = []
+                for schema in baseSoup.find_all('Schema'):
+                    if schema.find('ComplexType', attrs={'Name': PropertyType}) is None:
+                        continue
+                    newNamespace = schema.get('Namespace')
+                    typelist.append(newNamespace)
+                    schlist.append(schema)
+                for item, schema in reversed(sorted(zip(typelist, schlist))):
+                    rst.traverseLogger.debug(
+                        "Working backwards: {}   {}".format(item, getType(baseType)))
+                    baseType = item + '.' + getType(baseType)
+                    break
+            elif topVersion is not None and (topVersion > OwnerNamespace):
+                currentVersion = topVersion
+                currentSchema = baseSoup.find(  # BS4 line
+                    'Schema', attrs={'Namespace': currentVersion})
+                # Working backwards from topVersion schematag,
+                #   created expectedType, check if currentTypeTag exists
+                #   if it does, use our new expectedType, else continue down parent types
+                #   until we exhaust all schematags in file
+                while currentSchema is not None:
+                    expectedType = currentVersion + '.' + PropertyType
+                    currentTypeTag = currentSchema.find(  # BS4 line
+                        'ComplexType', attrs={'Name': PropertyType})
+                    if currentTypeTag is not None:
+                        baseType = expectedType
+                        rst.traverseLogger.debug('new type: ' + baseType)  # Printout FORMAT
+                        break
+                    else:
+                        nextEntity = currentSchema.find(  # BS4 line
+                            ['EntityType', 'ComplexType'], attrs={'Name': OwnerType})
+                        nextType = nextEntity.get('BaseType')
+                        currentVersion = getNamespace(nextType)
+                        currentSchema = baseSoup.find(  # BS4 line
+                            'Schema', attrs={'Namespace': currentVersion})
+                        continue
+            propEntry['realtype'] = 'complex'
+            if propEntry.get('isCollection') is None:
+                propEntry['typeprops'] = rst.createResourceObject(propertyName, 'complex', val, context=schemaObj.context, typename=baseType, isComplex=True)
+            else:
+                val = val if val is not None else {}
+                propEntry['typeprops'] = [rst.createResourceObject(propertyName, 'complex', item, context=schemaObj.context, typename=baseType, isComplex=True) for item in val]
+            break
+
+        elif nameOfTag == 'EnumType': # If enum, get all members
+            propEntry['realtype'] = 'enum'
+            propEntry['typeprops'] = list()
+            for MemberName in propertyTypeTag.find_all('Member'):  # BS4 line
+                propEntry['typeprops'].append(MemberName['Name'])
+            break
+
+        elif nameOfTag == 'EntityType': # If entity, do nothing special (it's a reference link)
+            propEntry['realtype'] = 'entity'
+            propEntry['typeprops'] = dict()
+            rst.traverseLogger.debug("typeEntityTag found {}".format(propertyTypeTag['Name']))
+            break
+
+        else:
+            rst.traverseLogger.error('Type {} not found under namespace {} in schema {}'
+                                 .format(PropertyType, PropertyNamespace, uri))
+            break
+
+    return propEntry
+
 

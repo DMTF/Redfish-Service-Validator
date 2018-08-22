@@ -33,7 +33,7 @@ def verboseout(self, message, *args, **kws):
 logging.Logger.verboseout = verboseout
 
 
-def validateActions(name: str, val: dict, propTypeObj: rst.PropType, payloadType: str):
+def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, payloadType: str):
     """validateActions
 
     Validates actions dict
@@ -49,8 +49,8 @@ def validateActions(name: str, val: dict, propTypeObj: rst.PropType, payloadType
     """
     actionMessages, actionCounts = OrderedDict(), Counter()
 
-    parentTypeObj = rst.PropType(payloadType, propTypeObj.schemaObj)
-    actionsDict = {act.name: (val.get(act, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
+    parentTypeObj = rst.rfSchema.PropType(payloadType, propTypeObj.schemaObj)
+    actionsDict = {act.name: (val.get(act.name, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
 
     if 'Oem' in val:
         if rst.currentService.config.get('oemcheck'):
@@ -196,7 +196,7 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     for prop in propComplexObj.getResourceProperties():
         if prop.propChild == 'Oem' and name == 'Actions':
             continue
-        propMessages, propCounts = checkPropertyConformance(propComplexObj.schemaObj, prop.name, prop.propDict, val, ParentItem=name)
+        propMessages, propCounts = checkPropertyConformance(propComplexObj.schemaObj, prop.name, prop, val, ParentItem=name)
         complexMessages.update(propMessages)
         complexCounts.update(propCounts)
 
@@ -589,7 +589,7 @@ def loadAttributeRegDict(odata_type, json_data):
         rsvLogger.debug('{}: "{}" AttributeRegistry dict has zero entries; not adding'.format(fn, reg_id))
 
 
-def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, ParentItem=None, parentURI=""):
+def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=None, parentURI=""):
     """checkPropertyConformance
 
     Given a dictionary of properties, check the validitiy of each item, and return a
@@ -618,7 +618,9 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
     if ParentItem is not None:
         item = ParentItem + '.' + item
 
-    if PropertyItem is None:
+    PropertyDict = prop.propDict
+
+    if PropertyDict is None:
         if not propExists:
             rsvLogger.verboseout('{}: Item is skipped, no schema'.format(item))
             counts['skipNoSchema'] += 1
@@ -630,10 +632,10 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
             return {item: ('-', '-',
                                 'Yes' if propExists else 'No', 'FAIL')}, counts
 
-    propAttr = PropertyItem['attrs']
+    propAttr = PropertyDict['attrs']
 
     propType = propAttr.get('Type')
-    propRealType = PropertyItem.get('realtype')
+    propRealType = PropertyDict.get('realtype')
     rsvLogger.verboseout("\thas Type: {} {}".format(propType, propRealType))
 
     # why not actually check oem
@@ -642,12 +644,11 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
         rsvLogger.verboseout('\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts
-        pass
 
     propMandatory = False
     propMandatoryPass = True
 
-    if 'Redfish.Required' in PropertyItem:
+    if 'Redfish.Required' in PropertyDict:
         propMandatory = True
         propMandatoryPass = True if propExists else False
         rsvLogger.verboseout("\tMandatory Test: {}".format(
@@ -671,18 +672,18 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
         propPermissionsValue = propPermissions['EnumMember']
         rsvLogger.verboseout("\tpermission {}".format(propPermissionsValue))
 
-    autoExpand = PropertyItem.get('OData.AutoExpand', None) is not None or\
-        PropertyItem.get('OData.AutoExpand'.lower(), None) is not None
+    autoExpand = PropertyDict.get('OData.AutoExpand', None) is not None or\
+        PropertyDict.get('OData.AutoExpand'.lower(), None) is not None
 
-    validPatternAttr = PropertyItem.get(
+    validPatternAttr = PropertyDict.get(
         'Validation.Pattern')
-    validMinAttr = PropertyItem.get('Validation.Minimum')
-    validMaxAttr = PropertyItem.get('Validation.Maximum')
+    validMinAttr = PropertyDict.get('Validation.Minimum')
+    validMaxAttr = PropertyDict.get('Validation.Maximum')
 
     paramPass = propNullablePass = deprecatedPass = True
 
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
-    validDeprecated = PropertyItem.get('Redfish.Deprecated')
+    validDeprecated = PropertyDict.get('Redfish.Deprecated')
     if validDeprecated is not None:
         deprecatedPass = False
         counts['warnDeprecated'] += 1
@@ -694,7 +695,7 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
 
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
-    propCollectionType = PropertyItem.get('isCollection')
+    propCollectionType = PropertyDict.get('isCollection')
     isCollection = propCollectionType is not None
     if isCollection and propValue is None:
         # illegal for a collection to be null
@@ -758,13 +759,13 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
 
             else:
                 if propRealType == 'complex':
-                    if PropertyItem['typeprops'] is not None:
+                    if PropertyDict['typeprops'] is not None:
                         if isCollection:
-                            innerComplex = PropertyItem['typeprops'][cnt]
-                            innerPropType = PropertyItem['typeprops'][cnt].typeobj
+                            innerComplex = PropertyDict['typeprops'][cnt]
+                            innerPropType = PropertyDict['typeprops'][cnt].typeobj
                         else:
-                            innerComplex = PropertyItem['typeprops']
-                            innerPropType = PropertyItem['typeprops'].typeobj
+                            innerComplex = PropertyDict['typeprops']
+                            innerPropType = PropertyDict['typeprops'].typeobj
 
                         success, complexCounts, complexMessages = validateComplex(sub_item, val, innerComplex,
                                                                                   decoded.get('@odata.type'),
@@ -801,10 +802,10 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
                     continue
 
                 elif propRealType == 'enum':
-                    paramPass = validateEnum(sub_item, val, PropertyItem['typeprops'])
+                    paramPass = validateEnum(sub_item, val, PropertyDict['typeprops'])
 
                 elif propRealType == 'deprecatedEnum':
-                    paramPass = validateDeprecatedEnum(sub_item, val, PropertyItem['typeprops'])
+                    paramPass = validateDeprecatedEnum(sub_item, val, PropertyDict['typeprops'])
 
                 elif propRealType == 'entity':
                     paramPass = validateEntity(sub_item, val, propType, propCollectionType, schemaObj, autoExpand, parentURI)
@@ -982,7 +983,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results[uriName]['rtime'] = propResourceObj.rtime
     results[uriName]['context'] = propResourceObj.context
     results[uriName]['origin'] = propResourceObj.schemaObj.origin
-    results[uriName]['fulltype'] = propResourceObj.typeobj.fulltype
+    results[uriName]['fulltype'] = propResourceObj.typename
     results[uriName]['success'] = True
 
     rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.stype, propResourceObj.rtime)
@@ -998,19 +999,29 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     for prop in propResourceObj.getResourceProperties():
         try:
-            propMessages, propCounts = checkPropertyConformance(propResourceObj.schemaObj, prop.name, prop.propDict, propResourceObj.jsondata, parentURI=URI)
+            if not prop.valid and not prop.exists:
+                continue
+            propMessages, propCounts = checkPropertyConformance(propResourceObj.schemaObj, prop.name, prop, propResourceObj.jsondata, parentURI=URI)
             if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in propResourceObj.typeobj.fulltype:
                 modified_entry = list(propMessages['@Redfish.Copyright'])
                 modified_entry[-1] = 'FAIL'
                 propMessages['@Redfish.Copyright'] = tuple(modified_entry)
                 rsvLogger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
+            if not prop.valid:
+                rsvLogger.error('Verifying property that does not belong to this version: {}'.format(prop.name))
+                for propMsg in propMessages:
+                    propCounts['invalidEntry'] += 1
+                    modified_entry = list(propMessages[propMsg])
+                    modified_entry[-1] = 'Invalid'
+                    propMessages[propMsg] = tuple(modified_entry)
+
             messages.update(propMessages)
             counts.update(propCounts)
         except AuthenticationError as e:
             raise  # re-raise exception
         except Exception as ex:
             rsvLogger.debug('Exception caught while validating single URI', exc_info=1)
-            rsvLogger.error('%s: Could not finish check on this property' % (prop.name))  # Printout FORMAT
+            rsvLogger.error('{}: Could not finish check on this property ({})'.format(prop.name, str(ex)))  # Printout FORMAT
             counts['exceptionPropCheck'] += 1
 
 
