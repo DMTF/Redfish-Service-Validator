@@ -721,7 +721,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
             key = propx.name
             item = getType(key).split(':')[-1]
 
-            insideItem = jsonData.get(item)
+            insideItem = propx.val if propx.exists else None
             autoExpand = propDict.get('OData.AutoExpand', None) is not None or\
                 propDict.get('OData.AutoExpand'.lower(), None) is not None
             cType = propDict.get('isCollection')

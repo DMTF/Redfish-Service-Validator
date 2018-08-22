@@ -194,9 +194,25 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
         return False, complexCounts, complexMessages
 
     for prop in propComplexObj.getResourceProperties():
+        if not prop.valid and not prop.exists:
+            continue
         if prop.propChild == 'Oem' and name == 'Actions':
             continue
         propMessages, propCounts = checkPropertyConformance(propComplexObj.schemaObj, prop.name, prop, val, ParentItem=name)
+        if prop.payloadName != prop.propChild:
+            propCounts['invalidComplexName'] += 1
+            for propMsg in propMessages:
+                modified_entry = list(propMessages[propMsg])
+                modified_entry[-1] = 'Invalid'
+                propMessages[propMsg] = tuple(modified_entry)
+        if not prop.valid:
+            rsvLogger.error('Verifying complex property that does not belong to this version: {}'.format(prop.name))
+            for propMsg in propMessages:
+                propCounts['invalidComplexEntry'] += 1
+                modified_entry = list(propMessages[propMsg])
+                modified_entry[-1] = 'Invalid'
+                propMessages[propMsg] = tuple(modified_entry)
+
         complexMessages.update(propMessages)
         complexCounts.update(propCounts)
 
@@ -225,7 +241,9 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
 
     return True, complexCounts, complexMessages
 
+
 attributeRegistries = dict()
+
 
 def validateAttributeRegistry(name, key, value, attr_reg):
     """
@@ -724,6 +742,8 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     for cnt, val in enumerate(propValueList):
         appendStr = (('[' + str(cnt) + ']') if isCollection else '')
         sub_item = item + appendStr
+        if val == '':
+            rsvLogger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
         if propRealType is not None and propExists:
             paramPass = propNullablePass = True
             if val is None:
@@ -853,33 +873,36 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
     success = True
     for key in [k for k in decoded if '@odata' in k]:
         paramPass = False
+        annotation = '@' + key.split('@')[-1]
         display_type = 'string'
-        if key == '@odata.id':
+        if annotation == '@odata.id' or annotation == '@odata.nextLink':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
-        elif key == '@odata.count':
+        elif annotation == '@odata.count':
             display_type = 'number'
             paramPass = isinstance(decoded[key], int)
-        elif key == '@odata.context':
+        elif annotation == '@odata.context':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None or\
                     re.match('(\/.*)+#(\/.*)+[/]$entity', decoded[key]) is not None
-        elif key == '@odata.type':
+        elif annotation == '@odata.type':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
         else:
+            rsvLogger.warn(prefix + key + " @odata item not checked: " + str(decoded[key]))
             paramPass = True
         if not paramPass:
-            rsvLogger.error(prefix + key + " @odata item not conformant: " + decoded[key])
+            rsvLogger.error(prefix + key + " @odata item not conformant: " + str(decoded[key]))
             success = False
         messages[prefix + key] = (
                 decoded[key], display_type,
                 'Yes',
                 'PASS' if paramPass else 'FAIL')
     return success, messages
+
 
 def setupLoggingCaptures():
     class WarnFilter(logging.Filter):
@@ -1318,6 +1341,7 @@ def main(arglist=None, direct_parser=None):
             innerCounts['warningPresent'] = 1
         if counters_all_pass and error_messages_present:
             innerCounts['failErrorPresent'] = 1
+            rsvLogger.error('Error message present in {}'.format(results[item]['uri']))
 
         finalCounts.update(results[item]['counts'])
 
@@ -1343,7 +1367,7 @@ def main(arglist=None, direct_parser=None):
     rsvLogger.debug('callResourceURI() -> {}'.format(rst.callResourceURI.cache_info()))
 
     if not success:
-        rsvLogger.info("Validation has failed: {} problems found".format(fails))
+        rsvLogger.error("Validation has failed: {} problems found".format(fails))
     else:
         rsvLogger.info("Validation has succeeded.")
         status_code = 0
