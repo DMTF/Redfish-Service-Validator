@@ -444,12 +444,14 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
     # Get Schema object
     schemaObj = rfSchema.getSchemaObject(acquiredtype, context)
     forceType = False
+    # Check if this is a Registry resource
+    parent_type = parent.typename if parent is not None and parent.typeobj is not None else None
 
     # get highest type if type is invalid
     if schemaObj.getTypeTagInSchema(acquiredtype) is None:
         if schemaObj.getTypeTagInSchema(getNamespaceUnversioned(acquiredtype)) is not None:
             traverseLogger.error("Namespace version of type appears missing from SchemaXML, attempting highest type: {}".format(acquiredtype))
-            acquiredtype = schemaObj.getHighestType(getNamespaceUnversioned(acquiredtype))
+            acquiredtype = schemaObj.getHighestType(getNamespaceUnversioned(acquiredtype), parent_type)
             typename = acquiredtype
             forceType = True
         else:
@@ -509,8 +511,6 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
 
 
 class ResourceObj:
-    robjcache = {}
-
     def __init__(self, name: str, uri: str, jsondata: dict, typename: str, context: str, parent=None, isComplex=False, forceType=False):
         self.initiated = False
         self.parent = parent
@@ -523,8 +523,8 @@ class ResourceObj:
         }
 
         # Check if this is a Registry resource
-        parent_type = parent.typeobj.stype if parent is not None and parent.typeobj is not None else None
-        if parent_type == 'MessageRegistryFile':
+        parent_type = parent.typename if parent is not None and parent is not None else None
+        if parent_type is not None and getType(parent_type) == 'MessageRegistryFile':
             traverseLogger.debug('{} is a Registry resource'.format(self.uri))
             self.isRegistry = True
 
@@ -536,9 +536,6 @@ class ResourceObj:
         if not isinstance(self.jsondata, dict):
             traverseLogger.error("Resource no longer a dictionary...")
             raise ValueError('This Resource is no longer a Dictionary')
-
-        # Check if this is a Registry resource
-        parent_type = parent.typeobj.stype if parent is not None and parent.typeobj is not None else None
 
         # Check for @odata.id (todo: regex)
         odata_id = self.jsondata.get('@odata.id')
@@ -592,10 +589,10 @@ class ResourceObj:
 
         # Use string comprehension to get highest type
         if acquiredtype is typename and not forceType:
-            acquiredtype = self.schemaObj.getHighestType(typename)
+            acquiredtype = self.schemaObj.getHighestType(typename, parent_type)
             if not isComplex:
                 traverseLogger.warning(
-                    'No @odata.type present, assuming highest type {}'.format(typename))
+                    'No @odata.type present, assuming highest type {} {}'.format(typename, acquiredtype))
 
         # Check if we provide a valid type (todo: regex)
         self.typename = acquiredtype
@@ -606,16 +603,11 @@ class ResourceObj:
         # get our metadata
         metadata = currentService.metadata if currentService else None
 
-        idtag = (typename, context)
-        if idtag in ResourceObj.robjcache:
-            self.typeobj = ResourceObj.robjcache[idtag]
-        else:
-            self.typeobj = rfSchema.getTypeObject(
-                typename, self.schemaObj)
-            ResourceObj.robjcache[idtag] = self.typeobj
+        self.typeobj = rfSchema.getTypeObject(
+            typename, self.schemaObj)
 
         self.propertyList = self.typeobj.getProperties(self.jsondata, topVersion=getNamespace(typename))
-        propertyList = [prop.propChild for prop in self.propertyList]
+        propertyList = [prop.payloadName for prop in self.propertyList]
 
         # get additional
         self.additionalList = []
@@ -637,7 +629,7 @@ class ResourceObj:
 
         # list illegitimate properties together
         self.unknownProperties = [k for k in self.jsondata if k not in propertyList +
-                [prop.propChild  for prop in self.additionalList] and '@odata' not in k]
+                [prop.payloadName for prop in self.additionalList] and '@odata' not in k]
 
         self.links = OrderedDict()
 

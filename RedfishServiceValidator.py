@@ -608,9 +608,9 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     soup, refs = schemaObj.soup, schemaObj.refs
 
     rsvLogger.verboseout(PropertyName)
-    item = PropertyName.split(':')[-1]
+    item = prop.payloadName
 
-    propValue = decoded.get(item, 'n/a')
+    propValue = prop.val
     rsvLogger.verboseout("\tvalue: {} {}".format(propValue, type(propValue)))
 
     propExists = not (propValue == 'n/a')
@@ -1007,6 +1007,12 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 modified_entry[-1] = 'FAIL'
                 propMessages['@Redfish.Copyright'] = tuple(modified_entry)
                 rsvLogger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
+            if prop.payloadName != prop.propChild:
+                propCounts['invalidName'] += 1
+                for propMsg in propMessages:
+                    modified_entry = list(propMessages[propMsg])
+                    modified_entry[-1] = 'Invalid'
+                    propMessages[propMsg] = tuple(modified_entry)
             if not prop.valid:
                 rsvLogger.error('Verifying property that does not belong to this version: {}'.format(prop.name))
                 for propMsg in propMessages:

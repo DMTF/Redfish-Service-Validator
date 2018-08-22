@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from functools import lru_cache
 from collections import OrderedDict
 import re
+import difflib
 
 from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion
 import traverseService as rst
@@ -401,13 +402,27 @@ class PropType:
 
     def getProperties(self, jsondata, topVersion=None):
         node = self
-        props = []
+        allPropList = []
+        # collect all properties
         while node is not None:
-            for prop in node.propList:
-                schemaObj, newPropOwner, newProp = prop
-                val = jsondata.get(newProp, 'n/a')
-                props.append(PropItem(schemaObj, newPropOwner, newProp, val, topVersion))
+            allPropList.extend(node.propList)
             node = node.parent
+
+        props = []
+        for prop in allPropList:
+            schemaObj, newPropOwner, newProp = prop
+            val = jsondata.get(newProp, 'n/a')
+            pname = newProp
+            # if our val is empty, do fuzzy check for property that exists in payload but not in all properties
+            if val == 'n/a':
+                possibleMatch = difflib.get_close_matches(newProp, [s for s in jsondata], 1, 0.70)
+                if len(possibleMatch) > 0 and possibleMatch[0] not in [s[2] for s in allPropList if s[2] != newProp]:
+                    val = jsondata.get(possibleMatch[0], 'n/a')
+                    if val != 'n/a':
+                        pname = possibleMatch[0]
+                        rst.traverseLogger.error('{} was not found in payload, attempting closest match: {}'.format(newProp, pname))
+            props.append(PropItem(schemaObj, newPropOwner, newProp, val, topVersion, payloadName=pname))
+
         return props
 
     def getActions(self):
@@ -515,10 +530,9 @@ def getTypeDetails(schemaObj, SchemaAlias):
 
 
 def getTypeObject(typename, schemaObj):
-
     idtag = (typename, schemaObj.origin)
     if idtag in PropType.robjcache:
-        return robjcache[idtag]
+        return PropType.robjcache[idtag]
 
     typename = typename.strip('#')
     if schemaObj.getTypeTagInSchema(typename) is None:
@@ -537,7 +551,7 @@ def getTypeObject(typename, schemaObj):
 
 
 class PropItem:
-    def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None):
+    def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None, payloadName=None):
         try:
             self.name = propOwner + ':' + propChild
             self.propOwner, self.propChild = propOwner, propChild
@@ -546,6 +560,7 @@ class PropItem:
                     (getNamespaceUnversioned(propOwner) in topVersion and getNamespace(propOwner) <= topVersion)\
                     or getNamespaceUnversioned(propOwner) not in topVersion
             self.exists = val != 'n/a'
+            self.payloadName = payloadName if payloadName is not None else propChild
             self.propDict = getPropertyDetails(
                 schemaObj, propOwner, propChild, val, topVersion, customType)
             self.attr = self.propDict['attrs']

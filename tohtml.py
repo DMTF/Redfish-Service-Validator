@@ -56,9 +56,9 @@ def applySuccessColor(num, entry):
 
 
 def applyInfoSuccessColor(num, entry):
-    if 'fail' in entry or 'exception' in entry:
+    if 'fail' in entry or 'exception' in entry or 'problem' in entry:
         style = 'class="fail"'
-    elif 'warn' in entry:
+    elif 'warn' in entry or 'invalid' in entry:
         style = 'class="warn"'
     else:
         style = None
