@@ -35,6 +35,11 @@ def getSchemaDetails(SchemaType, SchemaURI):
         if result is not None:
             return True, result.soup, result.origin
 
+    if not currentService.config['preferonline'] and '$metadata' not in SchemaURI:
+        success, soup, origin = getSchemaDetailsLocal(SchemaType, SchemaURI)
+        if success:
+            return success, soup, origin
+
     config = rst.currentService.config
     LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
 
@@ -84,9 +89,10 @@ def getSchemaDetails(SchemaType, SchemaURI):
         rst.traverseLogger.debug("This program is currently LOCAL ONLY")
     if ServiceOnly:
         rst.traverseLogger.debug("This program is currently SERVICE ONLY")
-    if not LocalOnly and not ServiceOnly and not inService:
+    if not LocalOnly and not ServiceOnly and not inService and config['preferonline']:
         rst.traverseLogger.warning("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
-    return getSchemaDetailsLocal(SchemaType, SchemaURI)
+        return getSchemaDetailsLocal(SchemaType, SchemaURI)
+    return False, None, None
 
 
 def getSchemaDetailsLocal(SchemaType, SchemaURI):
@@ -566,7 +572,7 @@ class PropItem:
             self.attr = self.propDict['attrs']
 
         except Exception as ex:
-            rst.traverseLogger.debug('Exception caught while creating new PropItem', exc_info=1)
+            rst.traverseLogger.info('Exception caught while creating new PropItem', exc_info=1)
             rst.traverseLogger.error(
                     '{}:{} :  Could not get details on this property ({})'.format(str(propOwner), str(propChild), str(ex)))
             self.propDict = None
@@ -782,7 +788,7 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
             if propEntry.get('isCollection') is None:
                 propEntry['typeprops'] = rst.createResourceObject(propertyName, 'complex', val, context=schemaObj.context, typename=baseType, isComplex=True)
             else:
-                val = val if val is not None else {}
+                val = val if val is not None else []
                 propEntry['typeprops'] = [rst.createResourceObject(propertyName, 'complex', item, context=schemaObj.context, typename=baseType, isComplex=True) for item in val]
             break
 
@@ -795,7 +801,20 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
 
         elif nameOfTag == 'EntityType': # If entity, do nothing special (it's a reference link)
             propEntry['realtype'] = 'entity'
-            propEntry['typeprops'] = dict()
+            if val is not None:
+                if propEntry.get('isCollection') is None:
+                    val = [val]
+                val = val if val is not None else []
+                for innerVal in val:
+                    linkURI = innerVal.get('@odata.id')
+                    autoExpand = propEntry.get('OData.AutoExpand', None) is not None or\
+                        propEntry.get('OData.AutoExpand'.lower(), None) is not None
+                    linkType = propertyFullType
+                    linkSchema = propertyFullType
+                    innerJson = innerVal
+                    propEntry['typeprops'] = linkURI, autoExpand, linkType, linkSchema, innerJson
+            else:
+                propEntry['typeprops'] = None
             rst.traverseLogger.debug("typeEntityTag found {}".format(propertyTypeTag['Name']))
             break
 

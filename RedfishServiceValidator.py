@@ -1203,6 +1203,7 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--forceauth', action='store_true', help='force authentication on unsecure connections')
     argget.add_argument('--authtype', type=str, default='Basic', help='authorization type (None|Basic|Session|Token)')
     argget.add_argument('--localonly', action='store_true', help='only use locally stored schema on your harddrive')
+    argget.add_argument('--preferonline', action='store_true', help='use online schema')
     argget.add_argument('--service', action='store_true', help='only use uris within the service')
     argget.add_argument('--ca_bundle', default="", type=str, help='path to Certificate Authority bundle file or directory')
     argget.add_argument('--token', default="", type=str, help='bearer token for authtype Token')
@@ -1255,9 +1256,13 @@ def main(arglist=None, direct_parser=None):
 
     # Logging config
     logpath = config['logpath']
+    schemadir = config['metadatafilepath']
     startTick = datetime.now()
     if not os.path.isdir(logpath):
         os.makedirs(logpath)
+    if not os.path.isdir(schemadir) and not config['preferonline']:
+        rsvLogger.info('First run suggested to create and own local schema files, please download manually or use --schema_pack latest')
+        rsvLogger.info('Alternatively, use the option --prefer_online to skip local schema file checks')
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
     fh.setLevel(min(args.debug_logging, args.verbose_checks))

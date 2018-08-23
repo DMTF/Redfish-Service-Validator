@@ -69,6 +69,8 @@ LocalOnlyMode - (boolean) Only test properties against Schema placed in the root
 
 ServiceMode - (boolean) Only test properties against Resources/Schema that exist on the Service
 
+PreferOnline - (boolean) Prefer online/service schema over local schema 
+
 MetadataFilePath - (string) This attribute points to the location of the DMTF schema file location, populated by xml files
 
 Schema_Pack - (string) URL path to an official zipped pack of DMTF Schema, to be extracted over the user's local schema directory.  Use 'latest' to pull the latest zip.  (To be used with option LocalOnly) 

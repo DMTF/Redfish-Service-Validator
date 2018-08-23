@@ -27,6 +27,8 @@ def setup_schema_pack(uri, local_dir, proxies, timeout):
     if uri == 'latest':
         uri = live_zip_uri
     try:
+        if not os.path.isdir(local_dir):
+            os.makedirs(local_dir)
         response = requests.get(uri, timeout=timeout, proxies=proxies)
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
