@@ -46,7 +46,7 @@ def applySuccessColor(num, entry):
     success_col = str(entry)
     if 'FAIL' in str(success_col).upper():
         entry = '<td class="fail center">' + str(success_col) + '</td>'
-    elif 'DEPRECATED' in str(success_col).upper():
+    elif str(success_col).upper() in ['DEPRECATED', 'INVALID']:
         entry = '<td class="warn center">' + str(success_col) + '</td>'
     elif 'PASS' in str(success_col).upper():
         entry = '<td class="pass center">' + str(success_col) + '</td>'
@@ -56,9 +56,9 @@ def applySuccessColor(num, entry):
 
 
 def applyInfoSuccessColor(num, entry):
-    if 'fail' in entry or 'exception' in entry:
+    if 'fail' in entry or 'exception' in entry or 'problem' in entry:
         style = 'class="fail"'
-    elif 'warn' in entry:
+    elif 'warn' in entry or 'invalid' in entry:
         style = 'class="warn"'
     else:
         style = None
@@ -133,6 +133,15 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick):
         sep = '' if num == len(infos) else sep
         htmlStrBodyHeader += block + sep
 
+    htmlStrTotal = '<div>Final counts: '
+    for countType in sorted(finalCounts.keys()):
+        if finalCounts.get(countType) == 0:
+            continue
+        htmlStrTotal += '{p}: {q},   '.format(p=countType, q=finalCounts.get(countType, 0))
+    htmlStrTotal += '</div><div class="button warn" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results resultsShow\'};">Expand All</div>'
+    htmlStrTotal += '</div><div class="button fail" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results\'};">Collapse All</div>'
+
+    htmlStrBodyHeader += tr(td(htmlStrTotal))
 
     htmlPage = rst.currentService.metadata.to_html()
     for cnt, item in enumerate(results):

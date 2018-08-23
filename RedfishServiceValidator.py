@@ -33,7 +33,7 @@ def verboseout(self, message, *args, **kws):
 logging.Logger.verboseout = verboseout
 
 
-def validateActions(name: str, val: dict, propTypeObj: rst.PropType, payloadType: str):
+def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, payloadType: str):
     """validateActions
 
     Validates actions dict
@@ -49,8 +49,8 @@ def validateActions(name: str, val: dict, propTypeObj: rst.PropType, payloadType
     """
     actionMessages, actionCounts = OrderedDict(), Counter()
 
-    parentTypeObj = rst.PropType(payloadType, propTypeObj.schemaObj)
-    actionsDict = {act.name: (val.get(act, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
+    parentTypeObj = rst.rfSchema.PropType(payloadType, propTypeObj.schemaObj)
+    actionsDict = {act.name: (val.get(act.name, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
 
     if 'Oem' in val:
         if rst.currentService.config.get('oemcheck'):
@@ -158,7 +158,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             allTypes = []
             while currentType not in allTypes and success:
                 allTypes.append(currentType)
-                success, schemaObj, currentType = baseObj.getParentType(currentType, 'EntityType')
+                success, baseObj, currentType = baseObj.getParentType(currentType, 'EntityType')
                 rsvLogger.debug('success = {}, currentType = {}'.format(success, currentType))
 
             rsvLogger.debug('propType = {}, propCollectionType = {}, allTypes = {}'
@@ -167,8 +167,8 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             if not paramPass:
                 full_namespace = propCollectionType if propCollectionType is not None else propType
                 rsvLogger.error(
-                    '{}: Linked resource reports schema version (or namespace): {} not found in schema file {}'
-                    .format(name.split(':')[-1], full_namespace, full_namespace.split('.')[0]))
+                    '{}: Linked resource reports schema version (or namespace): {} not found in typechain'
+                    .format(name.split(':')[-1], full_namespace))
         else:
             rsvLogger.error("{}: Could not get schema file for Entity check".format(name))
     else:
@@ -182,7 +182,7 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     """
     rsvLogger.verboseout('\t***going into Complex')
     if not isinstance(val, dict):
-        rsvLogger.error(name + ': Complex item not a dictionary')  # Printout FORMAT
+        rsvLogger.error(name + ': Complex item not a dictionary')
         return False, None, None
 
     # Check inside of complexType, treat it like an Entity
@@ -194,9 +194,25 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
         return False, complexCounts, complexMessages
 
     for prop in propComplexObj.getResourceProperties():
+        if not prop.valid and not prop.exists:
+            continue
         if prop.propChild == 'Oem' and name == 'Actions':
             continue
-        propMessages, propCounts = checkPropertyConformance(propComplexObj.schemaObj, prop.name, prop.propDict, val, ParentItem=name)
+        propMessages, propCounts = checkPropertyConformance(propComplexObj.schemaObj, prop.name, prop, val, ParentItem=name)
+        if prop.payloadName != prop.propChild:
+            propCounts['invalidComplexName'] += 1
+            for propMsg in propMessages:
+                modified_entry = list(propMessages[propMsg])
+                modified_entry[-1] = 'Invalid'
+                propMessages[propMsg] = tuple(modified_entry)
+        if not prop.valid:
+            rsvLogger.error('Verifying complex property that does not belong to this version: {}'.format(prop.name))
+            for propMsg in propMessages:
+                propCounts['invalidComplexEntry'] += 1
+                modified_entry = list(propMessages[propMsg])
+                modified_entry[-1] = 'Invalid'
+                propMessages[propMsg] = tuple(modified_entry)
+
         complexMessages.update(propMessages)
         complexCounts.update(propCounts)
 
@@ -225,7 +241,9 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
 
     return True, complexCounts, complexMessages
 
+
 attributeRegistries = dict()
+
 
 def validateAttributeRegistry(name, key, value, attr_reg):
     """
@@ -589,7 +607,7 @@ def loadAttributeRegDict(odata_type, json_data):
         rsvLogger.debug('{}: "{}" AttributeRegistry dict has zero entries; not adding'.format(fn, reg_id))
 
 
-def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, ParentItem=None, parentURI=""):
+def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=None, parentURI=""):
     """checkPropertyConformance
 
     Given a dictionary of properties, check the validitiy of each item, and return a
@@ -608,9 +626,9 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
     soup, refs = schemaObj.soup, schemaObj.refs
 
     rsvLogger.verboseout(PropertyName)
-    item = PropertyName.split(':')[-1]
+    item = prop.payloadName
 
-    propValue = decoded.get(item, 'n/a')
+    propValue = prop.val
     rsvLogger.verboseout("\tvalue: {} {}".format(propValue, type(propValue)))
 
     propExists = not (propValue == 'n/a')
@@ -618,7 +636,9 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
     if ParentItem is not None:
         item = ParentItem + '.' + item
 
-    if PropertyItem is None:
+    PropertyDict = prop.propDict
+
+    if PropertyDict is None:
         if not propExists:
             rsvLogger.verboseout('{}: Item is skipped, no schema'.format(item))
             counts['skipNoSchema'] += 1
@@ -630,10 +650,10 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
             return {item: ('-', '-',
                                 'Yes' if propExists else 'No', 'FAIL')}, counts
 
-    propAttr = PropertyItem['attrs']
+    propAttr = PropertyDict['attrs']
 
     propType = propAttr.get('Type')
-    propRealType = PropertyItem.get('realtype')
+    propRealType = PropertyDict.get('realtype')
     rsvLogger.verboseout("\thas Type: {} {}".format(propType, propRealType))
 
     # why not actually check oem
@@ -642,12 +662,11 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
         rsvLogger.verboseout('\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts
-        pass
 
     propMandatory = False
     propMandatoryPass = True
 
-    if 'Redfish.Required' in PropertyItem:
+    if 'Redfish.Required' in PropertyDict:
         propMandatory = True
         propMandatoryPass = True if propExists else False
         rsvLogger.verboseout("\tMandatory Test: {}".format(
@@ -671,18 +690,18 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
         propPermissionsValue = propPermissions['EnumMember']
         rsvLogger.verboseout("\tpermission {}".format(propPermissionsValue))
 
-    autoExpand = PropertyItem.get('OData.AutoExpand', None) is not None or\
-        PropertyItem.get('OData.AutoExpand'.lower(), None) is not None
+    autoExpand = PropertyDict.get('OData.AutoExpand', None) is not None or\
+        PropertyDict.get('OData.AutoExpand'.lower(), None) is not None
 
-    validPatternAttr = PropertyItem.get(
+    validPatternAttr = PropertyDict.get(
         'Validation.Pattern')
-    validMinAttr = PropertyItem.get('Validation.Minimum')
-    validMaxAttr = PropertyItem.get('Validation.Maximum')
+    validMinAttr = PropertyDict.get('Validation.Minimum')
+    validMaxAttr = PropertyDict.get('Validation.Maximum')
 
     paramPass = propNullablePass = deprecatedPass = True
 
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
-    validDeprecated = PropertyItem.get('Redfish.Deprecated')
+    validDeprecated = PropertyDict.get('Redfish.Deprecated')
     if validDeprecated is not None:
         deprecatedPass = False
         counts['warnDeprecated'] += 1
@@ -694,7 +713,7 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
 
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
-    propCollectionType = PropertyItem.get('isCollection')
+    propCollectionType = PropertyDict.get('isCollection')
     isCollection = propCollectionType is not None
     if isCollection and propValue is None:
         # illegal for a collection to be null
@@ -723,6 +742,11 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
     for cnt, val in enumerate(propValueList):
         appendStr = (('[' + str(cnt) + ']') if isCollection else '')
         sub_item = item + appendStr
+        if isinstance(val, str):
+            if val == '':
+                rsvLogger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
+            if val.lower() == 'null':
+                rsvLogger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item))
         if propRealType is not None and propExists:
             paramPass = propNullablePass = True
             if val is None:
@@ -758,13 +782,13 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
 
             else:
                 if propRealType == 'complex':
-                    if PropertyItem['typeprops'] is not None:
+                    if PropertyDict['typeprops'] is not None:
                         if isCollection:
-                            innerComplex = PropertyItem['typeprops'][cnt]
-                            innerPropType = PropertyItem['typeprops'][cnt].typeobj
+                            innerComplex = PropertyDict['typeprops'][cnt]
+                            innerPropType = PropertyDict['typeprops'][cnt].typeobj
                         else:
-                            innerComplex = PropertyItem['typeprops']
-                            innerPropType = PropertyItem['typeprops'].typeobj
+                            innerComplex = PropertyDict['typeprops']
+                            innerPropType = PropertyDict['typeprops'].typeobj
 
                         success, complexCounts, complexMessages = validateComplex(sub_item, val, innerComplex,
                                                                                   decoded.get('@odata.type'),
@@ -801,15 +825,15 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
                     continue
 
                 elif propRealType == 'enum':
-                    paramPass = validateEnum(sub_item, val, PropertyItem['typeprops'])
+                    paramPass = validateEnum(sub_item, val, PropertyDict['typeprops'])
 
                 elif propRealType == 'deprecatedEnum':
-                    paramPass = validateDeprecatedEnum(sub_item, val, PropertyItem['typeprops'])
+                    paramPass = validateDeprecatedEnum(sub_item, val, PropertyDict['typeprops'])
 
                 elif propRealType == 'entity':
                     paramPass = validateEntity(sub_item, val, propType, propCollectionType, schemaObj, autoExpand, parentURI)
                 else:
-                    rsvLogger.error("%s: This type is invalid %s" % (sub_item, propRealType))  # Printout FORMAT
+                    rsvLogger.error("%s: This type is invalid %s" % (sub_item, propRealType))
                     paramPass = False
 
         if not paramPass or not propMandatoryPass or not propNullablePass:
@@ -823,7 +847,7 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
                 'Yes' if propExists else 'No', result_str)
         if paramPass and propNullablePass and propMandatoryPass:
             counts['pass'] += 1
-            rsvLogger.verboseout("\tSuccess")  # Printout FORMAT
+            rsvLogger.verboseout("\tSuccess")
         else:
             counts['err.' + str(propType)] += 1
             if not paramPass:
@@ -832,12 +856,12 @@ def checkPropertyConformance(schemaObj, PropertyName, PropertyItem, decoded, Par
                 else:
                     counts['failProp'] += 1
             elif not propMandatoryPass:
-                rsvLogger.error("{}: Mandatory prop does not exist".format(sub_item))  # Printout FORMAT
+                rsvLogger.error("{}: Mandatory prop does not exist".format(sub_item))
                 counts['failMandatoryExist'] += 1
             elif not propNullablePass:
                 rsvLogger.error('{}: Property is null but is not Nullable'.format(sub_item))
                 counts['failNullable'] += 1
-            rsvLogger.verboseout("\tFAIL")  # Printout FORMAT
+            rsvLogger.verboseout("\tFAIL")
 
     return resultList, counts
 
@@ -852,33 +876,36 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
     success = True
     for key in [k for k in decoded if '@odata' in k]:
         paramPass = False
+        annotation = '@' + key.split('@')[-1]
         display_type = 'string'
-        if key == '@odata.id':
+        if annotation == '@odata.id' or annotation == '@odata.nextLink':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
-        elif key == '@odata.count':
+        elif annotation == '@odata.count':
             display_type = 'number'
             paramPass = isinstance(decoded[key], int)
-        elif key == '@odata.context':
+        elif annotation == '@odata.context':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None or\
                     re.match('(\/.*)+#(\/.*)+[/]$entity', decoded[key]) is not None
-        elif key == '@odata.type':
+        elif annotation == '@odata.type':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
         else:
+            rsvLogger.warn(prefix + key + " @odata item not checked: " + str(decoded[key]))
             paramPass = True
         if not paramPass:
-            rsvLogger.error(prefix + key + " @odata item not conformant: " + decoded[key])  # Printout FORMAT
+            rsvLogger.error(prefix + key + " @odata item not conformant: " + str(decoded[key]))
             success = False
         messages[prefix + key] = (
                 decoded[key], display_type,
                 'Yes',
                 'PASS' if paramPass else 'FAIL')
     return success, messages
+
 
 def setupLoggingCaptures():
     class WarnFilter(logging.Filter):
@@ -897,19 +924,18 @@ def setupLoggingCaptures():
     warnh.addFilter(WarnFilter())
     warnh.setFormatter(fmt)
 
-    rsvLogger.addHandler(errh)  # Printout FORMAT
-    rsvLogger.addHandler(warnh)  # Printout FORMAT
+    rsvLogger.addHandler(errh)
+    rsvLogger.addHandler(warnh)
 
     yield
 
-    rsvLogger.removeHandler(errh)  # Printout FORMAT
-    rsvLogger.removeHandler(warnh)  # Printout FORMAT
+    rsvLogger.removeHandler(errh)
+    rsvLogger.removeHandler(warnh)
     warnstrings = warnMessages.getvalue()
     warnMessages.close()
     errorstrings = errorMessages.getvalue()
     errorMessages.close()
 
-    print( warnstrings, errorstrings)
     yield warnstrings, errorstrings
 
 
@@ -919,9 +945,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     lc = setupLoggingCaptures()
     next(lc)
     # Start
-    rsvLogger.verboseout("\n*** %s, %s", uriName, URI)  # Printout FORMAT
-    rsvLogger.info("\n*** %s", URI)  # Printout FORMAT
-    rsvLogger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)  # Printout FORMAT
+    rsvLogger.verboseout("\n*** %s, %s", uriName, URI)
+    rsvLogger.info("\n*** %s", URI)
+    rsvLogger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)
     counts = Counter()
     results = OrderedDict()
     messages = OrderedDict()
@@ -947,13 +973,6 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         successGet, jsondata, status, rtime = rst.callResourceURI(URI)
     else:
         successGet, jsondata = True, expectedJson
-    successPayload, odataMessages = checkPayloadConformance(URI, jsondata if successGet else {})
-    messages.update(odataMessages)
-
-    if not successPayload:
-        counts['failPayloadError'] += 1
-        rsvLogger.error(str(URI) + ': payload error, @odata property non-conformant',)  # Printout FORMAT
-
     # Generate dictionary of property info
     try:
         propResourceObj = rst.createResourceObject(
@@ -973,6 +992,14 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         return False, counts, results, None, None
     counts['passGet'] += 1
 
+    successPayload, odataMessages = checkPayloadConformance(URI, propResourceObj.jsondata if successGet else {})
+    messages.update(odataMessages)
+
+    if not successPayload:
+        counts['failPayloadError'] += 1
+        rsvLogger.error(str(URI) + ': payload error, @odata property non-conformant',)
+
+
     # if URI was sampled, get the notation text from rst.uri_sample_map
     sample_string = rst.uri_sample_map.get(URI)
     sample_string = sample_string + ', ' if sample_string is not None else ''
@@ -982,10 +1009,10 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results[uriName]['rtime'] = propResourceObj.rtime
     results[uriName]['context'] = propResourceObj.context
     results[uriName]['origin'] = propResourceObj.schemaObj.origin
-    results[uriName]['fulltype'] = propResourceObj.typeobj.fulltype
+    results[uriName]['fulltype'] = propResourceObj.typename
     results[uriName]['success'] = True
 
-    rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.stype, propResourceObj.rtime)  # Printout FORMAT
+    rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.stype, propResourceObj.rtime)
 
     # If this is an AttributeRegistry, load it for later use
     if isinstance(propResourceObj.jsondata, dict):
@@ -998,19 +1025,35 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     for prop in propResourceObj.getResourceProperties():
         try:
-            propMessages, propCounts = checkPropertyConformance(propResourceObj.schemaObj, prop.name, prop.propDict, propResourceObj.jsondata, parentURI=URI)
+            if not prop.valid and not prop.exists:
+                continue
+            propMessages, propCounts = checkPropertyConformance(propResourceObj.schemaObj, prop.name, prop, propResourceObj.jsondata, parentURI=URI)
             if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in propResourceObj.typeobj.fulltype:
                 modified_entry = list(propMessages['@Redfish.Copyright'])
                 modified_entry[-1] = 'FAIL'
                 propMessages['@Redfish.Copyright'] = tuple(modified_entry)
                 rsvLogger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
+            if prop.payloadName != prop.propChild:
+                propCounts['invalidName'] += 1
+                for propMsg in propMessages:
+                    modified_entry = list(propMessages[propMsg])
+                    modified_entry[-1] = 'Invalid'
+                    propMessages[propMsg] = tuple(modified_entry)
+            if not prop.valid:
+                rsvLogger.error('Verifying property that does not belong to this version: {}'.format(prop.name))
+                for propMsg in propMessages:
+                    propCounts['invalidEntry'] += 1
+                    modified_entry = list(propMessages[propMsg])
+                    modified_entry[-1] = 'Invalid'
+                    propMessages[propMsg] = tuple(modified_entry)
+
             messages.update(propMessages)
             counts.update(propCounts)
         except AuthenticationError as e:
             raise  # re-raise exception
         except Exception as ex:
             rsvLogger.debug('Exception caught while validating single URI', exc_info=1)
-            rsvLogger.error('%s: Could not finish check on this property' % (prop.name))  # Printout FORMAT
+            rsvLogger.error('{}: Could not finish check on this property ({})'.format(prop.name, str(ex)))  # Printout FORMAT
             counts['exceptionPropCheck'] += 1
 
 
@@ -1020,11 +1063,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # List all items checked and unchecked
     # current logic does not check inside complex types
     fmt = '%-30s%30s'
-    rsvLogger.verboseout('%s, %s, %s', uriName, SchemaNamespace, SchemaType)  # Printout FORMAT
+    rsvLogger.verboseout('%s, %s, %s', uriName, SchemaNamespace, SchemaType)
 
     for key in jsonData:
         item = jsonData[key]
-        rsvLogger.verboseout(fmt % (  # Printout FORMAT
+        rsvLogger.verboseout(fmt % (
             key, messages[key][3] if key in messages else 'Exists, no schema check'))
 
     allowAdditional = propResourceObj.typeobj.additional
@@ -1047,7 +1090,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     for key in messages:
         if key not in jsonData:
-            rsvLogger.verboseout(fmt % (key, messages[key][3]))  # Printout FORMAT
+            rsvLogger.verboseout(fmt % (key, messages[key][3]))
 
     results[uriName]['warns'], results[uriName]['errors'] = next(lc)
 
@@ -1058,11 +1101,11 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             break
     rsvLogger.info("\t {}".format('PASS' if pass_val else' FAIL...'))
 
-    rsvLogger.verboseout('%s, %s', SchemaFullType, counts)  # Printout FORMAT
+    rsvLogger.verboseout('%s, %s', SchemaFullType, counts)
 
     # Get all links available
 
-    rsvLogger.debug(propResourceObj.links)  # Printout FORMAT
+    rsvLogger.debug(propResourceObj.links)
 
     return True, counts, results, propResourceObj.links, propResourceObj
 
@@ -1078,6 +1121,11 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     # debug:
     traverseLogger = rst.getLogger()
 
+    top = allLinks is None
+    if top:
+        allLinks = set()
+    allLinks.add(URI)
+
     def executeLink(linkItem, parent=None):
         linkURI, autoExpand, linkType, linkSchema, innerJson = linkItem
 
@@ -1087,13 +1135,9 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
         else:
             returnVal = validateURITree(
                     linkURI, uriName + ' -> ' + linkName, parent=parent, allLinks=allLinks)
-        traverseLogger.verboseout('%s, %s', linkName, returnVal[1])  # Printout FORMAT
+        traverseLogger.verboseout('%s, %s', linkName, returnVal[1])
         return returnVal
 
-    top = allLinks is None
-    if top:
-        allLinks = set()
-    allLinks.add(URI)
     refLinks = OrderedDict()
 
     validateSuccess, counts, results, links, thisobj = validateSingleURI(
@@ -1116,7 +1160,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     if top:
         for linkName in refLinks:
             if refLinks[linkName][0] not in allLinks:
-                traverseLogger.verboseout('%s, %s', linkName, refLinks[linkName])  # Printout FORMAT
+                traverseLogger.verboseout('%s, %s', linkName, refLinks[linkName])
                 counts['reflink'] += 1
             else:
                 continue
@@ -1140,14 +1184,10 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
 
     # tool
-    argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
-    argget.add_argument('--schema_pack', type=str, default='', help='Deploy DMTF schema from zip distribution, for use with --localonly (Specify url or type "latest", overwrites current schema)')
     argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
-    argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
     argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
-    argget.add_argument('--sample', type=int, default=0, help='sample this number of members from large collections for validation; default is to validate all members')
-    argget.add_argument('--linklimit', type=str, help='Limit the amount of links in collections, formatted TypeName:## TypeName:## ..., default LogEntry:20 ', nargs='*')
     argget.add_argument('-v', action='store_true', help='verbose log output to stdout')
+    argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
     argget.add_argument('--debug_logging', action="store_const", const=logging.DEBUG, default=logging.INFO,
             help='Output debug statements to text log, otherwise it only uses INFO')
     argget.add_argument('--verbose_checks', action="store_const", const=VERBO_NUM, default=logging.INFO,
@@ -1158,19 +1198,26 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('-i', '--ip', type=str, help='ip to test on [host:port]')
     argget.add_argument('-u', '--user', default='', type=str, help='user for basic auth')
     argget.add_argument('-p', '--passwd', default='', type=str, help='pass for basic auth')
+    argget.add_argument('--linklimit', type=str, help='Limit the amount of links in collections, formatted TypeName:## TypeName:## ..., default LogEntry:20 ', nargs='*')
+    argget.add_argument('--sample', type=int, default=0, help='sample this number of members from large collections for validation; default is to validate all members')
     argget.add_argument('--timeout', type=int, default=30, help='requests timeout in seconds')
     argget.add_argument('--nochkcert', action='store_true', help='ignore check for certificate')
     argget.add_argument('--nossl', action='store_true', help='use http instead of https')
     argget.add_argument('--forceauth', action='store_true', help='force authentication on unsecure connections')
     argget.add_argument('--authtype', type=str, default='Basic', help='authorization type (None|Basic|Session|Token)')
     argget.add_argument('--localonly', action='store_true', help='only use locally stored schema on your harddrive')
+    argget.add_argument('--preferonline', action='store_true', help='use online schema')
     argget.add_argument('--service', action='store_true', help='only use uris within the service')
-    argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
     argget.add_argument('--ca_bundle', default="", type=str, help='path to Certificate Authority bundle file or directory')
     argget.add_argument('--token', default="", type=str, help='bearer token for authtype Token')
     argget.add_argument('--http_proxy', type=str, default='', help='URL for the HTTP proxy')
     argget.add_argument('--https_proxy', type=str, default='', help='URL for the HTTPS proxy')
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
+
+    # metadata
+    argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
+    argget.add_argument('--schema_pack', type=str, default='', help='Deploy DMTF schema from zip distribution, for use with --localonly (Specify url or type "latest", overwrites current schema)')
+    argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
 
     args = argget.parse_args(arglist)
 
@@ -1212,20 +1259,24 @@ def main(arglist=None, direct_parser=None):
 
     # Logging config
     logpath = config['logpath']
+    schemadir = config['metadatafilepath']
     startTick = datetime.now()
     if not os.path.isdir(logpath):
         os.makedirs(logpath)
+    if not os.path.isdir(schemadir) and not config['preferonline']:
+        rsvLogger.info('First run suggested to create and own local schema files, please download manually or use --schema_pack latest')
+        rsvLogger.info('Alternatively, use the option --prefer_online to skip local schema file checks')
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
     fh.setLevel(min(args.debug_logging, args.verbose_checks))
     fh.setFormatter(fmt)
-    rsvLogger.addHandler(fh)  # Printout FORMAT
+    rsvLogger.addHandler(fh)
 
     # Then start service
     try:
         currentService = rst.startService()
     except Exception as ex:
-        rsvLogger.error("Service could not be started: {}".format(ex))  # Printout FORMAT
+        rsvLogger.error("Service could not be started: {}".format(ex))
         return 1, None, 'Service Exception'
 
     metadata = currentService.metadata
@@ -1233,10 +1284,10 @@ def main(arglist=None, direct_parser=None):
 
     # start printing
     rsvLogger.info('ConfigURI: ' + ConfigURI)
-    rsvLogger.info('System Info: ' + sysDescription)  # Printout FORMAT
+    rsvLogger.info('System Info: ' + sysDescription)
     rsvLogger.info('\n'.join(
         ['{}: {}'.format(x, config[x]) for x in sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description'])))]))
-    rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))  # Printout FORMAT
+    rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))
 
     # Start main
     status_code = 1
@@ -1275,7 +1326,7 @@ def main(arglist=None, direct_parser=None):
 
     finalCounts = Counter()
     nowTick = datetime.now()
-    rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))  # Printout FORMAT
+    rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
 
     finalCounts.update(metadata.get_counter())
     for item in results:
@@ -1284,9 +1335,13 @@ def main(arglist=None, direct_parser=None):
         # detect if there are error messages for this resource, but no failure counts; if so, add one to the innerCounts
         counters_all_pass = True
         for countType in sorted(innerCounts.keys()):
+            if innerCounts.get(countType) == 0:
+                continue
             if any(x in countType for x in ['problem', 'fail', 'bad', 'exception']):
                 counters_all_pass = False
-                break
+            if 'fail' in countType or 'exception' in countType:
+                rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, results[item]['uri']))
+            innerCounts[countType] += 0
         error_messages_present = False
         if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
             error_messages_present = True
@@ -1294,6 +1349,7 @@ def main(arglist=None, direct_parser=None):
             innerCounts['warningPresent'] = 1
         if counters_all_pass and error_messages_present:
             innerCounts['failErrorPresent'] = 1
+            rsvLogger.error('Error message present in {}'.format(results[item]['uri']))
 
         finalCounts.update(results[item]['counts'])
 
@@ -1319,7 +1375,7 @@ def main(arglist=None, direct_parser=None):
     rsvLogger.debug('callResourceURI() -> {}'.format(rst.callResourceURI.cache_info()))
 
     if not success:
-        rsvLogger.info("Validation has failed: {} problems found".format(fails))
+        rsvLogger.error("Validation has failed: {} problems found".format(fails))
     else:
         rsvLogger.info("Validation has succeeded.")
         status_code = 0
