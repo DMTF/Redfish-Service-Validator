@@ -20,7 +20,7 @@ from urllib.parse import urlparse, urlunparse
 
 import metadata as md
 from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, getVersion, navigateJsonFragment
-import rfSchema, rfType, rfProp, rfResource
+import rfSchema
 
 traverseLogger = logging.getLogger(__name__)
 traverseLogger.setLevel(logging.DEBUG)

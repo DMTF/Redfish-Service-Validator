@@ -742,8 +742,11 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     for cnt, val in enumerate(propValueList):
         appendStr = (('[' + str(cnt) + ']') if isCollection else '')
         sub_item = item + appendStr
-        if val == '':
-            rsvLogger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
+        if isinstance(val, str):
+            if val == '':
+                rsvLogger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
+            if val.lower() == 'null':
+                rsvLogger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item))
         if propRealType is not None and propExists:
             paramPass = propNullablePass = True
             if val is None:
