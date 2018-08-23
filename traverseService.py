@@ -347,29 +347,39 @@ def callResourceURI(URILink):
                              expCode, response.headers, elapsed))
         if statusCode in expCode:
             contenttype = response.headers.get('content-type')
-            if contenttype is not None:
-                if 'application/json' in contenttype:
-                    traverseLogger.debug("This is a JSON response")
-                    decoded = response.json(object_pairs_hook=OrderedDict)
-                    # navigate fragment
-                    decoded = navigateJsonFragment(decoded, URILink)
-                    if decoded is None:
-                        traverseLogger.error(
-                                "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
-                elif 'application/xml' in contenttype:
-                    decoded = response.text
-                elif 'text/xml' in contenttype:
-                    # non-service schemas can use "text/xml" Content-Type
-                    if inService:
-                        traverseLogger.warn(
-                                "Incorrect content type 'text/xml' for file within service".format(URILink))
+            if contenttype is None:
+                traverseLogger.error("Content-type not found in header: {}".format(URILink))
+                contenttype = ''
+            if 'application/json' in contenttype:
+                traverseLogger.debug("This is a JSON response")
+                decoded = response.json(object_pairs_hook=OrderedDict)
+                # navigate fragment
+                decoded = navigateJsonFragment(decoded, URILink)
+                if decoded is None:
+                    traverseLogger.error(
+                            "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
+            elif 'application/xml' in contenttype:
+                decoded = response.text
+            elif 'text/xml' in contenttype:
+                # non-service schemas can use "text/xml" Content-Type
+                if inService:
+                    traverseLogger.warn(
+                            "Incorrect content type 'text/xml' for file within service".format(URILink))
+                decoded = response.text
+            else:
+                traverseLogger.error(
+                        "This URI did NOT return XML or Json contenttype, is this not a Redfish resource (is this redirected?): {}".format(URILink))
+                decoded = None
+                if isXML:
+                    traverseLogger.info('Attempting to interpret as XML')
                     decoded = response.text
                 else:
-                    traverseLogger.error(
-                            "This URI did NOT return XML or Json, this is not a Redfish resource (is this redirected?): {}".format(URILink))
-                    return False, response.text, statusCode, elapsed
-            else:
-                traverseLogger.error("Content-type not found in header: {}".format(URILink))
+                    try:
+                        json.loads(response.text)
+                        traverseLogger.info('Attempting to interpret as JSON')
+                        decoded = response.json(object_pairs_hook=OrderedDict)
+                    except ValueError:
+                        pass
 
             return decoded is not None, decoded, statusCode, elapsed
         elif statusCode == 401:
@@ -410,6 +420,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
     """
     traverseLogger.debug(
         'Creating ResourceObject {} {} {}'.format(name, uri, typename))
+    oem = config.get('oemcheck', True)
 
     # Create json from service or from given
     original_jsondata = jsondata
@@ -435,6 +446,10 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
         traverseLogger.error(
             '{}:  Json does not contain @odata.type or NavType'.format(uri))
         return None
+
+    if typename is not None:
+        if not oem and 'OemObject' in typename:
+            acquiredtype = typename
 
     original_context = context
     if context is None:
@@ -526,6 +541,7 @@ class ResourceObj:
                 "badtype": 0
 
         }
+        oem = config.get('oemcheck', True)
 
         # Check if this is a Registry resource
         parent_type = parent.typename if parent is not None and parent is not None else None
@@ -559,6 +575,10 @@ class ResourceObj:
             raise ValueError
         if acquiredtype is not typename and isComplex:
             context = None
+
+        if typename is not None:
+            if not oem and 'OemObject' in typename:
+                acquiredtype = typename
 
         if currentService:
             if jsondata.get('@odata.type') is not None:
@@ -638,7 +658,6 @@ class ResourceObj:
 
         self.links = OrderedDict()
 
-        oem = config.get('oemcheck', True)
         sample = config.get('sample')
         linklimits = config.get('linklimits', {})
         self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList, oem, linklimits, sample))
