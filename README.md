@@ -1,4 +1,4 @@
-Copyright 2017-2018 Distributed Management Task Force, Inc. All rights reserved.
+Copyright 2017-2018 DMTF. All rights reserved.
 
 # Redfish Service Validator
 
