@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2016 Distributed Management Task Force, Inc. All rights reserved.
+# Copyright 2016-2018 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 import argparse
@@ -21,7 +21,7 @@ from tohtml import renderHtml, writeHtml
 
 from metadata import setup_schema_pack
 
-tool_version = '1.1.6'
+tool_version = '1.1.7'
 
 rsvLogger = rst.getLogger()
 

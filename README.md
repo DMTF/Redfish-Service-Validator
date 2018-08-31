@@ -1,4 +1,4 @@
-Copyright 2017-2018 Distributed Management Task Force, Inc. All rights reserved.
+Copyright 2017-2018 DMTF. All rights reserved.
 
 # Redfish Service Validator
 
@@ -174,3 +174,13 @@ The module pyinstaller is used to package the environment as a standlone executa
 From a Windows system, the following command can be used to build a Windows executable file named RedfishServiceValidator.exe, which will be found in dist folder:
 
     pyinstaller -F -w -i redfish.ico -n RedfishServiceValidator.exe RedfishServiceValidatorGui.py
+
+## Release Process
+
+1. Update `CHANGELOG.md` with the list of changes since the last release
+2. Update the `tool_version` variable in `RedfishServiceValidator.py` to reflect the new tool version
+3. Push changes to Github
+4. Create the standalone executable as described in the [above section](#building-a-standalone-windows-executable)
+5. Create the zip file for the release containing the generated exe file and `README.md`
+    * Name format: Redfish-Service-Validator-X.Y.Z-Windows.zip
+6. Create a new release in Github with the zip file attached

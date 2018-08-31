@@ -1,5 +1,15 @@
 # Change Log
 
+## [1.1.7] - 2018-08-31
+- Added support for following `@odata.id` reference for auto expanded resources
+- Added handling for trying to resolve the proper schema file if it's not found
+- Added support for following `@odata.nextLink` in collections
+- Added handling for resolving the proper ComplexType version based on the reported `@odata.type` value for the a resource
+- Added case insensitive checking on invalid properties for giving hints in error messages
+- Added warnings for empty strings in payloads if the property is read only
+- Added hints in error messages for unknown properties
+- Added hint in the error message for enum values if the service returns the string "null" rather than the JSON value null
+
 ## [1.1.6] - 2018-08-17
 - Fixed several cases where exception tracebacks were being printed in the output
 
