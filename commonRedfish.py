@@ -7,6 +7,7 @@ import re
 
 versionpattern = 'v[0-9]_[0-9]_[0-9]'
 
+
 def navigateJsonFragment(decoded, URILink):
     if '#' in URILink:
         URILink, frag = tuple(URILink.rsplit('#', 1))
