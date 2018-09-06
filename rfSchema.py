@@ -462,7 +462,7 @@ def getTypeDetails(schemaObj, SchemaAlias):
 
     if innerschema is None:
         uri = schemaObj.origin
-        rst.traverseLogger.error('Schema namespace {} not found in schema file {}. Will not be able to gather type details.'
+        rst.traverseLogger.error('getTypeDetails: Schema namespace {} not found in schema file {}. Will not be able to gather type details.'
                              .format(SchemaNamespace, uri))
         return PropertyList, ActionList, False, PropertyPattern
 
@@ -470,7 +470,7 @@ def getTypeDetails(schemaObj, SchemaAlias):
 
     if element is None:
         uri = schemaObj.origin
-        rst.traverseLogger.error('Element {} not found in schema namespace {}. Will not be able to gather type details.'
+        rst.traverseLogger.error('getTypeDetails: Element {} not found in schema namespace {}. Will not be able to gather type details.'
                              .format(SchemaType, SchemaNamespace))
         return PropertyList, ActionList, False, PropertyPattern
 
@@ -538,12 +538,13 @@ def getTypeDetails(schemaObj, SchemaAlias):
 def getTypeObject(typename, schemaObj):
     idtag = (typename, schemaObj.origin)
     if idtag in PropType.robjcache:
+        # print('getTypeObject: cache hit', idtag)
         return PropType.robjcache[idtag]
 
     typename = typename.strip('#')
     if schemaObj.getTypeTagInSchema(typename) is None:
         if schemaObj.getTypeTagInSchema(getNamespaceUnversioned(typename)) is None:
-            rst.traverseLogger.error("Namespace appears nonexistent in SchemaXML: {}".format(typename))
+            rst.traverseLogger.error("getTypeObject: Namespace appears nonexistent in SchemaXML: {} {}".format(typename, schemaObj.origin))
             return None
 
     acquiredtype = schemaObj.getHighestType(typename)

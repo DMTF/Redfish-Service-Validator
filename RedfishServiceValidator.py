@@ -153,7 +153,12 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
         rsvLogger.debug('success = {}, currentType = {}, baseLink = {}'.format(success, currentType, baseLink))
 
         # Recurse through parent types, gather type hierarchy to check against
-        if currentType is not None and success:
+        if currentType is not None and baseObj.getTypeTagInSchema(currentType) is None:
+            rsvLogger.error(
+                '{}: Linked resource reports version {} not in Schema {}'
+                .format(name.split(':')[-1], currentType, baseObj.origin))
+
+        elif currentType is not None and success:
             currentType = currentType.replace('#', '')
             allTypes = []
             while currentType not in allTypes and success:
@@ -1012,7 +1017,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results[uriName]['fulltype'] = propResourceObj.typename
     results[uriName]['success'] = True
 
-    rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.stype, propResourceObj.rtime)
+    rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.fulltype, propResourceObj.rtime)
 
     # If this is an AttributeRegistry, load it for later use
     if isinstance(propResourceObj.jsondata, dict):

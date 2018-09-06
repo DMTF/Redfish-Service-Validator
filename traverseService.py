@@ -413,7 +413,6 @@ def callResourceURI(URILink):
         return True, payload, -1, 0
     return False, None, statusCode, elapsed
 
-
 def createResourceObject(name, uri, jsondata=None, typename=None, context=None, parent=None, isComplex=False):
     """
     Factory for resource object, move certain work here
@@ -471,11 +470,12 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
     if schemaObj.getTypeTagInSchema(acquiredtype) is None:
         if schemaObj.getTypeTagInSchema(getNamespaceUnversioned(acquiredtype)) is not None:
             traverseLogger.error("Namespace version of type appears missing from SchemaXML, attempting highest type: {}".format(acquiredtype))
-            acquiredtype = schemaObj.getHighestType(getNamespaceUnversioned(acquiredtype), parent_type)
+            acquiredtype = schemaObj.getHighestType(acquiredtype, parent_type)
             typename = acquiredtype
+            traverseLogger.error("New namespace: {}".format(typename))
             forceType = True
         else:
-            traverseLogger.error("Namespace appears nonexistent in SchemaXML: {}".format(acquiredtype))
+            traverseLogger.error("getResourceObject: Namespace appears nonexistent in SchemaXML: {} {}".format(acquiredtype, context))
             return None
 
     # check odata.id if it corresponds
@@ -581,13 +581,16 @@ class ResourceObj:
                 acquiredtype = typename
 
         if currentService:
-            if jsondata.get('@odata.type') is not None:
-                currentService.metadata.add_service_namespace(getNamespace(jsondata.get('@odata.type')))
-            if jsondata.get('@odata.context') is not None:
-                # add the namespace to the set of namespaces referenced by this service
-                ns = getNamespace(jsondata.get('@odata.context').split('#')[-1])
-                if '/' not in ns and not ns.endswith('$entity'):
-                    currentService.metadata.add_service_namespace(ns)
+            if not oem and 'OemObject' in typename:
+                pass
+            else:
+                if jsondata.get('@odata.type') is not None:
+                    currentService.metadata.add_service_namespace(getNamespace(jsondata.get('@odata.type')))
+                if jsondata.get('@odata.context') is not None:
+                    # add the namespace to the set of namespaces referenced by this service
+                    ns = getNamespace(jsondata.get('@odata.context').split('#')[-1])
+                    if '/' not in ns and not ns.endswith('$entity'):
+                        currentService.metadata.add_service_namespace(ns)
 
         # Provide a context for this (todo: regex)
         if context is None:
