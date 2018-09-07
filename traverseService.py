@@ -581,7 +581,7 @@ class ResourceObj:
                 acquiredtype = typename
 
         if currentService:
-            if not oem and 'OemObject' in typename:
+            if not oem and 'OemObject' in acquiredtype:
                 pass
             else:
                 if jsondata.get('@odata.type') is not None:
