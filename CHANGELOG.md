@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.1.8] - 2018-09-07
+- Added additional sanity checking for managing cases where a type cannot be found
+
 ## [1.1.7] - 2018-08-31
 - Added support for following `@odata.id` reference for auto expanded resources
 - Added handling for trying to resolve the proper schema file if it's not found
