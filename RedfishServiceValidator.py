@@ -1218,6 +1218,7 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--http_proxy', type=str, default='', help='URL for the HTTP proxy')
     argget.add_argument('--https_proxy', type=str, default='', help='URL for the HTTPS proxy')
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
+    argget.add_argument('--uri_check', action='store_true', help='Check for URI if schema supports it')
 
     # metadata
     argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')

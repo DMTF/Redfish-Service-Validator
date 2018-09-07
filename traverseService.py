@@ -56,22 +56,22 @@ argparse2configparser = {
         'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
         'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
         'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
-        'linklimit': 'linklimit', 'sample': 'sample', 'nooemcheck': '!oemcheck', 'preferonline': 'preferonline'
+        'linklimit': 'linklimit', 'sample': 'sample', 'nooemcheck': '!oemcheck', 'preferonline': 'preferonline', 'uri_check':'uricheck',
         }
 
 configset = {
         "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
         "metadatafilepath": str, "cachemode": (bool, str), "cachefilepath": str, "schemasuffix": str, "timeout": int, "httpproxy": str, "httpsproxy": str,
-        "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': dict, 'extraxmlheaders': dict, "schema_pack": str,
-        "forceauth": bool, "oemcheck": bool, 'preferonline': bool
+        "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': str, 'extraxmlheaders': str, "schema_pack": str,
+        "forceauth": bool, "oemcheck": bool, 'preferonline': bool, 'uricheck': bool,
         }
 
 defaultconfig = {
-        'authtype': 'basic', 'username': "", 'password': "", 'token': '', 'oemcheck': True,
+        'authtype': 'Basic', 'username': "", 'password': "", 'token': '', 'oemcheck': True,
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
         'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry': 20}, 'sample': 0, 'schema_pack': None, 'forceauth': False,
-        'preferonline': False
+        'preferonline': False, 'uricheck': False,
         }
 
 customval = {
@@ -168,6 +168,7 @@ def setConfig(cdict):
     config.update(cdict)
 
     config['certificatecheck'] = config.get('certificatecheck', True) and config.get('usessl', True)
+
 
     if 'extrajsonheaders' in config:
         config['extrajsonheaders'] = json.loads(config['extrajsonheaders'])
@@ -537,9 +538,8 @@ class ResourceObj:
         self.uri, self.name = uri, name
         self.rtime = 0
         self.isRegistry = False
-        self.errorindex = {
-                "badtype": 0
-
+        self.errorIndex = {
+                "bad_uri_schema": False
         }
         oem = config.get('oemcheck', True)
 
@@ -631,8 +631,8 @@ class ResourceObj:
         # get our metadata
         metadata = currentService.metadata if currentService else None
 
-        self.typeobj = rfSchema.getTypeObject(
-            typename, self.schemaObj)
+        self.typeobj = rfSchema.getTypeObject(typename, self.schemaObj)
+
 
         self.propertyList = self.typeobj.getProperties(self.jsondata, topVersion=getNamespace(typename))
         propertyList = [prop.payloadName for prop in self.propertyList]
@@ -649,6 +649,14 @@ class ResourceObj:
                 val = self.jsondata.get(key)
                 value_obj = rfSchema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)
+
+        if config['uricheck'] and odata_id is not None:
+            traverseLogger.debug((propTypeObj.expectedURI, odata_id))
+            self.errorIndex['bad_uri_schema'] = re.fullmatch(propTypeObj.expectedURI, odata_id) is None
+            if self.errorIndex['bad_uri_schema']:
+                traverseLogger.error('{} not in Redfish.Uris: {}'.format(odata_id, self.typename))
+            else:
+                traverseLogger.debug('{} in Redfish.Uris: {}'.format(odata_id, self.typename))
 
         # get annotation
         successService, annotationProps = getAnnotations(metadata, self.jsondata)
