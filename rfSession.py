@@ -52,7 +52,7 @@ class rfSession:
             sessionsObj = links.get('Sessions')
             if sessionsObj is None:
                 sessionsURI = '/redfish/v1/SessionService/Sessions'
-                self.logger.info('using default URI', sessionsURI)
+                self.logger.info('using default URI {}'.format(sessionsURI))
             else:
                 sessionsURI = sessionsObj.get('@odata.id', '/redfish/v1/SessionService/Sessions')
         else:
