@@ -1218,12 +1218,14 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--http_proxy', type=str, default='', help='URL for the HTTP proxy')
     argget.add_argument('--https_proxy', type=str, default='', help='URL for the HTTPS proxy')
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
+    argget.add_argument('--uri_check', action='store_true', help='Check for URI if schema supports it')
 
     # metadata
     argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
     argget.add_argument('--schema_pack', type=str, default='', help='Deploy DMTF schema from zip distribution, for use with --localonly (Specify url or type "latest", overwrites current schema)')
     argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
 
+    rsvLogger.info("Redfish Service Validator, version {}".format(tool_version))
     args = argget.parse_args(arglist)
 
     # clear cache from any other runs

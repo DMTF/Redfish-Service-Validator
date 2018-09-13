@@ -360,11 +360,12 @@ class PropType:
         self.actionList = []
         self.propPattern = None
         self.additional = False
+        self.expectedURI = ".*"
 
         # get all properties and actions in Type chain
         success, currentSchemaObj, baseType = True, self.schemaObj, self.fulltype
         try:
-            newPropList, newActionList, self.additional, self.propPattern = getTypeDetails(
+            newPropList, newActionList, self.additional, self.propPattern, self.expectedURI = getTypeDetails(
                 currentSchemaObj, baseType)
 
             self.propList.extend(newPropList)
@@ -375,6 +376,8 @@ class PropType:
                 self.parent = PropType(baseType, currentSchemaObj)
                 if not self.additional:
                     self.additional = self.parent.additional
+                if self.expectedURI == '.*':
+                    self.expectedURI = self.parent.expectedURI
         except Exception as ex:
             rst.traverseLogger.debug('Exception caught while creating new PropType', exc_info=1)
             rst.traverseLogger.error(
@@ -464,7 +467,7 @@ def getTypeDetails(schemaObj, SchemaAlias):
         uri = schemaObj.origin
         rst.traverseLogger.error('getTypeDetails: Schema namespace {} not found in schema file {}. Will not be able to gather type details.'
                              .format(SchemaNamespace, uri))
-        return PropertyList, ActionList, False, PropertyPattern
+        return PropertyList, ActionList, False, PropertyPattern, '.*'
 
     element = innerschema.find(['EntityType', 'ComplexType'], attrs={'Name': SchemaType}, recursive=False)
 
@@ -472,7 +475,7 @@ def getTypeDetails(schemaObj, SchemaAlias):
         uri = schemaObj.origin
         rst.traverseLogger.error('getTypeDetails: Element {} not found in schema namespace {}. Will not be able to gather type details.'
                              .format(SchemaType, SchemaNamespace))
-        return PropertyList, ActionList, False, PropertyPattern
+        return PropertyList, ActionList, False, PropertyPattern, '.*'
 
     rst.traverseLogger.debug("___")
     rst.traverseLogger.debug(element.get('Name'))
@@ -483,6 +486,9 @@ def getTypeDetails(schemaObj, SchemaAlias):
         'Annotation', attrs={'Term': 'OData.AdditionalProperties'})
     additionalElementOther = element.find(
         'Annotation', attrs={'Term': 'Redfish.DynamicPropertyPatterns'})
+    uriElement = element.find(
+        'Annotation', attrs={'Term': 'Redfish.Uris'})
+
     if additionalElement is not None:
         additional = additionalElement.get('Bool', False)
         if additional in ['false', 'False', False]:
@@ -491,6 +497,7 @@ def getTypeDetails(schemaObj, SchemaAlias):
             additional = True
     else:
         additional = False
+
     if additionalElementOther is not None:
         # create PropertyPattern dict containing pattern and type for DynamicPropertyPatterns validation
         rst.traverseLogger.debug('getTypeDetails: Redfish.DynamicPropertyPatterns found, element = {}, SchemaAlias = {}'
@@ -508,6 +515,21 @@ def getTypeDetails(schemaObj, SchemaAlias):
             PropertyPattern['Pattern'] = pattern
             PropertyPattern['Type'] = prop_type
         additional = True
+
+    regex = re.compile(r"{.*?}")
+    expectedURI = '.*'
+    if uriElement is not None:
+        expectedURI = ''
+        try:
+            all_strings = uriElement.find('Collection').find_all('String')
+            for e in all_strings:
+                content = e.contents[0]
+                expectedURI += '({}/?)|'.format(content.rstrip('/'))
+            expectedURI = regex.sub('[a-zA-Z0-9_.-]+', expectedURI).rstrip('|')
+        except Exception as e:
+            rst.traverseLogger.debug('Exception caught while checking URI', exc_info=1)
+            rst.traverseLogger.warn('Could not gather info from Redfish.Uris annotation')
+            expectedURI = '.*'
 
     # get properties
     usableProperties = element.find_all(['NavigationProperty', 'Property'], recursive=False)
@@ -532,7 +554,7 @@ def getTypeDetails(schemaObj, SchemaAlias):
         ActionList.append(
              PropAction(newPropOwner, newProp, act))
 
-    return PropertyList, ActionList, additional, PropertyPattern
+    return PropertyList, ActionList, additional, PropertyPattern, expectedURI
 
 
 def getTypeObject(typename, schemaObj):
@@ -573,7 +595,7 @@ class PropItem:
             self.attr = self.propDict['attrs']
 
         except Exception as ex:
-            rst.traverseLogger.info('Exception caught while creating new PropItem', exc_info=1)
+            rst.traverseLogger.debug('Exception caught while creating new PropItem', exc_info=1)
             rst.traverseLogger.error(
                     '{}:{} :  Could not get details on this property ({})'.format(str(propOwner), str(propChild), str(ex)))
             self.propDict = None
