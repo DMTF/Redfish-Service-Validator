@@ -239,6 +239,7 @@ class rfService():
 
 def getFromCache(URILink, CacheDir):
     CacheDir = os.path.join(CacheDir + URILink)
+    payload = None
     if os.path.isfile(CacheDir):
         with open(CacheDir) as f:
             payload = f.read()
