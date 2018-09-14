@@ -84,6 +84,11 @@ g_config_defaults = {
             "description": "Enable or disable validation of OEM objects",
             "options": ( "True", "False" )
         },
+        "UriCheck": {
+            "value": "False",
+            "description": "Enable or disable validation of URIs for resources",
+            "options": ( "True", "False" )
+        },
         "CacheMode": {
             "value": "Off",
             "description": "Cache options for overriding or falling back to a file",

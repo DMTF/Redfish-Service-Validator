@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.1.9] - 2018-09-14
+- Added fixes to OEM checks
+- Added support for URI checking as an option with the tool
+
 ## [1.1.8] - 2018-09-07
 - Added additional sanity checking for managing cases where a type cannot be found
 

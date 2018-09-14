@@ -21,7 +21,7 @@ from tohtml import renderHtml, writeHtml
 
 from metadata import setup_schema_pack
 
-tool_version = '1.1.8'
+tool_version = '1.1.9'
 
 rsvLogger = rst.getLogger()
 
