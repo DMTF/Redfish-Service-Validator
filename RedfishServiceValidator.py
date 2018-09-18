@@ -1177,13 +1177,15 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
 
     return validateSuccess, counts, results, refLinks, thisobj
 
+
 validatorconfig = {'payloadmode': 'Default', 'payloadfilepath': None, 'logpath': './logs'}
+
 
 def main(arglist=None, direct_parser=None):
     """
     Main program
     """
-    argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema')
+    argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema, version {}'.format(tool_version))
 
     # config
     argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
@@ -1217,7 +1219,7 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--token', default="", type=str, help='bearer token for authtype Token')
     argget.add_argument('--http_proxy', type=str, default='', help='URL for the HTTP proxy')
     argget.add_argument('--https_proxy', type=str, default='', help='URL for the HTTPS proxy')
-    argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory', nargs=2)
+    argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory to fallback or override problem service JSON payloads', nargs=2)
     argget.add_argument('--uri_check', action='store_true', help='Check for URI if schema supports it')
 
     # metadata
@@ -1225,14 +1227,10 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--schema_pack', type=str, default='', help='Deploy DMTF schema from zip distribution, for use with --localonly (Specify url or type "latest", overwrites current schema)')
     argget.add_argument('--suffix', type=str, default='_v1.xml', help='suffix of local schema files (for version differences)')
 
-    rsvLogger.info("Redfish Service Validator, version {}".format(tool_version))
     args = argget.parse_args(arglist)
 
-    # clear cache from any other runs
-    rst.callResourceURI.cache_clear()
-    rst.rfSchema.getSchemaDetails.cache_clear()
-
     # set up config
+    rst.ch.setLevel(args.verbose_checks if not args.v else logging.DEBUG)
     if direct_parser is not None:
         try:
             cdict = rst.convertConfigParserToDict(direct_parser)
@@ -1280,20 +1278,22 @@ def main(arglist=None, direct_parser=None):
     rsvLogger.addHandler(fh)
 
     # Then start service
+    rsvLogger.info("Redfish Service Validator, version {}".format(tool_version))
     try:
         currentService = rst.startService()
     except Exception as ex:
+        rsvLogger.debug('Exception caught while creating Service', exc_info=1)
         rsvLogger.error("Service could not be started: {}".format(ex))
         return 1, None, 'Service Exception'
 
     metadata = currentService.metadata
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
 
-    # start printing
+    # start printing config details, remove redundant/private info from print
     rsvLogger.info('ConfigURI: ' + ConfigURI)
     rsvLogger.info('System Info: ' + sysDescription)
     rsvLogger.info('\n'.join(
-        ['{}: {}'.format(x, config[x]) for x in sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description'])))]))
+        ['{}: {}'.format(x, config[x]) for x in sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))) if config[x] not in ['', None]]))
     rsvLogger.info('Start time: ' + startTick.strftime('%x - %X'))
 
     # Start main
@@ -1379,7 +1379,7 @@ def main(arglist=None, direct_parser=None):
 
     # dump cache info to debug log
     rsvLogger.debug('getSchemaDetails() -> {}'.format(rst.rfSchema.getSchemaDetails.cache_info()))
-    rsvLogger.debug('callResourceURI() -> {}'.format(rst.callResourceURI.cache_info()))
+    rsvLogger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
 
     if not success:
         rsvLogger.error("Validation has failed: {} problems found".format(fails))

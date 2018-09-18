@@ -87,9 +87,9 @@ Note: HttpProxy/HttpsProxy do not apply to requests to the system under test, on
 
 Additional options are available for cached files, link limits, sampling and target payloads:
 
-CacheMode = [Off, Prefer, Fallback] -- Options for using a cache, which will allow a user to override or fallback to a file on disk during a resource call on a service
+CacheMode = [Off, Prefer, Fallback] -- Options for using a cache, which will allow a user to override or fallback to a file on disk during a resource call on a service, replacing json response with local payload
 
-CacheFilePath = Path to cache directory
+CacheFilePath = Path to cache directory.  Default './cache'.  Consider using CacheMode if you need to test minor changes to a service's response on a particular payload's json
 
 LinkLimit = TypeName:## -- Option to limit the amount of links accepted from collections, default LogEntry:20
 
