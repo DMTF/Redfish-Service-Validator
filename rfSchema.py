@@ -360,7 +360,7 @@ class PropType:
         self.actionList = []
         self.propPattern = None
         self.additional = False
-        self.expectedURI = ".*"
+        self.expectedURI = None
 
         # get all properties and actions in Type chain
         success, currentSchemaObj, baseType = True, self.schemaObj, self.fulltype
@@ -376,7 +376,7 @@ class PropType:
                 self.parent = PropType(baseType, currentSchemaObj)
                 if not self.additional:
                     self.additional = self.parent.additional
-                if self.expectedURI == '.*':
+                if self.expectedURI is None:
                     self.expectedURI = self.parent.expectedURI
         except Exception as ex:
             rst.traverseLogger.debug('Exception caught while creating new PropType', exc_info=1)
@@ -441,6 +441,26 @@ class PropType:
                 yield prop
             node = node.parent
         raise StopIteration
+
+    def compareURI(self, uri, my_id):
+        expected_uris = self.expectedURI
+        uri = uri.rstrip('/')
+        if expected_uris is not None:
+            regex = re.compile(r"{.*?}")
+            for e in expected_uris:
+                e_left, e_right = tuple(e.rsplit('/', 1))
+                e_left = regex.sub('[a-zA-Z0-9_.-]+', e_left)
+                if regex.match(e_right):
+                    if my_id is None:
+                        rst.traverseLogger.warn('No Id provided by payload')
+                    e_right = str(my_id)
+                e_compare_to = '/'.join([e_left, e_right])
+                success = re.match(e_compare_to, uri) is not None
+                if success:
+                    break
+        else:
+            success = True
+        return success
 
 
 def getTypeDetails(schemaObj, SchemaAlias):
@@ -516,20 +536,15 @@ def getTypeDetails(schemaObj, SchemaAlias):
             PropertyPattern['Type'] = prop_type
         additional = True
 
-    regex = re.compile(r"{.*?}")
-    expectedURI = '.*'
+    expectedURI = None
     if uriElement is not None:
-        expectedURI = ''
         try:
             all_strings = uriElement.find('Collection').find_all('String')
-            for e in all_strings:
-                content = e.contents[0]
-                expectedURI += '({}/?)|'.format(content.rstrip('/'))
-            expectedURI = regex.sub('[a-zA-Z0-9_.-]+', expectedURI).rstrip('|')
+            expectedURI = [e.contents[0].rstrip('/') for e in all_strings]
         except Exception as e:
             rst.traverseLogger.debug('Exception caught while checking URI', exc_info=1)
             rst.traverseLogger.warn('Could not gather info from Redfish.Uris annotation')
-            expectedURI = '.*'
+            expectedURI = None
 
     # get properties
     usableProperties = element.find_all(['NavigationProperty', 'Property'], recursive=False)

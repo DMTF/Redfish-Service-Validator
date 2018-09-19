@@ -973,11 +973,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             parentURI = parent.uri
         else:
             parentURI = '...'
-        URI = parentURI + '...'
-    if expectedJson is None:
-        successGet, jsondata, status, rtime = rst.callResourceURI(URI)
-    else:
-        successGet, jsondata = True, expectedJson
+        URI = parentURI + '/Missing URI Link'
     # Generate dictionary of property info
     try:
         propResourceObj = rst.createResourceObject(
@@ -997,7 +993,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         return False, counts, results, None, None
     counts['passGet'] += 1
 
-    successPayload, odataMessages = checkPayloadConformance(URI, propResourceObj.jsondata if successGet else {})
+    successPayload, odataMessages = checkPayloadConformance(URI, propResourceObj.jsondata)
     messages.update(odataMessages)
 
     if not successPayload:
@@ -1017,7 +1013,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results[uriName]['fulltype'] = propResourceObj.typename
     results[uriName]['success'] = True
 
-    rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typeobj.fulltype, propResourceObj.rtime)
+    rsvLogger.info("\t Type (%s), GET SUCCESS (time: %s)", propResourceObj.typename, propResourceObj.rtime)
 
     # If this is an AttributeRegistry, load it for later use
     if isinstance(propResourceObj.jsondata, dict):
@@ -1188,17 +1184,17 @@ def main(arglist=None, direct_parser=None):
     argget = argparse.ArgumentParser(description='tool to test a service against a collection of Schema, version {}'.format(tool_version))
 
     # config
-    argget.add_argument('-c', '--config', type=str, help='config file (overrides other params)')
+    argget.add_argument('-c', '--config', type=str, help='config file (overrides other params unless parameter-specific)')
 
     # tool
     argget.add_argument('--desc', type=str, default='No desc', help='sysdescription for identifying logs')
     argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
-    argget.add_argument('-v', action='store_true', help='verbose log output to stdout')
+    argget.add_argument('-v', action='store_true', help='verbose log output to stdout (parameter-specific)')
     argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
     argget.add_argument('--debug_logging', action="store_const", const=logging.DEBUG, default=logging.INFO,
-            help='Output debug statements to text log, otherwise it only uses INFO')
+            help='Output debug statements to text log, otherwise it only uses INFO (parameter-specific)')
     argget.add_argument('--verbose_checks', action="store_const", const=VERBO_NUM, default=logging.INFO,
-            help='Show all checks in logging')
+            help='Show all checks in logging (parameter-specific)')
     argget.add_argument('--nooemcheck', action='store_true', help='Don\'t check OEM items')
 
     # service
@@ -1221,6 +1217,7 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--https_proxy', type=str, default='', help='URL for the HTTPS proxy')
     argget.add_argument('--cache', type=str, help='cache mode [Off, Fallback, Prefer] followed by directory to fallback or override problem service JSON payloads', nargs=2)
     argget.add_argument('--uri_check', action='store_true', help='Check for URI if schema supports it')
+    argget.add_argument('--version_check', type=str, default='', help='Change default tool configuration based on the version provided (default use target version)')
 
     # metadata
     argget.add_argument('--schemadir', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
@@ -1234,7 +1231,7 @@ def main(arglist=None, direct_parser=None):
     if direct_parser is not None:
         try:
             cdict = rst.convertConfigParserToDict(direct_parser)
-            rst.setConfig(cdict)
+            config, default_list = rst.setConfig(cdict)
         except Exception as ex:
             rsvLogger.debug('Exception caught while parsing configuration', exc_info=1)
             rsvLogger.error('Unable to parse configuration: {}'.format(repr(ex)))
@@ -1245,13 +1242,11 @@ def main(arglist=None, direct_parser=None):
         return 1, None, 'Config Incomplete'
     else:
         try:
-            rst.setByArgparse(args)
+            config, default_list = rst.setByArgparse(args)
         except Exception as ex:
             rsvLogger.debug('Exception caught while parsing configuration', exc_info=1)
             rsvLogger.error('Unable to parse configuration: {}'.format(repr(ex)))
             return 1, None, 'Config Exception'
-
-    config = rst.config
 
     # Setup schema store
     if config['schema_pack'] is not None and config['schema_pack'] != '':
@@ -1280,7 +1275,7 @@ def main(arglist=None, direct_parser=None):
     # Then start service
     rsvLogger.info("Redfish Service Validator, version {}".format(tool_version))
     try:
-        currentService = rst.startService()
+        currentService = rst.startService(config, default_list)
     except Exception as ex:
         rsvLogger.debug('Exception caught while creating Service', exc_info=1)
         rsvLogger.error("Service could not be started: {}".format(ex))

@@ -56,14 +56,15 @@ argparse2configparser = {
         'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
         'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
         'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
-        'linklimit': 'linklimit', 'sample': 'sample', 'nooemcheck': '!oemcheck', 'preferonline': 'preferonline', 'uri_check':'uricheck',
+        'linklimit': 'linklimit', 'sample': 'sample', 'nooemcheck': '!oemcheck', 'preferonline': 'preferonline',
+        'uri_check': 'uricheck', 'version_check': 'versioncheck'
         }
 
 configset = {
         "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
         "metadatafilepath": str, "cachemode": (bool, str), "cachefilepath": str, "schemasuffix": str, "timeout": int, "httpproxy": str, "httpsproxy": str,
         "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': str, 'extraxmlheaders': str, "schema_pack": str,
-        "forceauth": bool, "oemcheck": bool, 'preferonline': bool, 'uricheck': bool,
+        "forceauth": bool, "oemcheck": bool, 'preferonline': bool, 'uricheck': bool, 'versioncheck': str
         }
 
 defaultconfig = {
@@ -71,24 +72,26 @@ defaultconfig = {
         'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
         'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
         'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry': 20}, 'sample': 0, 'schema_pack': None, 'forceauth': False,
-        'preferonline': False, 'uricheck': False,
+        'preferonline': False, 'uricheck': False, 'versioncheck': ''
         }
 
+defaultconfig_by_version = {
+        '1.0.6': {'uricheck': True}
+        }
 
 customval = {
         'linklimit': lambda v: re.findall('[A-Za-z_]+:[0-9]+', v)
         }
 
-config = dict(defaultconfig)
-
 configSet = False
 
+config = dict(defaultconfig)
 
-def startService():
+def startService(config, defaulted=[]):
     global currentService
     if currentService is not None:
         currentService.close()
-    currentService = rfService(config)
+    currentService = rfService(config, defaulted)
     return currentService
 
 
@@ -132,7 +135,7 @@ def setByArgparse(args):
                         cdict[argparse2configparser[param]] = args.__dict__[param]
             else:
                 cdict[param] = args.__dict__[param]
-    setConfig(cdict)
+    return setConfig(cdict)
 
 
 def setConfig(cdict):
@@ -160,10 +163,10 @@ def setConfig(cdict):
             traverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
 
     global config
-    config = dict(defaultconfig)
+    config = dict()
 
     # set linklimit
-    defaultlinklimit = config['linklimit']
+    defaultlinklimit = defaultconfig['linklimit']
 
     config.update(cdict)
 
@@ -172,24 +175,29 @@ def setConfig(cdict):
     if 'extrajsonheaders' in config:
         config['extrajsonheaders'] = json.loads(config['extrajsonheaders'])
     if 'extraxmlheaders' in config:
-        config['extraxmlheaders']  = json.loads(config['extraxmlheaders'])
+        config['extraxmlheaders'] = json.loads(config['extraxmlheaders'])
 
     defaultlinklimit.update(config['linklimit'])
     config['linklimit'] = defaultlinklimit
 
-    if config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
+    if 'cachemode' in config and config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
         if config['cachemode'] is not False:
             traverseLogger.error('CacheMode or path invalid, defaulting to Off')
         config['cachemode'] = 'Off'
 
-    AuthType = config['authtype']
-    if AuthType not in ['None', 'Basic', 'Session', 'Token']:
+    if 'authtype' in config and config['authtype'] not in ['None', 'Basic', 'Session', 'Token']:
         config['authtype'] = 'Basic'
         traverseLogger.error('AuthType invalid, defaulting to Basic')
 
+    # report keys not explicitly set in config
+    defaultkeys = [key for key in defaultconfig if key not in config]
+    config.update({key: defaultconfig[key] for key in defaultkeys})
+
+    return config, defaultkeys
+
 
 class rfService():
-    def __init__(self, config):
+    def __init__(self, config, default_entries=[]):
         traverseLogger.info('Setting up service...')
         global currentService
         currentService = self
@@ -228,6 +236,25 @@ class rfService():
             self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
             self.currentSession.startSession()
         self.metadata = md.Metadata(traverseLogger)
+
+        target_version = self.config.get('versioncheck')
+
+        # get Version
+        success, data, status, delay = self.callResourceURI('/redfish/v1')
+        if not success:
+            traverseLogger.warn('Could not get ServiceRoot')
+        elif target_version in [None, '']:
+            if 'RedfishVersion' not in data:
+                traverseLogger.warn('Could not get RedfishVersion from ServiceRoot')
+            else:
+                traverseLogger.info('Redfish Version of Service: {}'.format(data['RedfishVersion']))
+                target_version = data['RedfishVersion']
+
+        # with Version, get default and compare to user defined values
+        default_config_target = defaultconfig_by_version.get(target_version, dict())
+        override_with = {k: default_config_target[k] for k in default_config_target if k in default_entries}
+        self.config.update(override_with)
+
         self.active = True
 
     def close(self):
@@ -543,8 +570,9 @@ class ResourceObj:
         self.rtime = 0
         self.isRegistry = False
         self.errorIndex = {
-                "bad_uri_schema": False
         }
+
+        # if a service is available, use its config, or use global
         oem = config.get('oemcheck', True)
 
         # Check if this is a Registry resource
@@ -637,7 +665,6 @@ class ResourceObj:
 
         self.typeobj = rfSchema.getTypeObject(typename, self.schemaObj)
 
-
         self.propertyList = self.typeobj.getProperties(self.jsondata, topVersion=getNamespace(typename))
         propertyList = [prop.payloadName for prop in self.propertyList]
 
@@ -654,11 +681,18 @@ class ResourceObj:
                 value_obj = rfSchema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)
 
-        if config['uricheck'] and odata_id is not None:
-            traverseLogger.debug((propTypeObj.expectedURI, odata_id))
-            self.errorIndex['bad_uri_schema'] = re.fullmatch(propTypeObj.expectedURI, odata_id) is None
-            if self.errorIndex['bad_uri_schema']:
-                traverseLogger.error('{} not in Redfish.Uris: {}'.format(odata_id, self.typename))
+        if config['uricheck'] and self.typeobj.expectedURI is not None:
+            my_id = self.jsondata.get('Id')
+            self.errorIndex['bad_uri_schema_uri'] = not self.typeobj.compareURI(uri, my_id)
+            self.errorIndex['bad_uri_schema_odata'] = not self.typeobj.compareURI(odata_id, my_id)
+
+            if self.errorIndex['bad_uri_schema_uri']:
+                traverseLogger.error('{}: URI not in Redfish.Uris: {}'.format(uri, self.typename))
+            else:
+                traverseLogger.debug('{} in Redfish.Uris: {}'.format(uri, self.typename))
+
+            if self.errorIndex['bad_uri_schema_odata']:
+                traverseLogger.error('{}: odata_id not in Redfish.Uris: {}'.format(odata_id, self.typename))
             else:
                 traverseLogger.debug('{} in Redfish.Uris: {}'.format(odata_id, self.typename))
 
