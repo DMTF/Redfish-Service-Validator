@@ -68,14 +68,33 @@ configset = {
         }
 
 defaultconfig = {
-        'authtype': 'Basic', 'username': "", 'password': "", 'token': '', 'oemcheck': True,
-        'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
-        'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
-        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry': 20}, 'sample': 0, 'schema_pack': None, 'forceauth': False,
-        'preferonline': False, 'uricheck': False, 'versioncheck': ''
+        'authtype': 'Basic',
+        'username': "",
+        'password': "",
+        'token': "",
+        'oemcheck': True,
+        'certificatecheck': True,
+        'certificatebundle': "",
+        'metadatafilepath': './SchemaFiles/metadata',
+        'cachemode': 'Off',
+        'cachefilepath': './cache',
+        'schemasuffix': '_v1.xml',
+        'httpproxy': "",
+        'httpsproxy': "",
+        'localonlymode': False,
+        'servicemode': False,
+        'preferonline': False,
+        'linklimit': {'LogEntry': 20},
+        'sample': 0,
+        'timeout': 30,
+        'schema_pack': None,
+        'forceauth': False,
+        'uricheck': False,
+        'versioncheck': '',
         }
 
 defaultconfig_by_version = {
+        '1.0.0': {'schemasuffix': '.xml'},
         '1.0.6': {'uricheck': True}
         }
 
@@ -88,6 +107,15 @@ configSet = False
 config = dict(defaultconfig)
 
 def startService(config, defaulted=[]):
+    """startService
+
+    Begin service to use, sets as global
+
+    Notes: Strip globals, turn into normal factory
+
+    :param config: configuration of service
+    :param defaulted: config options not specified by the user
+    """
     global currentService
     if currentService is not None:
         currentService.close()
@@ -96,6 +124,15 @@ def startService(config, defaulted=[]):
 
 
 def convertConfigParserToDict(configpsr):
+    """convertConfigParserToDict
+
+    Takes a raw config parser and strips out its options
+    Used to circumvent normal config parser calls
+
+    Notes: make function independent of tool
+
+    :param configpsr: config parser
+    """
     cdict = {}
     for category in configpsr:
         for option in configpsr[category]:
@@ -117,13 +154,20 @@ def convertConfigParserToDict(configpsr):
 
 
 def setByArgparse(args):
+    """setByArgparse
+
+    Set config via args namespace parsed by argsparse
+
+    :param args: arg namespace
+    """
     if args.config is not None:
         configpsr = configparser.ConfigParser()
         configpsr.read(args.config)
         cdict = convertConfigParserToDict(configpsr)
     else:
         cdict = {}
-        for param in args.__dict__:
+    for param in args.__dict__:
+        if args.__dict__[param] is not None:
             if param in argparse2configparser:
                 if isinstance(args.__dict__[param], list):
                     for cnt, item in enumerate(argparse2configparser[param].split('+')):
@@ -572,7 +616,6 @@ class ResourceObj:
         self.errorIndex = {
         }
 
-        # if a service is available, use its config, or use global
         oem = config.get('oemcheck', True)
 
         # Check if this is a Registry resource

@@ -67,8 +67,6 @@ UriCheck = \<True / False\>    Specify if we want to compare resource URI with R
 
 VersionCheck = (string)     Specify version to test the service against, toggling protocol specific configuration (leave blank for automatic version)
 
-Other attributes under the "[Options]" section have schema specific implementations as described below
-
 LocalOnlyMode - (boolean) Only test properties against Schema placed in the root of MetadataFilePath.
 
 ServiceMode - (boolean) Only test properties against Resources/Schema that exist on the Service
@@ -111,7 +109,7 @@ Once the above details are updated for the system under test, the Redfish Servic
 
     python3 RedfishServiceValidator.py -c config/config.ini (-v) (--verbose_checks) (--debug_logging)
 
-Alternatively, all of these options are available through the command line. __A configuration file overrides most options specified in the command line, such that -c should not be specified.__  In order to review these options, please run the command:
+Alternatively, all of these options are available through the command line.  __You may choose to overwrite some config entries through the command line__  In order to review these options, please run the command:
 
     python3 RedfishServiceValidator.py -h (-v) (--verbose_checks) (--debug_logging)
 
