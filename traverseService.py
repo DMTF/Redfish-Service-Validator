@@ -48,6 +48,7 @@ def getLogger():
     """
     return traverseLogger
 
+
 # default config
 argparse2configparser = {
         'user': 'username', 'nochkcert': '!certificatecheck', 'ca_bundle': 'certificatebundle', 'schemamode': 'schemamode',
@@ -55,41 +56,83 @@ argparse2configparser = {
         'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
         'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
         'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
-        'linklimit': 'linklimit', 'sample': 'sample', 'nooemcheck': '!oemcheck', 'preferonline': 'preferonline', 'uri_check':'uricheck',
+        'linklimit': 'linklimit', 'sample': 'sample', 'nooemcheck': '!oemcheck', 'preferonline': 'preferonline',
+        'uri_check': 'uricheck', 'version_check': 'versioncheck'
         }
 
 configset = {
         "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
         "metadatafilepath": str, "cachemode": (bool, str), "cachefilepath": str, "schemasuffix": str, "timeout": int, "httpproxy": str, "httpsproxy": str,
         "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': str, 'extraxmlheaders': str, "schema_pack": str,
-        "forceauth": bool, "oemcheck": bool, 'preferonline': bool, 'uricheck': bool,
+        "forceauth": bool, "oemcheck": bool, 'preferonline': bool, 'uricheck': bool, 'versioncheck': str
         }
 
 defaultconfig = {
-        'authtype': 'Basic', 'username': "", 'password': "", 'token': '', 'oemcheck': True,
-        'certificatecheck': True, 'certificatebundle': "", 'metadatafilepath': './SchemaFiles/metadata',
-        'cachemode': 'Off', 'cachefilepath': './cache', 'schemasuffix': '_v1.xml', 'httpproxy': "", 'httpsproxy': "",
-        'localonlymode': False, 'servicemode': False, 'linklimit': {'LogEntry': 20}, 'sample': 0, 'schema_pack': None, 'forceauth': False,
-        'preferonline': False, 'uricheck': False,
+        'authtype': 'Basic',
+        'username': "",
+        'password': "",
+        'token': "",
+        'oemcheck': True,
+        'certificatecheck': True,
+        'certificatebundle': "",
+        'metadatafilepath': './SchemaFiles/metadata',
+        'cachemode': 'Off',
+        'cachefilepath': './cache',
+        'schemasuffix': '_v1.xml',
+        'httpproxy': "",
+        'httpsproxy': "",
+        'localonlymode': False,
+        'servicemode': False,
+        'preferonline': False,
+        'linklimit': {'LogEntry': 20},
+        'sample': 0,
+        'timeout': 30,
+        'schema_pack': None,
+        'forceauth': False,
+        'uricheck': False,
+        'versioncheck': '',
+        }
+
+defaultconfig_by_version = {
+        '1.0.0': {'schemasuffix': '.xml'},
+        '1.0.6': {'uricheck': True}
         }
 
 customval = {
         'linklimit': lambda v: re.findall('[A-Za-z_]+:[0-9]+', v)
         }
 
-config = dict(defaultconfig)
-
 configSet = False
 
+config = dict(defaultconfig)
 
-def startService():
+def startService(config, defaulted=[]):
+    """startService
+
+    Begin service to use, sets as global
+
+    Notes: Strip globals, turn into normal factory
+
+    :param config: configuration of service
+    :param defaulted: config options not specified by the user
+    """
     global currentService
     if currentService is not None:
         currentService.close()
-    currentService = rfService(config)
+    currentService = rfService(config, defaulted)
     return currentService
 
+
 def convertConfigParserToDict(configpsr):
+    """convertConfigParserToDict
+
+    Takes a raw config parser and strips out its options
+    Used to circumvent normal config parser calls
+
+    Notes: make function independent of tool
+
+    :param configpsr: config parser
+    """
     cdict = {}
     for category in configpsr:
         for option in configpsr[category]:
@@ -111,16 +154,20 @@ def convertConfigParserToDict(configpsr):
 
 
 def setByArgparse(args):
-    ch.setLevel(args.verbose_checks)
-    if args.v:
-        ch.setLevel(logging.DEBUG)
+    """setByArgparse
+
+    Set config via args namespace parsed by argsparse
+
+    :param args: arg namespace
+    """
     if args.config is not None:
         configpsr = configparser.ConfigParser()
         configpsr.read(args.config)
         cdict = convertConfigParserToDict(configpsr)
     else:
         cdict = {}
-        for param in args.__dict__:
+    for param in args.__dict__:
+        if args.__dict__[param] is not None:
             if param in argparse2configparser:
                 if isinstance(args.__dict__[param], list):
                     for cnt, item in enumerate(argparse2configparser[param].split('+')):
@@ -132,8 +179,7 @@ def setByArgparse(args):
                         cdict[argparse2configparser[param]] = args.__dict__[param]
             else:
                 cdict[param] = args.__dict__[param]
-
-    setConfig(cdict)
+    return setConfig(cdict)
 
 
 def setConfig(cdict):
@@ -155,41 +201,47 @@ def setConfig(cdict):
     for item in cdict:
         if item not in configset:
             traverseLogger.debug('Unsupported {}'.format(item))
+        elif cdict[item] is None and configset[item] is str:
+            cdict[item] = ''
         elif not isinstance(cdict[item], configset[item]):
             traverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
 
     global config
-    config = dict(defaultconfig)
+    config = dict()
 
     # set linklimit
-    defaultlinklimit = config['linklimit']
+    defaultlinklimit = defaultconfig['linklimit']
 
     config.update(cdict)
 
     config['certificatecheck'] = config.get('certificatecheck', True) and config.get('usessl', True)
 
-
     if 'extrajsonheaders' in config:
         config['extrajsonheaders'] = json.loads(config['extrajsonheaders'])
     if 'extraxmlheaders' in config:
-        config['extraxmlheaders']  = json.loads(config['extraxmlheaders'])
+        config['extraxmlheaders'] = json.loads(config['extraxmlheaders'])
 
     defaultlinklimit.update(config['linklimit'])
     config['linklimit'] = defaultlinklimit
 
-    if config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
+    if 'cachemode' in config and config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
         if config['cachemode'] is not False:
             traverseLogger.error('CacheMode or path invalid, defaulting to Off')
         config['cachemode'] = 'Off'
 
-    AuthType = config['authtype']
-    if AuthType not in ['None', 'Basic', 'Session', 'Token']:
+    if 'authtype' in config and config['authtype'] not in ['None', 'Basic', 'Session', 'Token']:
         config['authtype'] = 'Basic'
         traverseLogger.error('AuthType invalid, defaulting to Basic')
 
+    # report keys not explicitly set in config
+    defaultkeys = [key for key in defaultconfig if key not in config]
+    config.update({key: defaultconfig[key] for key in defaultkeys})
+
+    return config, defaultkeys
+
 
 class rfService():
-    def __init__(self, config):
+    def __init__(self, config, default_entries=[]):
         traverseLogger.info('Setting up service...')
         global currentService
         currentService = self
@@ -228,6 +280,25 @@ class rfService():
             self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
             self.currentSession.startSession()
         self.metadata = md.Metadata(traverseLogger)
+
+        target_version = self.config.get('versioncheck')
+
+        # get Version
+        success, data, status, delay = self.callResourceURI('/redfish/v1')
+        if not success:
+            traverseLogger.warn('Could not get ServiceRoot')
+        elif target_version in [None, '']:
+            if 'RedfishVersion' not in data:
+                traverseLogger.warn('Could not get RedfishVersion from ServiceRoot')
+            else:
+                traverseLogger.info('Redfish Version of Service: {}'.format(data['RedfishVersion']))
+                target_version = data['RedfishVersion']
+
+        # with Version, get default and compare to user defined values
+        default_config_target = defaultconfig_by_version.get(target_version, dict())
+        override_with = {k: default_config_target[k] for k in default_config_target if k in default_entries}
+        self.config.update(override_with)
+
         self.active = True
 
     def close(self):
@@ -235,184 +306,188 @@ class rfService():
             self.currentSession.killSession()
         self.active = False
 
+    def getFromCache(URILink, CacheDir):
+        CacheDir = os.path.join(CacheDir + URILink)
+        payload = None
+        if os.path.isfile(CacheDir):
+            with open(CacheDir) as f:
+                payload = f.read()
+        if os.path.isfile(os.path.join(CacheDir, 'index.xml')):
+            with open(os.path.join(CacheDir, 'index.xml')) as f:
+                payload = f.read()
+        if os.path.isfile(os.path.join(CacheDir, 'index.json')):
+            with open(os.path.join(CacheDir, 'index.json')) as f:
+                payload = json.loads(f.read())
+            payload = navigateJsonFragment(payload, URILink)
+        return payload
 
-def getFromCache(URILink, CacheDir):
-    CacheDir = os.path.join(CacheDir + URILink)
-    payload = None
-    if os.path.isfile(CacheDir):
-        with open(CacheDir) as f:
-            payload = f.read()
-    if os.path.isfile(os.path.join(CacheDir, 'index.xml')):
-        with open(os.path.join(CacheDir, 'index.xml')) as f:
-            payload = f.read()
-    if os.path.isfile(os.path.join(CacheDir, 'index.json')):
-        with open(os.path.join(CacheDir, 'index.json')) as f:
-            payload = json.loads(f.read())
-        payload = navigateJsonFragment(payload, URILink)
-    return payload
+    @lru_cache(maxsize=128)
+    def callResourceURI(self, URILink):
+        """
+        Makes a call to a given URI or URL
 
+        param arg1: path to URI "/example/1", or URL "http://example.com"
+        return: (success boolean, data, request status code)
+        """
+        # rs-assertions: 6.4.1, including accept, content-type and odata-versions
+        # rs-assertion: handle redirects?  and target permissions
+        # rs-assertion: require no auth for serviceroot calls
+        if URILink is None:
+            traverseLogger.warn("This URI is empty!")
+            return False, None, -1, 0
 
-@lru_cache(maxsize=128)
-def callResourceURI(URILink):
-    """
-    Makes a call to a given URI or URL
+        URILink = URILink.rstrip('/')
+        config = currentService.config
+        proxies = currentService.proxies
+        ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['targetip'], config['usessl'], config['authtype'], \
+                config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
+        CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
 
-    param arg1: path to URI "/example/1", or URL "http://example.com"
-    return: (success boolean, data, request status code)
-    """
-    # rs-assertions: 6.4.1, including accept, content-type and odata-versions
-    # rs-assertion: handle redirects?  and target permissions
-    # rs-assertion: require no auth for serviceroot calls
-    if URILink is None:
-        traverseLogger.warn("This URI is empty!")
-        return False, None, -1, 0
+        scheme, netloc, path, params, query, fragment = urlparse(URILink)
+        inService = scheme is '' and netloc is ''
+        scheme = ('https' if UseSSL else 'http') if scheme is '' else scheme
+        netloc = ConfigIP if netloc is '' else netloc
+        URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
 
-    if currentService is None:
-        traverseLogger.warn("The current service is not setup!  Program must configure the service before contacting URIs")
+        payload, statusCode, elapsed, auth, noauthchk = None, '', 0, None, True
 
-    URILink = URILink.rstrip('/')
-    config = currentService.config
-    proxies = currentService.proxies
-    ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['targetip'], config['usessl'], config['authtype'], \
-            config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
-    CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
+        isXML = False
+        if "$metadata" in URILink or ".xml" in URILink[:-5]:
+            isXML = True
+            traverseLogger.debug('Should be XML')
 
-    scheme, netloc, path, params, query, fragment = urlparse(URILink)
-    inService = scheme is '' and netloc is ''
-    scheme = ('https' if UseSSL else 'http') if scheme is '' else scheme
-    netloc = ConfigIP if netloc is '' else netloc
-    URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
+        ExtraHeaders = None
+        if 'extrajsonheaders' in config and not isXML:
+            ExtraHeaders = config['extrajsonheaders']
+        elif 'extraxmlheaders' in config and isXML:
+            ExtraHeaders = config['extraxmlheaders']
 
-    payload, statusCode, elapsed, auth, noauthchk = None, '', 0, None, True
+        # determine if we need to Auth...
+        if inService:
+            noauthchk =  URILink in ['/redfish', '/redfish/v1', '/redfish/v1/odata'] or\
+                '/redfish/v1/$metadata' in URILink
 
-    isXML = False
-    if "$metadata" in URILink or ".xml" in URILink[:-5]:
-        isXML = True
-        traverseLogger.debug('Should be XML')
+            auth = None if noauthchk else (config['username'], config['password'])
+            traverseLogger.debug('dont chkauth' if noauthchk else 'chkauth')
 
-    ExtraHeaders = None
-    if 'extrajsonheaders' in config and not isXML:
-        ExtraHeaders = config['extrajsonheaders']
-    elif 'extraxmlheaders' in config and isXML:
-        ExtraHeaders = config['extraxmlheaders']
+            if CacheMode in ["Fallback", "Prefer"]:
+                payload = rfService.getFromCache(URILink, CacheDir)
 
-    # determine if we need to Auth...
-    if inService:
-        noauthchk =  URILink in ['/redfish', '/redfish/v1', '/redfish/v1/odata'] or\
-            '/redfish/v1/$metadata' in URILink
+        if not inService and config['servicemode']:
+            traverseLogger.debug('Disallowed out of service URI ' + URILink)
+            return False, None, -1, 0
 
-        auth = None if noauthchk else (config['username'], config['password'])
-        traverseLogger.debug('dont chkauth' if noauthchk else 'chkauth')
+        # rs-assertion: do not send auth over http
+        # remove UseSSL if necessary if you require unsecure auth
+        if (not UseSSL and not config['forceauth']) or not inService or AuthType != 'Basic':
+            auth = None
 
-        if CacheMode in ["Fallback", "Prefer"]:
-            payload = getFromCache(URILink, CacheDir)
+        # only send token when we're required to chkauth, during a Session, and on Service and Secure
+        headers = {}
+        headers.update(commonHeader)
+        if not noauthchk and inService and UseSSL:
+            traverseLogger.debug('successauthchk')
+            if AuthType == 'Session':
+                currentSession = currentService.currentSession
+                headers.update({"X-Auth-Token": currentSession.getSessionKey()})
+            elif AuthType == 'Token':
+                headers.update({"Authorization": "Bearer " + Token})
 
-    if not inService and config['servicemode']:
-        traverseLogger.debug('Disallowed out of service URI ' + URILink)
-        return False, None, -1, 0
+        if ExtraHeaders is not None:
+            headers.update(ExtraHeaders)
 
-    # rs-assertion: do not send auth over http
-    # remove UseSSL if necessary if you require unsecure auth
-    if (not UseSSL and not config['forceauth']) or not inService or AuthType != 'Basic':
-        auth = None
+        certVal = ChkCertBundle if ChkCert and ChkCertBundle not in [None, ""] else ChkCert
 
-    # only send token when we're required to chkauth, during a Session, and on Service and Secure
-    headers = {}
-    headers.update(commonHeader)
-    if not noauthchk and inService and UseSSL:
-        traverseLogger.debug('successauthchk')
-        if AuthType == 'Session':
-            currentSession = currentService.currentSession
-            headers.update({"X-Auth-Token": currentSession.getSessionKey()})
-        elif AuthType == 'Token':
-            headers.update({"Authorization": "Bearer " + Token})
-
-    if ExtraHeaders is not None:
-        headers.update(ExtraHeaders)
-
-    certVal = ChkCertBundle if ChkCert and ChkCertBundle not in [None, ""] else ChkCert
-
-    # rs-assertion: must have application/json or application/xml
-    traverseLogger.debug('callingResourceURI {}with authtype {} and ssl {}: {} {}'.format(
-        'out of service ' if not inService else '', AuthType, UseSSL, URILink, headers))
-    try:
-        if payload is not None and CacheMode == 'Prefer':
-            return True, payload, -1, 0
-        response = requests.get(URLDest,
-                                headers=headers, auth=auth, verify=certVal, timeout=timeout,
-                                proxies=proxies if not inService else None)  # only proxy non-service
-        expCode = [200]
-        elapsed = response.elapsed.total_seconds()
-        statusCode = response.status_code
-        traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode,
-                             expCode, response.headers, elapsed))
-        if statusCode in expCode:
-            contenttype = response.headers.get('content-type')
-            if contenttype is None:
-                traverseLogger.error("Content-type not found in header: {}".format(URILink))
-                contenttype = ''
-            if 'application/json' in contenttype:
-                traverseLogger.debug("This is a JSON response")
-                decoded = response.json(object_pairs_hook=OrderedDict)
-                # navigate fragment
-                decoded = navigateJsonFragment(decoded, URILink)
-                if decoded is None:
-                    traverseLogger.error(
-                            "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
-            elif 'application/xml' in contenttype:
-                decoded = response.text
-            elif 'text/xml' in contenttype:
-                # non-service schemas can use "text/xml" Content-Type
-                if inService:
-                    traverseLogger.warn(
-                            "Incorrect content type 'text/xml' for file within service".format(URILink))
-                decoded = response.text
-            else:
-                traverseLogger.error(
-                        "This URI did NOT return XML or Json contenttype, is this not a Redfish resource (is this redirected?): {}".format(URILink))
-                decoded = None
-                if isXML:
-                    traverseLogger.info('Attempting to interpret as XML')
+        # rs-assertion: must have application/json or application/xml
+        traverseLogger.debug('callingResourceURI {}with authtype {} and ssl {}: {} {}'.format(
+            'out of service ' if not inService else '', AuthType, UseSSL, URILink, headers))
+        try:
+            if payload is not None and CacheMode == 'Prefer':
+                return True, payload, -1, 0
+            response = requests.get(URLDest,
+                                    headers=headers, auth=auth, verify=certVal, timeout=timeout,
+                                    proxies=proxies if not inService else None)  # only proxy non-service
+            expCode = [200]
+            elapsed = response.elapsed.total_seconds()
+            statusCode = response.status_code
+            traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode,
+                                 expCode, response.headers, elapsed))
+            if statusCode in expCode:
+                contenttype = response.headers.get('content-type')
+                if contenttype is None:
+                    traverseLogger.error("Content-type not found in header: {}".format(URILink))
+                    contenttype = ''
+                if 'application/json' in contenttype:
+                    traverseLogger.debug("This is a JSON response")
+                    decoded = response.json(object_pairs_hook=OrderedDict)
+                    # navigate fragment
+                    decoded = navigateJsonFragment(decoded, URILink)
+                    if decoded is None:
+                        traverseLogger.error(
+                                "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
+                elif 'application/xml' in contenttype:
+                    decoded = response.text
+                elif 'text/xml' in contenttype:
+                    # non-service schemas can use "text/xml" Content-Type
+                    if inService:
+                        traverseLogger.warn(
+                                "Incorrect content type 'text/xml' for file within service".format(URILink))
                     decoded = response.text
                 else:
-                    try:
-                        json.loads(response.text)
-                        traverseLogger.info('Attempting to interpret as JSON')
-                        decoded = response.json(object_pairs_hook=OrderedDict)
-                    except ValueError:
-                        pass
+                    traverseLogger.error(
+                            "This URI did NOT return XML or Json contenttype, is this not a Redfish resource (is this redirected?): {}".format(URILink))
+                    decoded = None
+                    if isXML:
+                        traverseLogger.info('Attempting to interpret as XML')
+                        decoded = response.text
+                    else:
+                        try:
+                            json.loads(response.text)
+                            traverseLogger.info('Attempting to interpret as JSON')
+                            decoded = response.json(object_pairs_hook=OrderedDict)
+                        except ValueError:
+                            pass
 
-            return decoded is not None, decoded, statusCode, elapsed
-        elif statusCode == 401:
-            if inService and AuthType in ['Basic', 'Token']:
-                if AuthType == 'Token':
-                    cred_type = 'token'
-                else:
-                    cred_type = 'username and password'
-                raise AuthenticationError('Error accessing URI {}. Status code "{} {}". Check {} supplied for "{}" authentication.'
-                                          .format(URILink, statusCode, responses[statusCode], cred_type, AuthType))
+                return decoded is not None, decoded, statusCode, elapsed
+            elif statusCode == 401:
+                if inService and AuthType in ['Basic', 'Token']:
+                    if AuthType == 'Token':
+                        cred_type = 'token'
+                    else:
+                        cred_type = 'username and password'
+                    raise AuthenticationError('Error accessing URI {}. Status code "{} {}". Check {} supplied for "{}" authentication.'
+                                              .format(URILink, statusCode, responses[statusCode], cred_type, AuthType))
 
-    except requests.exceptions.SSLError as e:
-        traverseLogger.error("SSLError on {}".format(URILink))
-        traverseLogger.debug("output: ", exc_info=True)
-    except requests.exceptions.ConnectionError as e:
-        traverseLogger.error("ConnectionError on {}".format(URILink))
-        traverseLogger.debug("output: ", exc_info=True)
-    except requests.exceptions.Timeout as e:
-        traverseLogger.error("Request has timed out ({}s) on resource {}".format(timeout, URILink))
-        traverseLogger.debug("output: ", exc_info=True)
-    except requests.exceptions.RequestException as e:
-        traverseLogger.error("Request has encounted a problem when getting resource {}".format(URILink))
-        traverseLogger.warning("output: ", exc_info=True)
-    except AuthenticationError as e:
-        raise e  # re-raise exception
-    except Exception:
-        traverseLogger.error("A problem when getting resource has occurred {}".format(URILink))
-        traverseLogger.warning("output: ", exc_info=True)
+        except requests.exceptions.SSLError as e:
+            traverseLogger.error("SSLError on {}".format(URILink))
+            traverseLogger.debug("output: ", exc_info=True)
+        except requests.exceptions.ConnectionError as e:
+            traverseLogger.error("ConnectionError on {}".format(URILink))
+            traverseLogger.debug("output: ", exc_info=True)
+        except requests.exceptions.Timeout as e:
+            traverseLogger.error("Request has timed out ({}s) on resource {}".format(timeout, URILink))
+            traverseLogger.debug("output: ", exc_info=True)
+        except requests.exceptions.RequestException as e:
+            traverseLogger.error("Request has encounted a problem when getting resource {}".format(URILink))
+            traverseLogger.warning("output: ", exc_info=True)
+        except AuthenticationError as e:
+            raise e  # re-raise exception
+        except Exception:
+            traverseLogger.error("A problem when getting resource has occurred {}".format(URILink))
+            traverseLogger.warning("output: ", exc_info=True)
 
-    if payload is not None and CacheMode == 'Fallback':
-        return True, payload, -1, 0
-    return False, None, statusCode, elapsed
+        if payload is not None and CacheMode == 'Fallback':
+            return True, payload, -1, 0
+        return False, None, statusCode, elapsed
+
+
+def callResourceURI(URILink):
+    if currentService is None:
+        traverseLogger.warn("The current service is not setup!  Program must configure the service before contacting URIs")
+        raise RuntimeError
+    else:
+        return currentService.callResourceURI(URILink)
+
 
 def createResourceObject(name, uri, jsondata=None, typename=None, context=None, parent=None, isComplex=False):
     """
@@ -539,8 +614,8 @@ class ResourceObj:
         self.rtime = 0
         self.isRegistry = False
         self.errorIndex = {
-                "bad_uri_schema": False
         }
+
         oem = config.get('oemcheck', True)
 
         # Check if this is a Registry resource
@@ -633,7 +708,6 @@ class ResourceObj:
 
         self.typeobj = rfSchema.getTypeObject(typename, self.schemaObj)
 
-
         self.propertyList = self.typeobj.getProperties(self.jsondata, topVersion=getNamespace(typename))
         propertyList = [prop.payloadName for prop in self.propertyList]
 
@@ -650,11 +724,18 @@ class ResourceObj:
                 value_obj = rfSchema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)
 
-        if config['uricheck'] and odata_id is not None:
-            traverseLogger.debug((propTypeObj.expectedURI, odata_id))
-            self.errorIndex['bad_uri_schema'] = re.fullmatch(propTypeObj.expectedURI, odata_id) is None
-            if self.errorIndex['bad_uri_schema']:
-                traverseLogger.error('{} not in Redfish.Uris: {}'.format(odata_id, self.typename))
+        if config['uricheck'] and self.typeobj.expectedURI is not None:
+            my_id = self.jsondata.get('Id')
+            self.errorIndex['bad_uri_schema_uri'] = not self.typeobj.compareURI(uri, my_id)
+            self.errorIndex['bad_uri_schema_odata'] = not self.typeobj.compareURI(odata_id, my_id)
+
+            if self.errorIndex['bad_uri_schema_uri']:
+                traverseLogger.error('{}: URI not in Redfish.Uris: {}'.format(uri, self.typename))
+            else:
+                traverseLogger.debug('{} in Redfish.Uris: {}'.format(uri, self.typename))
+
+            if self.errorIndex['bad_uri_schema_odata']:
+                traverseLogger.error('{}: odata_id not in Redfish.Uris: {}'.format(odata_id, self.typename))
             else:
                 traverseLogger.debug('{} in Redfish.Uris: {}'.format(odata_id, self.typename))
 

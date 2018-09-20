@@ -63,7 +63,9 @@ The Tool has an option to ignore SSL certificate check if certificate is not ins
 
 OemCheck = \<True / False\>    Specify if we want to check OEM properties
 
-Other  attributes under the "[Options]" section have schema specific implementations as described below
+UriCheck = \<True / False\>    Specify if we want to compare resource URI with Redfish.Uris
+
+VersionCheck = (string)     Specify version to test the service against, toggling protocol specific configuration (leave blank for automatic version)
 
 LocalOnlyMode - (boolean) Only test properties against Schema placed in the root of MetadataFilePath.
 
@@ -75,7 +77,7 @@ MetadataFilePath - (string) This attribute points to the location of the DMTF sc
 
 Schema_Pack - (string) URL path to an official zipped pack of DMTF Schema, to be extracted over the user's local schema directory.  Use 'latest' to pull the latest zip.  (To be used with option LocalOnly) 
 
-Timeout - (integer) Interval of time before timing out
+Timeout - (integer) Interval of time before timing out a request
 
 SchemaSuffix - (string) When searching for local hard drive schema, append this if unable to derive the expected xml from the service's metadata
 
@@ -87,9 +89,9 @@ Note: HttpProxy/HttpsProxy do not apply to requests to the system under test, on
 
 Additional options are available for cached files, link limits, sampling and target payloads:
 
-CacheMode = [Off, Prefer, Fallback] -- Options for using a cache, which will allow a user to override or fallback to a file on disk during a resource call on a service
+CacheMode = [Off, Prefer, Fallback] -- Options for using a cache, which will allow a user to override or fallback to a file on disk during a resource call on a service, replacing json response with local payload
 
-CacheFilePath = Path to cache directory
+CacheFilePath = Path to cache directory.  Default './cache'.  Consider using CacheMode if you need to test minor changes to a service's response on a particular payload's json
 
 LinkLimit = TypeName:## -- Option to limit the amount of links accepted from collections, default LogEntry:20
 
@@ -105,11 +107,11 @@ PayloadFilePath = Path to URI/File
 
 Once the above details are updated for the system under test, the Redfish Service Validator can be triggered from a command prompt by typing the below command, with the option of verbosity:
 
-    python3 RedfishServiceValidator.py -c config/config.ini (-v)
+    python3 RedfishServiceValidator.py -c config/config.ini (-v) (--verbose_checks) (--debug_logging)
 
-Alternatively, all of these options are available through the command line. __A configuration file overrides every option specified in the command line, such that -c should not be specified.__  In order to review these options, please run the command:
+Alternatively, all of these options are available through the command line.  __You may choose to overwrite some config entries through the command line__  In order to review these options, please run the command:
 
-    python3 RedfishServiceValidator.py -h (-v)
+    python3 RedfishServiceValidator.py -h (-v) (--verbose_checks) (--debug_logging)
 
 In order to run without a configuration file, the option --ip must be specified.
 
