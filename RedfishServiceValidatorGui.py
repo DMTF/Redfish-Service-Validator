@@ -89,6 +89,10 @@ g_config_defaults = {
             "description": "Enable or disable validation of URIs for resources",
             "options": ( "True", "False" )
         },
+        "VersionCheck": {
+            "value": "",
+            "description": "The protocol version to test against, toggling protocol specific configuration; leave blank for automatic version"
+        }.
         "CacheMode": {
             "value": "Off",
             "description": "Cache options for overriding or falling back to a file",
