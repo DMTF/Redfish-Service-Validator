@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.2.0] - 2018-09-21
+- Added option to enable/disable protocol version checking
+- Various cleanup to error messages
+
 ## [1.1.9] - 2018-09-14
 - Added fixes to OEM checks
 - Added support for URI checking as an option with the tool
