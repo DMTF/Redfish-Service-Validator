@@ -401,6 +401,7 @@ class rfService():
         # rs-assertion: must have application/json or application/xml
         traverseLogger.debug('callingResourceURI {}with authtype {} and ssl {}: {} {}'.format(
             'out of service ' if not inService else '', AuthType, UseSSL, URILink, headers))
+        response = None
         try:
             if payload is not None and CacheMode == 'Prefer':
                 return True, payload, -1, 0
@@ -459,22 +460,24 @@ class rfService():
                                               .format(URILink, statusCode, responses[statusCode], cred_type, AuthType))
 
         except requests.exceptions.SSLError as e:
-            traverseLogger.error("SSLError on {}".format(URILink))
+            traverseLogger.error("SSLError on {}: {}".format(URILink, repr(e)))
             traverseLogger.debug("output: ", exc_info=True)
         except requests.exceptions.ConnectionError as e:
-            traverseLogger.error("ConnectionError on {}".format(URILink))
+            traverseLogger.error("ConnectionError on {}: {}".format(URILink, repr(e)))
             traverseLogger.debug("output: ", exc_info=True)
         except requests.exceptions.Timeout as e:
             traverseLogger.error("Request has timed out ({}s) on resource {}".format(timeout, URILink))
             traverseLogger.debug("output: ", exc_info=True)
         except requests.exceptions.RequestException as e:
-            traverseLogger.error("Request has encounted a problem when getting resource {}".format(URILink))
-            traverseLogger.warning("output: ", exc_info=True)
+            traverseLogger.error("Request has encounted a problem when getting resource {}: {}".format(URILink, repr(e)))
+            traverseLogger.debug("output: ", exc_info=True)
         except AuthenticationError as e:
             raise e  # re-raise exception
-        except Exception:
-            traverseLogger.error("A problem when getting resource has occurred {}".format(URILink))
-            traverseLogger.warning("output: ", exc_info=True)
+        except Exception as e:
+            traverseLogger.error("A problem when getting resource {} has occurred: {}".format(URILink, repr(e)))
+            traverseLogger.debug("output: ", exc_info=True)
+            if response and response.text:
+                traverseLogger.debug("payload: {}".format(response.text))
 
         if payload is not None and CacheMode == 'Fallback':
             return True, payload, -1, 0
