@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.2.1] - 2018-10-04
+- Made fix to send traceback to debug logging only, not to HTML report
+
 ## [1.2.0] - 2018-09-21
 - Added option to enable/disable protocol version checking
 - Various cleanup to error messages
