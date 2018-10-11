@@ -7,9 +7,10 @@ import traverseService as rst
 
 rsvLogger = rst.getLogger()
 
+
 def validateDeprecatedEnum(name: str, val, listEnum: list):
     """validateDeprecatedEnum
-    
+
     Validates a DeprecatedEnum
 
     :param name: Name of property (printing purposes) Property Name
@@ -75,7 +76,7 @@ def validateString(name: str, val, pattern=None):
             match = re.fullmatch(pattern, val)
             paramPass = match is not None
             if not paramPass:
-                rsvLogger.error("{}: String '{}' does not match pattern '{}'".format(name, str(val), str(pattern)))
+                rsvLogger.error("{}: String '{}' does not match pattern '{}'".format(name, str(val), repr(pattern)))
         else:
             paramPass = True
     else:
@@ -85,7 +86,7 @@ def validateString(name: str, val, pattern=None):
 
 def validateDatetime(name: str, val):
     """validateDatetime
-    
+
     Validates a Datetime, given a value (pattern predetermined)
 
     :param name: Name of property (printing purposes)
@@ -133,7 +134,7 @@ def validateInt(name: str, val, minVal=None, maxVal=None):
 
 def validateNumber(name: str, val, minVal=None, maxVal=None):
     """validateNumber
-    
+
     Validates a Number and its min/max values
 
     :param name: Name of property (printing purposes)

@@ -15,7 +15,7 @@ from collections import Counter, OrderedDict
 
 import traverseService as rst
 
-from simpletypes import *
+import simpletypes
 from traverseService import AuthenticationError
 from tohtml import renderHtml, writeHtml
 
@@ -27,9 +27,13 @@ rsvLogger = rst.getLogger()
 
 VERBO_NUM = 15
 logging.addLevelName(VERBO_NUM, "VERBO")
+
+
 def verboseout(self, message, *args, **kws):
     if self.isEnabledFor(VERBO_NUM):
         self._log(VERBO_NUM, message, args, **kws)
+
+
 logging.Logger.verboseout = verboseout
 
 
@@ -59,7 +63,6 @@ def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, pa
         else:
             actionCounts['oemActionSkip'] += 1
 
-
     # For each action found, check action dictionary for existence and conformance
     # No action is required unless specified, target is not required unless specified
     # (should check for viable parameters)
@@ -76,7 +79,7 @@ def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, pa
             elif not isinstance(target, str):
                 actPass = False
                 rsvLogger.error('{}: target for action is malformed; expected string, got {}'
-                        .format(name + '.' + k, str(type(target)).strip('<>')))
+                                    .format(name + '.' + k, str(type(target)).strip('<>')))
                 # check for unexpected properties
             for prop in actionDecoded:
                 if prop not in ['target', 'title', '@Redfish.ActionInfo'] and '@Redfish.AllowableValues' not in prop:
@@ -113,7 +116,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
     # check for required @odata.id
     if '@odata.id' not in val:
         if autoExpand:
-            default = parentURI + '#/{}'.format(name.replace('[','/').strip(']'))
+            default = parentURI + '#/{}'.format(name.replace('[', '/').strip(']'))
         else:
             default = parentURI + '/{}'.format(name)
         rsvLogger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, default))
@@ -143,6 +146,9 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             currentType = propType
         soup, refs = schemaObj.soup, schemaObj.refs
         baseLink = refs.get(rst.getNamespace(propCollectionType if propCollectionType is not None else propType))
+        # if schema in current schema, then use it
+        #   elif namespace in References, use that
+        #   else we have no lead
         if soup.find('Schema', attrs={'Namespace': rst.getNamespace(currentType)}) is not None:
             success, baseObj = True, schemaObj
         elif baseLink is not None:
@@ -150,15 +156,18 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             success = baseObj is not None
         else:
             success = False
+
+        if not success:
+            rsvLogger.error("Schema of target {} not referenced in current resource, concluding type {} is not of expected type {}".format(uri, currentType, propType))
         rsvLogger.debug('success = {}, currentType = {}, baseLink = {}'.format(success, currentType, baseLink))
 
         # Recurse through parent types, gather type hierarchy to check against
-        if currentType is not None and baseObj.getTypeTagInSchema(currentType) is None:
+        if success and currentType is not None and baseObj.getTypeTagInSchema(currentType) is None and success:
             rsvLogger.error(
                 '{}: Linked resource reports version {} not in Schema {}'
                 .format(name.split(':')[-1], currentType, baseObj.origin))
 
-        elif currentType is not None and success:
+        elif success and currentType is not None :
             currentType = currentType.replace('#', '')
             allTypes = []
             while currentType not in allTypes and success:
@@ -628,7 +637,6 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
 
     resultList = OrderedDict()
     counts = Counter()
-    soup, refs = schemaObj.soup, schemaObj.refs
 
     rsvLogger.verboseout(PropertyName)
     item = prop.payloadName
@@ -767,23 +775,23 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
                     rsvLogger.error("{}: Not a boolean".format(sub_item))
 
             elif propRealType == 'Edm.DateTimeOffset':
-                paramPass = validateDatetime(sub_item, val)
+                paramPass = simpletypes.validateDatetime(sub_item, val)
 
             elif propRealType == 'Edm.Int16' or propRealType == 'Edm.Int32' or\
                     propRealType == 'Edm.Int64' or propRealType == 'Edm.Int':
-                paramPass = validateInt(sub_item, val, validMin, validMax)
+                paramPass = simpletypes.validateInt(sub_item, val, validMin, validMax)
 
             elif propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
-                paramPass = validateNumber(sub_item, val, validMin, validMax)
+                paramPass = simpletypes.validateNumber(sub_item, val, validMin, validMax)
 
             elif propRealType == 'Edm.Guid':
-                paramPass = validateGuid(sub_item, val)
+                paramPass = simpletypes.validateGuid(sub_item, val)
 
             elif propRealType == 'Edm.String':
-                paramPass = validateString(sub_item, val, validPattern)
+                paramPass = simpletypes.validateString(sub_item, val, validPattern)
 
             elif propRealType == 'Edm.Primitive' or propRealType == 'Edm.PrimitiveType':
-                paramPass = validatePrimitive(sub_item, val)
+                paramPass = simpletypes.validatePrimitive(sub_item, val)
 
             else:
                 if propRealType == 'complex':
@@ -830,10 +838,10 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
                     continue
 
                 elif propRealType == 'enum':
-                    paramPass = validateEnum(sub_item, val, PropertyDict['typeprops'])
+                    paramPass = simpletypes.validateEnum(sub_item, val, PropertyDict['typeprops'])
 
                 elif propRealType == 'deprecatedEnum':
-                    paramPass = validateDeprecatedEnum(sub_item, val, PropertyDict['typeprops'])
+                    paramPass = simpletypes.validateDeprecatedEnum(sub_item, val, PropertyDict['typeprops'])
 
                 elif propRealType == 'entity':
                     paramPass = validateEntity(sub_item, val, propType, propCollectionType, schemaObj, autoExpand, parentURI)
@@ -956,7 +964,6 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     counts = Counter()
     results = OrderedDict()
     messages = OrderedDict()
-    success = True
 
     results[uriName] = {'uri':URI, 'success':False, 'counts':counts,\
             'messages':messages, 'errors':'', 'warns': '',\
@@ -993,8 +1000,20 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         return False, counts, results, None, None
     counts['passGet'] += 1
 
+    # verify basic odata strings
     successPayload, odataMessages = checkPayloadConformance(URI, propResourceObj.jsondata)
     messages.update(odataMessages)
+
+    # verify odata_id properly resolves to its parent if holding fragment
+    odata_id = propResourceObj.jsondata.get('@odata.id', 'noid')
+    if '#' in odata_id:
+        if parent is not None:
+            if rst.navigateJsonFragment(parent.jsondata, URI) != propResourceObj.jsondata:
+                rsvLogger.error('@odata.id of ReferenceableMember does not properly resolve: {}'.format(odata_id))
+                counts['badOdataIdResolution'] += 1
+        else:
+            rsvLogger.warn('No parent found with which to test @odata.id of ReferenceableMember')
+            input('??')
 
     if not successPayload:
         counts['failPayloadError'] += 1
@@ -1054,7 +1073,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             raise  # re-raise exception
         except Exception as ex:
             rsvLogger.debug('Exception caught while validating single URI', exc_info=1)
-            rsvLogger.error('{}: Could not finish check on this property ({})'.format(prop.name, str(ex)))  # Printout FORMAT
+            rsvLogger.error('{}: Could not finish check on this property ({})'.format(prop.name, str(ex)))
             counts['exceptionPropCheck'] += 1
 
 
@@ -1146,7 +1165,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     if validateSuccess:
         for linkName in links:
             if 'Links' in linkName.split('.', 1)[0] or 'RelatedItem' in linkName.split('.', 1)[0] or 'Redundancy' in linkName.split('.',1)[0]:
-                refLinks[linkName] = links[linkName]
+                refLinks[linkName] = (links[linkName], thisobj)
                 continue
             if links[linkName][0] in allLinks:
                 counts['repeat'] += 1
@@ -1160,13 +1179,14 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
 
     if top:
         for linkName in refLinks:
-            if refLinks[linkName][0] not in allLinks:
-                traverseLogger.verboseout('%s, %s', linkName, refLinks[linkName])
+            ref_link, refparent = refLinks[linkName]
+            if ref_link[0] not in allLinks:
+                traverseLogger.verboseout('{}, {}'.format(linkName, ref_link))
                 counts['reflink'] += 1
             else:
                 continue
 
-            success, linkCounts, linkResults, xlinks, xobj = executeLink(refLinks[linkName], thisobj)
+            success, linkCounts, linkResults, xlinks, xobj = executeLink(ref_link, refparent)
             if not success:
                 counts['unvalidatedRef'] += 1
             results.update(linkResults)
@@ -1266,6 +1286,11 @@ def main(arglist=None, direct_parser=None):
     if not os.path.isdir(schemadir) and not config['preferonline']:
         rsvLogger.info('First run suggested to create and own local schema files, please download manually or use --schema_pack latest')
         rsvLogger.info('Alternatively, use the option --prefer_online to skip local schema file checks')
+        rsvLogger.info('The tool will, by default, attempt to download and store XML files to relieve traffic from DMTF/service')
+    elif config['preferonline']:
+        rsvLogger.info('Using option PreferOnline, retrieving solely from online sources may be slow...')
+
+
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
     fh.setLevel(min(args.debug_logging, args.verbose_checks))
@@ -1315,7 +1340,7 @@ def main(arglist=None, direct_parser=None):
         elif 'Tree' in pmode:
             success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
         else:
-            success, counts, results, xlinks, topobj = validateURITree('/redfish/v1', 'ServiceRoot', expectedJson=jsonData)
+            success, counts, results, xlinks, topobj = validateURITree('/redfish/v1/', 'ServiceRoot', expectedJson=jsonData)
     except AuthenticationError as e:
         # log authentication error and terminate program
         rsvLogger.error('{}'.format(e))
@@ -1341,7 +1366,6 @@ def main(arglist=None, direct_parser=None):
                 continue
             if any(x in countType for x in ['problem', 'fail', 'bad', 'exception']):
                 counters_all_pass = False
-            if 'fail' in countType or 'exception' in countType:
                 rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, results[item]['uri']))
             innerCounts[countType] += 0
         error_messages_present = False

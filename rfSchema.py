@@ -1,3 +1,6 @@
+# Copyright Notice:
+# Copyright 2016-2018 DMTF. All rights reserved.
+# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 from collections import namedtuple
 from bs4 import BeautifulSoup
@@ -5,12 +8,41 @@ from functools import lru_cache
 from collections import OrderedDict
 import re
 import difflib
+import os.path
 
 from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion
 import traverseService as rst
 from urllib.parse import urlparse, urlunparse
 
 config = []
+
+
+def storeSchemaToLocal(xml_data, origin):
+    """storeSchemaToLocal
+
+    Moves data pulled from service/online to local schema storage
+
+    Does NOT do so if preferonline is specified
+
+    :param xml_data: data being transferred
+    :param origin: origin of xml pulled
+    """
+    config = rst.config
+    SchemaLocation = config['metadatafilepath']
+    if not config['preferonline']:
+        if not os.path.isdir(SchemaLocation):
+            os.makedirs(SchemaLocation)
+        if 'localFile' not in origin and '$metadata' not in origin:
+            __, xml_name = origin.rsplit('/', 1)
+            new_file = os.path.join(SchemaLocation, xml_name)
+            if not os.path.isfile(new_file):
+                with open(new_file, "w") as filehandle:
+                    filehandle.write(xml_data)
+                    rst.traverseLogger.info('Writing online XML to file: {}'.format(xml_name))
+            else:
+                rst.traverseLogger.info('NOT writing online XML to file: {}'.format(xml_name))
+    else:
+        pass
 
 @lru_cache(maxsize=64)
 def getSchemaDetails(SchemaType, SchemaURI):
@@ -39,6 +71,8 @@ def getSchemaDetails(SchemaType, SchemaURI):
         success, soup, origin = getSchemaDetailsLocal(SchemaType, SchemaURI)
         if success:
             return success, soup, origin
+
+    xml_suffix = currentService.config['schemasuffix']
 
     config = rst.currentService.config
     LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
@@ -76,10 +110,11 @@ def getSchemaDetails(SchemaType, SchemaURI):
                     rst.traverseLogger.error(
                         "SchemaURI missing reference link {} inside {}".format(frag, base_schema_uri))
                     # error reported; assume likely schema uri to allow continued validation
-                    uri = 'http://redfish.dmtf.org/schemas/v1/{}_v1.xml'.format(frag)
+                    uri = 'http://redfish.dmtf.org/schemas/v1/{}{}'.format(frag, xml_suffix)
                     rst.traverseLogger.info("Continue assuming schema URI for {} is {}".format(SchemaType, uri))
                     return getSchemaDetails(SchemaType, uri)
             else:
+                storeSchemaToLocal(data, base_schema_uri)
                 return True, soup, base_schema_uri
         if not inService and ServiceOnly:
             rst.traverseLogger.debug("Nonservice URI skipped: {}".format(base_schema_uri))
@@ -141,10 +176,10 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
                     rst.traverseLogger.error('Could not find item in $metadata {}'.format(frag))
                     return False, None, None
             else:
-                return True, soup, "local" + SchemaLocation + '/' + filestring
+                return True, soup, "localFile:" + SchemaLocation + '/' + filestring
 
         if FoundAlias in Alias:
-            return True, soup, "local" + SchemaLocation + '/' + filestring
+            return True, soup, "localFile:" + SchemaLocation + '/' + filestring
 
     except FileNotFoundError:
         # if we're looking for $metadata locally... ditch looking for it, go straight to file
@@ -254,13 +289,13 @@ class rfSchema:
         pnamespace, ptype = getNamespace(currentType), getType(currentType)
         soup = self.soup
 
-        currentSchema = soup.find(  # BS4 line
+        currentSchema = soup.find(
             'Schema', attrs={'Namespace': pnamespace})
 
         if currentSchema is None:
             return None
 
-        currentEntity = currentSchema.find(tagType, attrs={'Name': ptype}, recursive=False)  # BS4 line
+        currentEntity = currentSchema.find(tagType, attrs={'Name': ptype}, recursive=False)
 
         return currentEntity
 
@@ -346,6 +381,7 @@ def getSchemaObject(typename, uri, metadata=None):
 
 class PropType:
     robjcache = {}
+
     def __init__(self, typename, schemaObj):
         # if we've generated this type, use it, else generate type
         self.initiated = False
@@ -444,7 +480,6 @@ class PropType:
 
     def compareURI(self, uri, my_id):
         expected_uris = self.expectedURI
-        uri = uri.rstrip('/')
         if expected_uris is not None:
             regex = re.compile(r"{.*?}")
             for e in expected_uris:
@@ -540,7 +575,7 @@ def getTypeDetails(schemaObj, SchemaAlias):
     if uriElement is not None:
         try:
             all_strings = uriElement.find('Collection').find_all('String')
-            expectedURI = [e.contents[0].rstrip('/') for e in all_strings]
+            expectedURI = [e.contents[0] for e in all_strings]
         except Exception as e:
             rst.traverseLogger.debug('Exception caught while checking URI', exc_info=1)
             rst.traverseLogger.warn('Could not gather info from Redfish.Uris annotation')
@@ -575,7 +610,6 @@ def getTypeDetails(schemaObj, SchemaAlias):
 def getTypeObject(typename, schemaObj):
     idtag = (typename, schemaObj.origin)
     if idtag in PropType.robjcache:
-        # print('getTypeObject: cache hit', idtag)
         return PropType.robjcache[idtag]
 
     typename = typename.strip('#')
@@ -662,7 +696,7 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
 
         # Get Entity of Owner, then the property of the Property we're targeting
         ownerEntity = ownerSchema.find(
-            ['EntityType', 'ComplexType'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+            ['EntityType', 'ComplexType'], attrs={'Name': OwnerType}, recursive=False)
 
         # check if this property is a nav property
         # Checks if this prop is an annotation
@@ -671,20 +705,20 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
         if '@' not in propertyName:
             propEntry['isTerm'] = False  # not an @ annotation
             propertyTag = ownerEntity.find(
-                ['NavigationProperty', 'Property'], attrs={'Name': propertyName}, recursive=False)  # BS4 line
+                ['NavigationProperty', 'Property'], attrs={'Name': propertyName}, recursive=False)
 
             # start adding attrs and props together
-            propertyInnerTags = propertyTag.find_all()  # BS4 line
+            propertyInnerTags = propertyTag.find_all()
             for tag in propertyInnerTags:
                 propEntry[tag['Term']] = tag.attrs
             propertyFullType = propertyTag.get('Type')
         else:
             propEntry['isTerm'] = True
             ownerEntity = ownerSchema.find(
-                ['Term'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+                ['Term'], attrs={'Name': OwnerType}, recursive=False)
             if ownerEntity is None:
                 ownerEntity = ownerSchema.find(
-                    ['EntityType', 'ComplexType'], attrs={'Name': OwnerType}, recursive=False)  # BS4 line
+                    ['EntityType', 'ComplexType'], attrs={'Name': OwnerType}, recursive=False)
             propertyTag = ownerEntity
             propertyFullType = propertyTag.get('Type', propertyOwner)
 
@@ -699,7 +733,6 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
         propEntry['realtype'] = 'none'
         propEntry['attrs'] = dict()
         propEntry['attrs']['Type'] = customType
-        metadata = rst.currentService.metadata
         serviceRefs = rst.currentService.metadata.get_service_refs()
         serviceSchemaSoup = rst.currentService.metadata.get_soup()
         success, propertySoup, propertyRefs, propertyFullType = True, serviceSchemaSoup, serviceRefs, customType
@@ -720,7 +753,7 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
             propEntry['isCollection'] = propertyFullType
             continue
         else:
-            if val is not None and isinstance(val, list) and propEntry.get('isCollection') is None :
+            if val is not None and isinstance(val, list) and propEntry.get('isCollection') is None:
                 raise TypeError('This item should not be a List')
 
         # If basic, just pass itself
@@ -733,6 +766,7 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
             schemaObj = schemaObj.getSchemaFromReference(PropertyNamespace)
             success = schemaObj is not None
             if success:
+                uri = schemaObj.origin
                 propertySoup = schemaObj.soup
                 propertyRefs = schemaObj.refs
         else:
@@ -760,14 +794,14 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
             #   this is a unique deprecated enum, labeled as Edm.String
 
             propertyFullType = propertyTypeTag.get('UnderlyingType')
-            isEnum = propertyTypeTag.find(  # BS4 line
+            isEnum = propertyTypeTag.find(
                 'Annotation', attrs={'Term': 'Redfish.Enumeration'}, recursive=False)
 
             if propertyFullType == 'Edm.String' and isEnum is not None:
                 propEntry['realtype'] = 'deprecatedEnum'
                 propEntry['typeprops'] = list()
-                memberList = isEnum.find(  # BS4 line
-                    'Collection').find_all('PropertyValue')  # BS4 line
+                memberList = isEnum.find(
+                    'Collection').find_all('PropertyValue')
 
                 for member in memberList:
                     propEntry['typeprops'].append(member.get('String'))
@@ -800,7 +834,7 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                     break
             elif topVersion is not None and (topVersion > OwnerNamespace):
                 currentVersion = topVersion
-                currentSchema = baseSoup.find(  # BS4 line
+                currentSchema = baseSoup.find(
                     'Schema', attrs={'Namespace': currentVersion})
                 # Working backwards from topVersion schematag,
                 #   created expectedType, check if currentTypeTag exists
@@ -808,18 +842,18 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                 #   until we exhaust all schematags in file
                 while currentSchema is not None:
                     expectedType = currentVersion + '.' + PropertyType
-                    currentTypeTag = currentSchema.find(  # BS4 line
+                    currentTypeTag = currentSchema.find(
                         'ComplexType', attrs={'Name': PropertyType})
                     if currentTypeTag is not None:
                         baseType = expectedType
-                        rst.traverseLogger.debug('new type: ' + baseType)  # Printout FORMAT
+                        rst.traverseLogger.debug('new type: ' + baseType)
                         break
                     else:
-                        nextEntity = currentSchema.find(  # BS4 line
+                        nextEntity = currentSchema.find(
                             ['EntityType', 'ComplexType'], attrs={'Name': OwnerType})
                         nextType = nextEntity.get('BaseType')
                         currentVersion = getNamespace(nextType)
-                        currentSchema = baseSoup.find(  # BS4 line
+                        currentSchema = baseSoup.find(
                             'Schema', attrs={'Namespace': currentVersion})
                         continue
             propEntry['realtype'] = 'complex'
@@ -830,14 +864,14 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                 propEntry['typeprops'] = [rst.createResourceObject(propertyName, 'complex', item, context=schemaObj.context, typename=baseType, isComplex=True) for item in val]
             break
 
-        elif nameOfTag == 'EnumType': # If enum, get all members
+        elif nameOfTag == 'EnumType':  # If enum, get all members
             propEntry['realtype'] = 'enum'
             propEntry['typeprops'] = list()
-            for MemberName in propertyTypeTag.find_all('Member'):  # BS4 line
+            for MemberName in propertyTypeTag.find_all('Member'):
                 propEntry['typeprops'].append(MemberName['Name'])
             break
 
-        elif nameOfTag == 'EntityType': # If entity, do nothing special (it's a reference link)
+        elif nameOfTag == 'EntityType':  # If entity, do nothing special (it's a reference link)
             propEntry['realtype'] = 'entity'
             if val is not None:
                 if propEntry.get('isCollection') is None:
@@ -862,5 +896,3 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
             break
 
     return propEntry
-
-
