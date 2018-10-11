@@ -1013,7 +1013,6 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
                 counts['badOdataIdResolution'] += 1
         else:
             rsvLogger.warn('No parent found with which to test @odata.id of ReferenceableMember')
-            input('??')
 
     if not successPayload:
         counts['failPayloadError'] += 1

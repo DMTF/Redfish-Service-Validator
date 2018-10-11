@@ -13,8 +13,8 @@ import os
 
 sys.path.append('../')
 
-import rfSchema
 import traverseService as rst
+import rfSchema
 from bs4 import BeautifulSoup
 
 rsvLogger = rst.getLogger()
@@ -77,7 +77,7 @@ class SchemaTest(TestCase):
         self.assertTrue(rfo.getTypeTagInSchema('Example') is not None)
 
     def test_get_parent_type(self):
-        # todo: consider unusual parent situations (?) 
+        # todo: consider unusual parent situations (?)
         rfo = rfSchema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
         assert rfo
 
