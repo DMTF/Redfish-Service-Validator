@@ -18,7 +18,7 @@ import configparser
 from urllib.parse import urlparse, urlunparse
 
 import metadata as md
-from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, getVersion, navigateJsonFragment
+from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
 import rfSchema
 
 traverseLogger = logging.getLogger(__name__)
@@ -86,6 +86,7 @@ defaultconfig = {
         'preferonline': False,
         'linklimit': {'LogEntry': 20},
         'sample': 0,
+        'usessl': True,
         'timeout': 30,
         'schema_pack': None,
         'forceauth': False,
@@ -105,6 +106,7 @@ customval = {
 configSet = False
 
 config = dict(defaultconfig)
+
 
 def startService(config, defaulted=[]):
     """startService
@@ -297,6 +299,8 @@ class rfService():
         # with Version, get default and compare to user defined values
         default_config_target = defaultconfig_by_version.get(target_version, dict())
         override_with = {k: default_config_target[k] for k in default_config_target if k in default_entries}
+        if len(override_with) > 0:
+            traverseLogger.info('CONFIG: RedfishVersion {} has augmented these tool defaults {}'.format(target_version, override_with))
         self.config.update(override_with)
 
         self.active = True
@@ -538,7 +542,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
     # Get Schema object
     schemaObj = rfSchema.getSchemaObject(acquiredtype, context)
     if schemaObj is None:
-        traverseLogger.error("ResourceObject creation: No schema XML for {} {} {}".format(typename, acquiredtype, context))
+        traverseLogger.error("ResourceObject creation: No schema XML for {} {}".format(acquiredtype, context))
         return None
 
     forceType = False

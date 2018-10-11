@@ -71,7 +71,7 @@ LocalOnlyMode - (boolean) Only test properties against Schema placed in the root
 
 ServiceMode - (boolean) Only test properties against Resources/Schema that exist on the Service
 
-PreferOnline - (boolean) Prefer online/service schema over local schema 
+PreferOnline - (boolean) Prefer online/service schema over local schema.  This will also disable downloading all schema to specified metadata directory 
 
 MetadataFilePath - (string) This attribute points to the location of the DMTF schema file location, populated by xml files
 
@@ -128,6 +128,7 @@ To run unittests, use the command:
 ## Execution flow
 
 1. Redfish Service Validator starts with the Service root Resource Schema by querying the service with the service root URI and getting all the device information, the resources supported and their links. Once the response of the Service root query is verified against its schema, the tool traverses through all the collections and Navigation properties returned by the service.
+    * From the Metadata, collect all XML specified possible from the service, and store them in a tool-specified directory
 2. For each navigation property/Collection of resource returned, it does following operations:
     * Reads all the Navigation/collection of resources from the respective resource collection schema file.
     * Reads the schema file related to the particular resource, collects all the information about individual properties from the resource schema file and stores them into a dictionary

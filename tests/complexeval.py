@@ -14,7 +14,7 @@ sys.path.append('../')
 
 import json, os
 import traverseService as rst
-import RedfishServiceValidator as rsv 
+import RedfishServiceValidator as rsv
 from bs4 import BeautifulSoup
 
 rsvLogger = rst.getLogger()
@@ -28,30 +28,30 @@ class ValidatorTest(TestCase):
     """
     def test_example(self):
         with open('tests/testdata/payloads/simple.json') as f:
-            example_json = json.load(f) 
-        
+            example_json = json.load(f)
+
         rsc = rst.ResourceObj('test', 'test', example_json, None, None, None, False)
-        for prop in rsc.getResourceProperties(): 
-                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop.propDict, rsc.jsondata, parentURI='')
+        for prop in rsc.getResourceProperties():
+                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop, rsc.jsondata, parentURI='')
                 print(propMessages)
                 print(propCounts)
 
     def test_example_bad(self):
         with open('tests/testdata/payloads/simple_bad.json') as f:
-            example_json = json.load(f) 
-        
+            example_json = json.load(f)
+
         rsc = rst.ResourceObj('test', 'test', example_json, None, None, None, False)
-        for prop in rsc.getResourceProperties(): 
-                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop.propDict, rsc.jsondata, parentURI='')
+        for prop in rsc.getResourceProperties():
+                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop, rsc.jsondata, parentURI='')
                 print(propMessages)
                 print(propCounts)
 
     def test_example_complex(self):
         with open('tests/testdata/payloads/simple_complex.json') as f:
-            example_json = json.load(f) 
-        
+            example_json = json.load(f)
+
         rsc = rst.ResourceObj('test', 'test', example_json, None, None, None, False)
-        for prop in rsc.getResourceProperties(): 
-                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop.propDict, rsc.jsondata, parentURI='')
+        for prop in rsc.getResourceProperties():
+                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop, rsc.jsondata, parentURI='')
                 print(propMessages)
                 print(propCounts)

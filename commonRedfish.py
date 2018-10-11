@@ -1,5 +1,10 @@
+# Copyright Notice:
+# Copyright 2016-2018 DMTF. All rights reserved.
+# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 import re
+import traverseService as rst
+
 
 """
  Power.1.1.1.Power , Power.v1_0_0.Power
@@ -9,6 +14,7 @@ versionpattern = 'v[0-9]_[0-9]_[0-9]'
 
 
 def navigateJsonFragment(decoded, URILink):
+    traverseLogger = rst.getLogger()
     if '#' in URILink:
         URILink, frag = tuple(URILink.rsplit('#', 1))
         fragNavigate = frag.split('/')
@@ -40,6 +46,7 @@ def getNamespace(string: str):
     if '#' in string:
         string = string.rsplit('#', 1)[1]
     return string.rsplit('.', 1)[0]
+
 
 def getVersion(string: str):
     """getVersion
