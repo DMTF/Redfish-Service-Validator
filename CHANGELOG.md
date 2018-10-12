@@ -1,5 +1,12 @@
 # Change Log
 
+## [1.2.2] - 2018-10-11
+- Added automatic file caching of schemca pulled from the DMTF website and the Service
+- Added proper error message for navigating links to Entities with incorrect types
+- Added logic to verify that an @odata.id property with a JSON fragment resolves properly
+- Updated current schema pack zip to 2018.2
+- Fixed missing default option for usessl
+
 ## [1.2.1] - 2018-10-04
 - Made fix to send traceback to debug logging only, not to HTML report
 
