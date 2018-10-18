@@ -36,6 +36,7 @@ def validateDeprecatedEnum(name: str, val, listEnum: list):
                             .format(str(name), val, str(listEnum)))
     else:
         rsvLogger.error("{}: Expected list or string value for DeprecatedEnum, got {}".format(str(name), str(type(val)).strip('<>')))
+        paramPass = False
     return paramPass
 
 

@@ -1,0 +1,20 @@
+{
+    "@odata.type":"#Example.v1_0_0.Example",
+    "@odata.id":"/redfish/v1/Example",
+    "@odata.context":"/redfish/v1/$metadata#Example.Example",
+    "Id":"Example1",
+    "Name":"ExampleSimple",
+    "pDeprecatedEnum":"On",
+    "pEnum":"Off",
+    "ComplexInner":{
+        "cDeprecatedEnum":"On",
+        "cEnum":"Off",
+        "cString":"None",
+        "cDateTimeOffset":"2018-10-18T16:16:59+00:00",
+        "cGuid":"ec75537c-5167-477e-a46f-304a623c4099",
+        "cInt16":10,
+        "cInt32":20,
+        "cInt64":30,
+        "cDecimal":1.1
+    }
+} 
