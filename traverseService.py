@@ -322,10 +322,7 @@ class rfService():
         if os.path.isfile(os.path.join(CacheDir, 'index.json')):
             with open(os.path.join(CacheDir, 'index.json')) as f:
                 payload = json.loads(f.read())
-            try:
-                payload = navigateJsonFragment(payload, URILink)
-            except ValueError as e:
-                traverseLogger.error(str(e))
+            payload = navigateJsonFragment(payload, URILink)
         return payload
 
     @lru_cache(maxsize=128)
@@ -429,11 +426,7 @@ class rfService():
                     traverseLogger.debug("This is a JSON response")
                     decoded = response.json(object_pairs_hook=OrderedDict)
                     # navigate fragment
-                    try:
-                        decoded = navigateJsonFragment(decoded, URILink)
-                    except ValueError as e:
-                        traverseLogger.error(str(e))
-                        decoded = None
+                    decoded = navigateJsonFragment(decoded, URILink)
                     if decoded is None:
                         traverseLogger.error(
                                 "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
@@ -942,7 +935,7 @@ def getAnnotations(metadata, decoded, prefix=''):
     if metadata is not None:
         schemaObj = metadata.schema_obj
     else:
-        traverseLogger.warning("Cannot work on annotations without a service or metadata")
+        traverseLogger.warn("Cannot work on annotations without a service or metadata")
         return False, []
     additionalProps = list()
     # For every ...@ in decoded, check for its presence in refs

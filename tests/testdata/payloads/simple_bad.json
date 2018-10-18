@@ -1,8 +1,7 @@
 {
     "@odata.type":"#Example.v1_0_0.Example",
-    "@odata.id":"/redfxsh/v1/Exampxx/",
-    "@odata.context":"/redfish/v1/$metadata#Example.Example",
     "pDeprecatedEnum":"None",
+    "pDeprecatedEnum2":0,
     "pEnum":"None",
     "pString":0,
     "pDateTimeOffset":"None",
