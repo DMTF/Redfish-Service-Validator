@@ -894,19 +894,19 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
         if annotation == '@odata.id' or annotation == '@odata.nextLink':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
-                paramPass = re.match('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
+                paramPass = re.fullmatch('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
         elif annotation == '@odata.count':
             display_type = 'number'
             paramPass = isinstance(decoded[key], int)
         elif annotation == '@odata.context':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
-                paramPass = re.match('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None or\
+                paramPass = re.fullmatch('(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None or\
                     re.match('(\/.*)+#(\/.*)+[/]$entity', decoded[key]) is not None
         elif annotation == '@odata.type':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
-                paramPass = re.match('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                paramPass = re.fullmatch('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
         else:
             rsvLogger.warn(prefix + key + " @odata item not checked: " + str(decoded[key]))
             paramPass = True
