@@ -46,11 +46,6 @@
             <PropertyValue Property="Deletable" Bool="false"/>
           </Record>
         </Annotation>
-        <Annotation Term="Redfish.Uris">
-            <Collection>
-                <String>/redfish/v1/Example</String>
-            </Collection>
-        </Annotation>
       </EntityType>
 
       <Action Name="ExampleAction" IsBound="true">
@@ -101,7 +96,11 @@
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="Redfish.Required"/>
         </Property>
-        <Property Name="Status" Type="ExampleResource.Status" Nullable="false"/>
+        <Property Name="cDeprecatedEnum2" Nullable="false" Type="Example.v1_0_0.DeprecatedEnum">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="Redfish.Required"/>
+        </Property>
+        <Property Name="Status" Type="ExampleExampleResource.Status" Nullable="false"/>
         <Property Name="cString" Type="Edm.String">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
@@ -134,7 +133,7 @@
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="Redfish.Required"/>
         </Property>
-        <Property Name="Status" Type="ExampleResource.Status" Nullable="false"/>
+        <Property Name="Status" Type="ExampleExampleResource.Status" Nullable="false"/>
         <Property Name="pString" Type="Edm.String">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
@@ -177,6 +176,25 @@
         </Property>
         <Property Name="ComplexInner" Type="Example.v1_0_0.ComplexInner" Nullable="false">
         </Property>
+
+        <NavigationProperty Name="LogServices" Type="LogServiceCollection.LogServiceCollection" ContainsTarget="true" Nullable="false">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="A reference to the logs for this chassis."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall be a link to a collection of type LogServiceCollection."/>
+          <Annotation Term="OData.AutoExpandReferences"/>
+        </NavigationProperty>
+        <NavigationProperty Name="Thermal" Type="Thermal.Thermal" ContainsTarget="true" Nullable="false">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="A reference to the thermal properties (fans, cooling, sensors) of this chassis."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall be a reference to the resource that represents the thermal characteristics of this chassis and shall be of type Thermal."/>
+          <Annotation Term="OData.AutoExpandReferences"/>
+        </NavigationProperty>
+        <NavigationProperty Name="Power" Type="Power.Power" ContainsTarget="true" Nullable="false">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="A reference to the power properties (power supplies, power policies, sensors) of this chassis."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall be a reference to the resource that represents the power characteristics of this chassis and shall be of type Power."/>
+          <Annotation Term="OData.AutoExpandReferences"/>
+        </NavigationProperty>
       </EntityType>
 
       <ComplexType Name="Links" BaseType="ExampleResource.Links">
@@ -414,6 +432,162 @@
       <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
       <Annotation Term="OData.Description" String="This version was created to change references to Location to be its abstract base type.  It was also created to correct the Descriptions and LongDescriptions used in the defined Actions."/>
       <EntityType Name="Example" BaseType="Example.v1_2_3.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_3_0">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to show the ExampleType enumerated list was updated."/>
+      <EntityType Name="Example" BaseType="Example.v1_2_0.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_3_1">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to add explicit Permissions annotations to all properties for clarity."/>
+      <EntityType Name="Example" BaseType="Example.v1_3_0.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_3_2">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to remove the Nullable facet on NavigationProperties of type Collection and to use Redfish.Deprecated on certain enum values."/>
+      <EntityType Name="Example" BaseType="Example.v1_3_1.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_3_3">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to show annotations in previous namespaces were updated."/>
+      <EntityType Name="Example" BaseType="Example.v1_3_2.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_3_4">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to change references to Location to be its abstract base type.  It was also created to correct the Descriptions and LongDescriptions used in the defined Actions."/>
+      <EntityType Name="Example" BaseType="Example.v1_3_3.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_4_0">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <EntityType Name="Example" BaseType="Example.v1_3_1.Example">
+        <Property Name="HeightMm" Type="Edm.Decimal">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="The height of the chassis."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall represent the height of the chassis (in millimeters) as specified by the manufacturer."/>
+          <Annotation Term="Validation.Minimum" Int="0"/>
+          <Annotation Term="Measures.Unit" String="mm"/>
+        </Property>
+        <Property Name="WidthMm" Type="Edm.Decimal">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="The width of the chassis."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall represent the width of the chassis (in millimeters) as specified by the manufacturer."/>
+          <Annotation Term="Validation.Minimum" Int="0"/>
+          <Annotation Term="Measures.Unit" String="mm"/>
+        </Property>
+        <Property Name="DepthMm" Type="Edm.Decimal">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="The depth of the chassis."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall represent the depth (length) of the chassis (in millimeters) as specified by the manufacturer."/>
+          <Annotation Term="Validation.Minimum" Int="0"/>
+          <Annotation Term="Measures.Unit" String="mm"/>
+        </Property>
+        <Property Name="WeightKg" Type="Edm.Decimal">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="The weight of the chassis."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall represent the published mass (commonly referred to as weight) of the chassis (in kilograms)."/>
+          <Annotation Term="Validation.Minimum" Int="0"/>
+          <Annotation Term="Measures.Unit" String="kg"/>
+        </Property>
+        <NavigationProperty Name="NetworkAdapters" Type="NetworkAdapterCollection.NetworkAdapterCollection" ContainsTarget="true" Nullable="false">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="A reference to the collection of Network Adapters associated with this chassis."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall be a link to a collection of type NetworkAdapterCollection."/>
+          <Annotation Term="OData.AutoExpandReferences"/>
+        </NavigationProperty>
+      </EntityType>
+
+      <ComplexType Name="Links" BaseType="Example.v1_2_0.Links">
+        <NavigationProperty Name="PCIeDevices" Type="Collection(PCIeDevice.PCIeDevice)">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="An array of references to the PCIe Devices located in this Example."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall reference one or more resources of type PCIeDevices."/>
+          <Annotation Term="OData.AutoExpandReferences"/>
+        </NavigationProperty>
+      </ComplexType>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_4_1">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to remove the Nullable facet on NavigationProperties of type Collection and to use Redfish.Deprecated on certain enum values."/>
+      <EntityType Name="Example" BaseType="Example.v1_4_0.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_4_2">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to show annotations in previous namespaces were updated."/>
+      <EntityType Name="Example" BaseType="Example.v1_4_1.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_4_3">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to change references to Location to be its abstract base type.  It was also created to correct the Descriptions and LongDescriptions used in the defined Actions."/>
+      <EntityType Name="Example" BaseType="Example.v1_4_2.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_5_0">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <EntityType Name="Example" BaseType="Example.v1_4_1.Example"/>
+
+      <ComplexType Name="Links" BaseType="Example.v1_4_0.Links">
+        <NavigationProperty Name="ExampleResourceBlocks" Type="Collection(ExampleResourceBlock.ExampleResourceBlock)">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="An array of references to the ExampleResource Blocks located in this Example."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall be an array of references of type ExampleResourceBlock that are contained in this Example."/>
+          <Annotation Term="OData.AutoExpandReferences"/>
+        </NavigationProperty>
+      </ComplexType>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_5_1">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to show annotations in previous namespaces were updated."/>
+      <EntityType Name="Example" BaseType="Example.v1_5_0.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_5_2">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to change references to Location to be its abstract base type.  It was also created to correct the Descriptions and LongDescriptions used in the defined Actions."/>
+      <EntityType Name="Example" BaseType="Example.v1_5_1.Example"/>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_6_0">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <Annotation Term="OData.Description" String="This version was created to add a link to an Assembly resource."/>
+      <EntityType Name="Example" BaseType="Example.v1_5_2.Example">
+        <NavigationProperty Name="Assembly" Type="Assembly.Assembly" ContainsTarget="true" Nullable="false">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="A reference to the Assembly resource associated with this chassis."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall be a link to a resource of type Assembly."/>
+          <Annotation Term="OData.AutoExpandReferences"/>
+        </NavigationProperty>
+      </EntityType>
+    </Schema>
+
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example.v1_7_0">
+      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
+      <EntityType Name="Example" BaseType="Example.v1_6_0.Example">
+        <Property Name="UUID" Type="ExampleResource.UUID">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="The Universal Unique Identifier (UUID) for this Example."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall contain the universal unique identifier number for the chassis."/>
+        </Property>
+      </EntityType>
+
+      <ComplexType Name="Links" BaseType="Example.v1_5_0.Links">
+        <NavigationProperty Name="Switches" Type="Collection(Switch.Switch)">
+          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
+          <Annotation Term="OData.Description" String="An array of references to the Switches located in this Example."/>
+          <Annotation Term="OData.LongDescription" String="The value of this property shall be an array of references of type Switch that are contained in this Example."/>
+          <Annotation Term="OData.AutoExpandReferences"/>
+        </NavigationProperty>
+      </ComplexType>
     </Schema>
 
   </edmx:DataServices>

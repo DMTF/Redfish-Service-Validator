@@ -3,6 +3,8 @@
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 import re
+import traverseService as rst
+
 
 """
  Power.1.1.1.Power , Power.v1_0_0.Power
@@ -12,6 +14,7 @@ versionpattern = 'v[0-9]_[0-9]_[0-9]'
 
 
 def navigateJsonFragment(decoded, URILink):
+    traverseLogger = rst.getLogger()
     if '#' in URILink:
         URILink, frag = tuple(URILink.rsplit('#', 1))
         fragNavigate = frag.split('/')
@@ -22,12 +25,13 @@ def navigateJsonFragment(decoded, URILink):
                 decoded = decoded.get(item)
             elif isinstance(decoded, list):
                 if not item.isdigit():
-                    raise ValueError("This is an Array, but this is not an index, aborting: {} {}".format(URILink, item))
+                    traverseLogger.error("This is an Array, but this is not an index, aborting: {} {}".format(URILink, item))
+                    return None
                 decoded = decoded[int(item)] if int(item) < len(decoded) else None
-            else:
-                raise ValueError("Decoded object not a dict or list {}".format(URILink))
         if not isinstance(decoded, dict):
-            raise ValueError("Decoded object no longer a dictionary {}".format(URILink))
+            traverseLogger.error(
+                "Decoded object no longer a dictionary {}".format(URILink))
+            return None
     return decoded
 
 

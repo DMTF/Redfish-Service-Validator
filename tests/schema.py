@@ -48,11 +48,11 @@ class SchemaTest(TestCase):
         rfo = rfSchema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
         assert rfo
 
-        self.assertTrue(rfo.getHighestType('Example.Example') == 'Example.v1_2_4.Example')
+        self.assertTrue(rfo.getHighestType('Example.Example') == 'Example.v1_7_0.Example')
         self.assertTrue(rfo.getHighestType('Example.Example', 'Newark.v1_2_1') == 'Example.v1_2_1.Example')
         self.assertTrue(rfo.getHighestType('Example.Example', 'Newark.v0_0_0') == 'Example.Example')
-        self.assertTrue(rfo.getHighestType('Example.Example', 'Newark') == 'Example.v1_2_4.Example')
-        self.assertTrue(rfo.getHighestType('Example.Links') == 'Example.v1_2_0.Links')
+        self.assertTrue(rfo.getHighestType('Example.Example', 'Newark') == 'Example.v1_7_0.Example')
+        self.assertTrue(rfo.getHighestType('Example.Links') == 'Example.v1_7_0.Links')
         self.assertTrue(rfo.getHighestType('Example.Links', 'Example.v1_1_1') == 'Example.v1_0_0.Links')
 
     def test_get_from_reference(self):
