@@ -726,7 +726,7 @@ class ResourceObj:
             prop_type = propTypeObj.propPattern.get('Type', 'Resource.OemObject')
 
             regex = re.compile(prop_pattern)
-            for key in [k for k in self.jsondata if k not in propertyList and regex.match(k)]:
+            for key in [k for k in self.jsondata if k not in propertyList and regex.fullmatch(k)]:
                 val = self.jsondata.get(key)
                 value_obj = rfSchema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
                 self.additionalList.append(value_obj)

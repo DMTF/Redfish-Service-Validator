@@ -490,7 +490,7 @@ class PropType:
                         rst.traverseLogger.warn('No Id provided by payload')
                     e_right = str(my_id)
                 e_compare_to = '/'.join([e_left, e_right])
-                success = re.match(e_compare_to, uri) is not None
+                success = re.fullmatch(e_compare_to, uri) is not None
                 if success:
                     break
         else:
