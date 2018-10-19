@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.2.3] - 2018-10-19
+- Fixed regex usage when verifying URIs
+
 ## [1.2.2] - 2018-10-11
 - Added automatic file caching of schemca pulled from the DMTF website and the Service
 - Added proper error message for navigating links to Entities with incorrect types
