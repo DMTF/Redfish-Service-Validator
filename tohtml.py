@@ -5,6 +5,7 @@
 from commonRedfish import getNamespace, getType
 import RedfishLogo as logo
 from types import SimpleNamespace
+from collections import Counter, OrderedDict
 import html
 import json
 
@@ -13,6 +14,32 @@ import json
 tag = SimpleNamespace(**{tagName: lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)\
     for tagName in ['tr', 'td', 'th', 'div', 'b', 'table', 'body', 'head', 'summary']})
 
+def count_errors(results):
+    error_lines = []
+    finalCounts = Counter()
+    for item in results:
+        innerCounts = results[item]['counts']
+
+        # detect if there are error messages for this resource, but no failure counts; if so, add one to the innerCounts
+        counters_all_pass = True
+        for countType in sorted(innerCounts.keys()):
+            if innerCounts.get(countType) == 0:
+                continue
+            if any(x in countType for x in ['problem', 'fail', 'bad', 'exception']):
+                counters_all_pass = False
+                error_lines.append('{} {} errors in {}'.format(innerCounts[countType], countType, results[item]['uri']))
+            innerCounts[countType] += 0
+        error_messages_present = False
+        if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
+            error_messages_present = True
+        if results[item]['warns'] is not None and len(results[item]['warns']) > 0:
+            innerCounts['warningPresent'] = 1
+        if counters_all_pass and error_messages_present:
+            innerCounts['failErrorPresent'] = 1
+            error_lines.append('Error message present in {}'.format(results[item]['uri']))
+
+        finalCounts.update(innerCounts)
+    return error_lines, finalCounts
 
 def wrapTag(string, tag='div', attr=None):
     string = str(string)
@@ -64,12 +91,15 @@ def applyInfoSuccessColor(num, entry):
     return tag.div(entry, attr=style)
 
 
-def renderHtml(results, finalCounts, tool_version, startTick, nowTick, service):
+def renderHtml(results, tool_version, startTick, nowTick, service):
     # Render html
     config = service.config
     config_str = ', '.join(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))))
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
     logpath = config['logpath']
+    error_lines, finalCounts = count_errors(results)
+    if service.metadata is not None:
+        finalCounts.update(service.metadata.get_counter())
 
     # wrap html
     htmlPage = ''
@@ -78,14 +108,14 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick, service):
             .pass {background-color:#99EE99}\
             .column {\
                 float: left;\
-                width: 50%;\
+                width: 45%;\
             }\
             .fail {background-color:#EE9999}\
             .warn {background-color:#EEEE99}\
             .bluebg {background-color:#BDD6EE}\
             .button {padding: 12px; display: inline-block}\
             .center {text-align:center;}\
-            .log {text-align:left; white-space:pre-wrap; word-wrap:break-word; font-size:smaller}\
+            .log {text-align:left; white-space:pre-wrap; word-wrap:break-word; font-size:smaller; padding: 6px}\
             .title {background-color:#DDDDDD; border: 1pt solid; font-height: 30px; padding: 8px}\
             .titlesub {padding: 8px}\
             .titlerow {border: 2pt solid}\
@@ -116,9 +146,6 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick, service):
 
     htmlStrBodyHeader += tag.tr(tag.th(infoBlock(infos)))
 
-    infos = {'System': ConfigURI, 'Description': sysDescription}
-    htmlStrBodyHeader += tag.tr(tag.th(infoBlock(infos)))
-
     infos = {x: config[x] for x in config if x not in ['systeminfo', 'targetip', 'password', 'description']}
     infos_left, infos_right = dict(), dict()
     for key in sorted(infos.keys()):
@@ -130,27 +157,47 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick, service):
     block = tag.td(tag.div(infoBlock(infos_left), 'class=\'column log\'') \
             + tag.div(infoBlock(infos_right), 'class=\'column log\''), 'id=\'resNumConfig\' class=\'results resultsShow\'')
 
-    htmlStrTotal = '<div>Final counts: '
-    for countType in sorted(finalCounts.keys()):
-        if finalCounts.get(countType) == 0:
-            continue
-        htmlStrTotal += '{p}: {q},   '.format(p=countType, q=finalCounts.get(countType, 0))
-    htmlStrTotal += '</div>'
-    htmlStrTotal += '<div class="button warn" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results resultsShow\'};">Expand All</div>'
-    htmlStrTotal += '<div class="button fail" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].className = \'results\'};">Collapse All</div>'
-    htmlStrTotal += tag.div('Show Config', attr='class="button pass" onClick="document.getElementById(\'resNumConfig\').classList.toggle(\'resultsShow\');"')
+    htmlButtons = '<div class="button warn" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].classList.add(\'resultsShow\')};">Expand All</div>'
+    htmlButtons += '<div class="button fail" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].classList.remove(\'resultsShow\')};">Collapse All</div>'
+    htmlButtons += tag.div('Toggle Config', attr='class="button pass" onClick="document.getElementById(\'resNumConfig\').classList.toggle(\'resultsShow\');"')
 
-    htmlStrBodyHeader += tag.tr(tag.td(htmlStrTotal))
+    htmlStrBodyHeader += tag.tr(tag.th(htmlButtons))
+    htmlStrBodyHeader += tag.tr(tag.th('Test Summary'))
+
+    infos = {'System': ConfigURI, 'Description': sysDescription}
+    htmlStrBodyHeader += tag.tr(tag.th(infoBlock(infos)))
+
+    errors = error_lines
+    if len(errors) == 0:
+        errors = ['No errors located.']
+    errorTags = tag.td(infoBlock(errors), 'class="log"')
+
+    infos_left, infos_right = dict(), dict()
+    for key in sorted(finalCounts.keys()):
+        if finalCounts.get(key) == 0:
+            continue
+        if len(infos_left) <= len(infos_right):
+            infos_left[key] = finalCounts[key]
+        else:
+            infos_right[key] = finalCounts[key]
+
+    htmlStrCounts = (tag.div(infoBlock(infos_left), 'class=\'column log\'') + tag.div(infoBlock(infos_right), 'class=\'column log\''))
+
+    htmlStrBodyHeader += tag.tr(tag.td(htmlStrCounts))
+
+    htmlStrBodyHeader += tag.tr(errorTags)
+
     htmlStrBodyHeader += tag.tr(block)
 
 
-    htmlPage = service.metadata.to_html()
+    if service.metadata is not None:
+        htmlPage = service.metadata.to_html()
     for cnt, item in enumerate(results):
         entry = []
         val = results[item]
         rtime = '(response time: {})'.format(val['rtime'])
         rcode = '({})'.format(val['rcode'])
-        payload = val['payload']
+        payload = val.get('payload', {})
 
         # uri block
         prop_type = val['fulltype']
@@ -169,12 +216,10 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick, service):
         infos.append(rtime)
         infos.append(tag.div('Show Results', attr='class="button warn"\
                 onClick="document.getElementById(\'payload{}\').classList.remove(\'resultsShow\');\
-                document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');\
-                document.getElementById(\'payload{}\').scrollIntoView();"'.format(cnt, cnt, cnt)))
+                document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');"'.format(cnt, cnt)))
         infos.append(tag.div('Show Payload', attr='class="button pass"\
                 onClick="document.getElementById(\'payload{}\').classList.toggle(\'resultsShow\');\
-                document.getElementById(\'resNum{}\').classList.add(\'resultsShow\');\
-                document.getElementById(\'payload{}\').scrollIntoView();"'.format(cnt, cnt, cnt)))
+                document.getElementById(\'resNum{}\').classList.add(\'resultsShow\');"'.format(cnt, cnt)))
         buttonTag = tag.td(infoBlock(infos), 'class="title" style="width:30%"')
 
         infos = [str(val.get(x)) for x in ['context', 'origin', 'fulltype']]
@@ -183,9 +228,9 @@ def renderHtml(results, finalCounts, tool_version, startTick, nowTick, service):
 
         success = val['success']
         if success:
-            getTag = tag.td('GET Success {}'.format(rcode), 'class="pass"')
+            getTag = tag.td('GET Success HTTP Code {}'.format(rcode), 'class="pass"')
         else:
-            getTag = tag.td('GET Failure {}'.format(rcode), 'class="fail"')
+            getTag = tag.td('GET Failure HTTP Code {}'.format(rcode), 'class="fail"')
 
         countsTag = tag.td(infoBlock(val['counts'], split='', ffunc=applyInfoSuccessColor), 'class="log"')
 

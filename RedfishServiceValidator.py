@@ -17,7 +17,7 @@ import traverseService as rst
 
 import simpletypes
 from traverseService import AuthenticationError
-from tohtml import renderHtml, writeHtml
+from tohtml import renderHtml, writeHtml, count_errors
 
 from metadata import setup_schema_pack
 
@@ -967,7 +967,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     results[uriName] = {'uri':URI, 'success':False, 'counts':counts,\
             'messages':messages, 'errors':'', 'warns': '',\
-            'rtime':'', 'context':'', 'fulltype':'', 'rcode':0}
+            'rtime':'', 'context':'', 'fulltype':'', 'rcode':0, 'payload':{}}
 
     # check for @odata mandatory stuff
     # check for version numbering problems
@@ -1356,29 +1356,12 @@ def main(arglist=None, direct_parser=None):
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
 
+    error_lines, finalCounts = count_errors(results)
+
+    for line in error_lines:
+        rsvLogger.error(line)
+
     finalCounts.update(metadata.get_counter())
-    for item in results:
-        innerCounts = results[item]['counts']
-
-        # detect if there are error messages for this resource, but no failure counts; if so, add one to the innerCounts
-        counters_all_pass = True
-        for countType in sorted(innerCounts.keys()):
-            if innerCounts.get(countType) == 0:
-                continue
-            if any(x in countType for x in ['problem', 'fail', 'bad', 'exception']):
-                counters_all_pass = False
-                rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, results[item]['uri']))
-            innerCounts[countType] += 0
-        error_messages_present = False
-        if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
-            error_messages_present = True
-        if results[item]['warns'] is not None and len(results[item]['warns']) > 0:
-            innerCounts['warningPresent'] = 1
-        if counters_all_pass and error_messages_present:
-            innerCounts['failErrorPresent'] = 1
-            rsvLogger.error('Error message present in {}'.format(results[item]['uri']))
-
-        finalCounts.update(results[item]['counts'])
 
     fails = 0
     for key in [key for key in finalCounts.keys()]:
@@ -1388,7 +1371,7 @@ def main(arglist=None, direct_parser=None):
         if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             fails += finalCounts[key]
 
-    html_str = renderHtml(results, finalCounts, tool_version, startTick, nowTick, currentService)
+    html_str = renderHtml(results, tool_version, startTick, nowTick, currentService)
 
     lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
 

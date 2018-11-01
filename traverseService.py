@@ -739,11 +739,15 @@ class ResourceObj:
 
             if self.errorIndex['bad_uri_schema_uri']:
                 traverseLogger.error('{}: URI not in Redfish.Uris: {}'.format(uri, self.typename))
+                if my_id != uri.rsplit('/', 1)[-1]:
+                    traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
             else:
                 traverseLogger.debug('{} in Redfish.Uris: {}'.format(uri, self.typename))
 
             if self.errorIndex['bad_uri_schema_odata']:
                 traverseLogger.error('{}: odata_id not in Redfish.Uris: {}'.format(odata_id, self.typename))
+                if my_id != uri.rsplit('/', 1)[-1]:
+                    traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
             else:
                 traverseLogger.debug('{} in Redfish.Uris: {}'.format(odata_id, self.typename))
 
