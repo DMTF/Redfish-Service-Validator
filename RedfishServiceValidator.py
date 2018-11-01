@@ -698,7 +698,8 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     propNullable = False if nullable_attr == 'false' else True  # default is true
 
     # rs-assertion: Check for permission change
-    propPermissions = propAttr.get('Odata.Permissions')
+    propPermissions = PropertyDict.get('OData.Permissions')
+    propPermissionsValue = None
     if propPermissions is not None:
         propPermissionsValue = propPermissions['EnumMember']
         rsvLogger.verboseout("\tpermission {}".format(propPermissionsValue))
@@ -756,7 +757,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
         appendStr = (('[' + str(cnt) + ']') if isCollection else '')
         sub_item = item + appendStr
         if isinstance(val, str):
-            if val == '':
+            if val == '' and propPermissionsValue == 'OData.Permission/Read':
                 rsvLogger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
             if val.lower() == 'null':
                 rsvLogger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item))
