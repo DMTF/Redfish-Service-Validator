@@ -514,13 +514,14 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
                 '{}:  URI could not be acquired: {}'.format(uri, status))
             return None
     else:
-        jsondata, rtime = jsondata, 0
+        success, jsondata, status, rtime = True, jsondata, -1, 0
 
     if not isinstance(jsondata, dict):
         if not isComplex:
             traverseLogger.error("Resource no longer a dictionary...")
         else:
             traverseLogger.debug("ComplexType does not have val")
+        return success, None, status
         return None
 
     acquiredtype = jsondata.get('@odata.type', typename)
@@ -595,7 +596,6 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
         else:
             traverseLogger.warn('@odata.id should not have a fragment'.format(odata_id))
 
-
     elif 'Resource.ReferenceableMember' in allTypes:
         if fragment is not '':
             pass
@@ -606,9 +606,9 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
         else:
             traverseLogger.warn('@odata.id should have a fragment'.format(odata_id))
 
-
     newResource = ResourceObj(name, uri, jsondata, typename, original_context, parent, isComplex, forceType=forceType)
     newResource.rtime = rtime
+    newResource.status = status
 
     return newResource
 
@@ -619,6 +619,7 @@ class ResourceObj:
         self.parent = parent
         self.uri, self.name = uri, name
         self.rtime = 0
+        self.status = -1
         self.isRegistry = False
         self.errorIndex = {
         }

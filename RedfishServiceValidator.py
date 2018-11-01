@@ -967,7 +967,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     results[uriName] = {'uri':URI, 'success':False, 'counts':counts,\
             'messages':messages, 'errors':'', 'warns': '',\
-            'rtime':'', 'context':'', 'fulltype':''}
+            'rtime':'', 'context':'', 'fulltype':'', 'rcode':0}
 
     # check for @odata mandatory stuff
     # check for version numbering problems
@@ -1026,6 +1026,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results[uriName]['uri'] = (str(URI))
     results[uriName]['samplemapped'] = (str(sample_string))
     results[uriName]['rtime'] = propResourceObj.rtime
+    results[uriName]['rcode'] = propResourceObj.status
+    results[uriName]['payload'] = propResourceObj.jsondata
     results[uriName]['context'] = propResourceObj.context
     results[uriName]['origin'] = propResourceObj.schemaObj.origin
     results[uriName]['fulltype'] = propResourceObj.typename
@@ -1210,9 +1212,9 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
     argget.add_argument('-v', action='store_const', const=True, default=None, help='verbose log output to stdout (parameter-only)')
     argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
-    argget.add_argument('--debug_logging', action="store_const", const=logging.DEBUG, default=logging.INFO,
+    argget.add_argument('--debug_logging', action="store_const", const=True, default=None,
             help='Output debug statements to text log, otherwise it only uses INFO (parameter-only)')
-    argget.add_argument('--verbose_checks', action="store_const", const=VERBO_NUM, default=logging.INFO,
+    argget.add_argument('--verbose_checks', action="store_const", const=True, default=None,
             help='Show all checks in logging (parameter-only)')
     argget.add_argument('--nooemcheck', action='store_const', const=True, default=None, help='Don\'t check OEM items')
 
@@ -1246,7 +1248,7 @@ def main(arglist=None, direct_parser=None):
     args = argget.parse_args(arglist)
 
     # set up config
-    rst.ch.setLevel(args.verbose_checks if not args.v else logging.DEBUG)
+    rst.ch.setLevel(VERBO_NUM if args.verbose_checks else logging.INFO if not args.v else logging.DEBUG)
     if direct_parser is not None:
         try:
             cdict = rst.convertConfigParserToDict(direct_parser)
@@ -1292,7 +1294,7 @@ def main(arglist=None, direct_parser=None):
 
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    fh.setLevel(min(args.debug_logging, args.verbose_checks))
+    fh.setLevel(min(logging.INFO if args.debug_logging else logging.DEBUG, logging.INFO if args.verbose_checks else VERBO_NUM ))
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)
 
@@ -1386,7 +1388,7 @@ def main(arglist=None, direct_parser=None):
         if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             fails += finalCounts[key]
 
-    html_str = renderHtml(results, finalCounts, tool_version, startTick, nowTick)
+    html_str = renderHtml(results, finalCounts, tool_version, startTick, nowTick, currentService)
 
     lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
 
