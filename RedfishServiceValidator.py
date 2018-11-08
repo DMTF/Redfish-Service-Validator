@@ -17,7 +17,7 @@ import traverseService as rst
 
 import simpletypes
 from traverseService import AuthenticationError
-from tohtml import renderHtml, writeHtml
+from tohtml import renderHtml, writeHtml, count_errors
 
 from metadata import setup_schema_pack
 
@@ -968,7 +968,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
     results[uriName] = {'uri':URI, 'success':False, 'counts':counts,\
             'messages':messages, 'errors':'', 'warns': '',\
-            'rtime':'', 'context':'', 'fulltype':''}
+            'rtime':'', 'context':'', 'fulltype':'', 'rcode':0, 'payload':{}}
 
     # check for @odata mandatory stuff
     # check for version numbering problems
@@ -1027,6 +1027,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results[uriName]['uri'] = (str(URI))
     results[uriName]['samplemapped'] = (str(sample_string))
     results[uriName]['rtime'] = propResourceObj.rtime
+    results[uriName]['rcode'] = propResourceObj.status
+    results[uriName]['payload'] = propResourceObj.jsondata
     results[uriName]['context'] = propResourceObj.context
     results[uriName]['origin'] = propResourceObj.schemaObj.origin
     results[uriName]['fulltype'] = propResourceObj.typename
@@ -1211,9 +1213,9 @@ def main(arglist=None, direct_parser=None):
     argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
     argget.add_argument('-v', action='store_const', const=True, default=None, help='verbose log output to stdout (parameter-only)')
     argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
-    argget.add_argument('--debug_logging', action="store_const", const=logging.DEBUG, default=logging.INFO,
+    argget.add_argument('--debug_logging', action="store_const", const=True, default=None,
             help='Output debug statements to text log, otherwise it only uses INFO (parameter-only)')
-    argget.add_argument('--verbose_checks', action="store_const", const=VERBO_NUM, default=logging.INFO,
+    argget.add_argument('--verbose_checks', action="store_const", const=True, default=None,
             help='Show all checks in logging (parameter-only)')
     argget.add_argument('--nooemcheck', action='store_const', const=True, default=None, help='Don\'t check OEM items')
 
@@ -1247,7 +1249,7 @@ def main(arglist=None, direct_parser=None):
     args = argget.parse_args(arglist)
 
     # set up config
-    rst.ch.setLevel(args.verbose_checks if not args.v else logging.DEBUG)
+    rst.ch.setLevel(VERBO_NUM if args.verbose_checks else logging.INFO if not args.v else logging.DEBUG)
     if direct_parser is not None:
         try:
             cdict = rst.convertConfigParserToDict(direct_parser)
@@ -1293,7 +1295,7 @@ def main(arglist=None, direct_parser=None):
 
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    fh.setLevel(min(args.debug_logging, args.verbose_checks))
+    fh.setLevel(min(logging.INFO if args.debug_logging else logging.DEBUG, logging.INFO if args.verbose_checks else VERBO_NUM ))
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)
 
@@ -1355,29 +1357,12 @@ def main(arglist=None, direct_parser=None):
     nowTick = datetime.now()
     rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
 
+    error_lines, finalCounts = count_errors(results)
+
+    for line in error_lines:
+        rsvLogger.error(line)
+
     finalCounts.update(metadata.get_counter())
-    for item in results:
-        innerCounts = results[item]['counts']
-
-        # detect if there are error messages for this resource, but no failure counts; if so, add one to the innerCounts
-        counters_all_pass = True
-        for countType in sorted(innerCounts.keys()):
-            if innerCounts.get(countType) == 0:
-                continue
-            if any(x in countType for x in ['problem', 'fail', 'bad', 'exception']):
-                counters_all_pass = False
-                rsvLogger.error('{} {} errors in {}'.format(innerCounts[countType], countType, results[item]['uri']))
-            innerCounts[countType] += 0
-        error_messages_present = False
-        if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
-            error_messages_present = True
-        if results[item]['warns'] is not None and len(results[item]['warns']) > 0:
-            innerCounts['warningPresent'] = 1
-        if counters_all_pass and error_messages_present:
-            innerCounts['failErrorPresent'] = 1
-            rsvLogger.error('Error message present in {}'.format(results[item]['uri']))
-
-        finalCounts.update(results[item]['counts'])
 
     fails = 0
     for key in [key for key in finalCounts.keys()]:
@@ -1387,7 +1372,7 @@ def main(arglist=None, direct_parser=None):
         if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             fails += finalCounts[key]
 
-    html_str = renderHtml(results, finalCounts, tool_version, startTick, nowTick)
+    html_str = renderHtml(results, tool_version, startTick, nowTick, currentService)
 
     lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
 

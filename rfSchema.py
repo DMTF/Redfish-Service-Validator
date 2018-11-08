@@ -484,6 +484,7 @@ class PropType:
             regex = re.compile(r"{.*?}")
             for e in expected_uris:
                 e_left, e_right = tuple(e.rsplit('/', 1))
+                _uri_left, uri_right = tuple(uri.rsplit('/', 1))
                 e_left = regex.sub('[a-zA-Z0-9_.-]+', e_left)
                 if regex.match(e_right):
                     if my_id is None:
