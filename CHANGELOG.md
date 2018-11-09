@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.2.4] - 2018-11-09
+- Fixed check for empty strings to only report warnings if the property is writable
+- Added JSON output to expandable tag in the HTML report
+- Cleanup of the summary section of the HTML report
+
 ## [1.2.3] - 2018-10-19
 - Fixed regex usage when verifying URIs
 
