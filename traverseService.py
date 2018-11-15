@@ -8,7 +8,7 @@ import re
 import os
 import json
 import random
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from functools import lru_cache
 import logging
 from rfSession import rfSession
@@ -16,6 +16,7 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from http.client import responses
 import configparser
 from urllib.parse import urlparse, urlunparse
+
 
 import metadata as md
 from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
@@ -815,6 +816,8 @@ def enumerate_collection(items, cTypeName, linklimits, sample_size):
         yield from enumerate(items)
 
 
+Link_Obj = namedtuple('LinkObj', 'uri autoexpand linktype linkschema jsondata origin_property')
+
 def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits=None, sample_size=0, oemCheck=True):
     """
     Function that returns all links provided in a given JSON response.
@@ -840,39 +843,42 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
         traverseLogger.error("Generating links requires a dict")
     refDict = schemaObj.refs
     try:
-        for propx in propList:
-            propDict = propx.propDict
+        for prop_item in propList:
+            propDict = prop_item.propDict
             if propDict is None:
                 continue
 
             isNav = propDict.get('isNav', False)
-            key = propx.name
+            key = prop_item.name
             item = getType(key).split(':')[-1]
 
-            insideItem = propx.val if propx.exists else None
+            insideItem = prop_item.val if prop_item.exists else None
             autoExpand = propDict.get('OData.AutoExpand', None) is not None or\
                 propDict.get('OData.AutoExpand'.lower(), None) is not None
             cType = propDict.get('isCollection')
-            ownerNS = propx.propOwner.split('.')[0]
-            ownerType = propx.propOwner.split('.')[-1]
+            ownerNS = prop_item.propOwner.split('.')[0]
+            ownerType = prop_item.propOwner.split('.')[-1]
 
             if isNav:
                 if insideItem is not None:
                     if cType is not None:
+                        # if is collection
                         cTypeName = getType(cType)
                         cSchema = refDict.get(getNamespace(cType), (None, None))[1]
                         if cSchema is None:
                             cSchema = context
                         for cnt, listItem in enumerate_collection(insideItem, cTypeName, linklimits, sample_size):
-                            linkList[prefix + str(item) + '.' + cTypeName +
-                                     '#' + str(cnt)] = (listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem)
+                            linkList[prefix + str(item) + '.' + cTypeName + '#' + str(cnt)] = \
+                                Link_Obj(listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem, key)
                     else:
+                        # else single link
                         cType = propDict['attrs'].get('Type')
                         cSchema = refDict.get(getNamespace(cType), (None, None))[1]
                         if cSchema is None:
                             cSchema = context
-                        linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
-                            insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem)
+                        linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = \
+                            Link_Obj(insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem, key)
+
             elif item == 'Uri' and ownerNS == 'MessageRegistryFile' and ownerType == 'Location':
                 # special handling for MessageRegistryFile Location Uri
                 if insideItem is not None and isinstance(insideItem, str) and len(insideItem) > 0:
@@ -883,8 +889,8 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                         cSchema = context
                     traverseLogger.debug('Registry Location Uri: resource = {}, type = {}, schema = {}'
                                          .format(insideItem, cType, cSchema))
-                    linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = (
-                        uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem)
+                    linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = \
+                        Link_Obj(uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem, key)
             elif item == 'Actions':
                 # special handling for @Redfish.ActionInfo payload annotations
                 if isinstance(insideItem, dict):
@@ -897,30 +903,21 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                         if isinstance(uri, str):
                             uriItem = {'@odata.id': uri}
                             traverseLogger.debug('{}{}: @Redfish.ActionInfo annotation uri = {}'.format(item, k, uri))
-                            linkList[prefix + str(item) + k + '.' + cType] = (
-                                uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem)
+                            linkList[prefix + str(item) + k + '.' + cType] = \
+                                Link_Obj(uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem, key)
 
-        for propx in propList:
-            propDict = propx.propDict
-            if propDict is None:
-                continue
-            propDict = propx.propDict
-            key = propx.name
-            item = getType(key).split(':')[-1]
-            if 'Oem' in item and not oemCheck:
-                continue
-            cType = propDict.get('isCollection')
-            if propDict is None:
-                continue
             elif propDict['realtype'] == 'complex':
-                tp = propDict['typeprops']
-                if jsonData.get(item) is not None and tp is not None:
-                    if cType is not None:
-                        cTypeName = getType(cType)
-                        for item in tp:
-                            linkList.update(item.links)
-                    else:
-                        linkList.update(tp.links)
+                if 'Oem' in item and not oemCheck:
+                    continue
+                else:
+                    tp = propDict['typeprops']
+                    if jsonData.get(item) is not None and tp is not None:
+                        if cType is not None:
+                            cTypeName = getType(cType)
+                            for item in tp:
+                                linkList.update(item.links)
+                        else:
+                            linkList.update(tp.links)
         traverseLogger.debug(str(linkList))
     except Exception as e:
         traverseLogger.debug('Exception caught while getting all links', exc_info=1)
