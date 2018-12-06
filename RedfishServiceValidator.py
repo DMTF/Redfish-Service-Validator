@@ -966,9 +966,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     results = OrderedDict()
     messages = OrderedDict()
 
-    results[uriName] = {'uri':URI, 'success':False, 'counts':counts,\
-            'messages':messages, 'errors':'', 'warns': '',\
-            'rtime':'', 'context':'', 'fulltype':'', 'rcode':0, 'payload':{}}
+    results[uriName] = {'uri': URI, 'success': False, 'counts': counts,
+            'messages': messages, 'errors': '', 'warns': '', 'rtime': '',
+            'context': '', 'fulltype': '', 'rcode': 0, 'payload': {}}
 
     # check for @odata mandatory stuff
     # check for version numbering problems
@@ -980,10 +980,16 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         if parent is not None:
             parentURI = parent.uri
         else:
-            parentURI = '...'
+            parentURI = 'MissingParent'
         URI = parentURI + '/Missing URI Link'
+        rsvLogger.warning('Tool appears to be missing vital URI information, replacing URI w/: {}'.format(URI))
     # Generate dictionary of property info
     try:
+        if expectedJson is None:
+            success, jsondata, status, rtime = rst.callResourceURI(URI)
+            results[uriName]['payload'] = jsondata
+        else:
+            results[uriName]['payload'] = expectedJson
         propResourceObj = rst.createResourceObject(
             uriName, URI, expectedJson, expectedType, expectedSchema, parent)
         if not propResourceObj:
@@ -1143,13 +1149,14 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     # debug:
     traverseLogger = rst.getLogger()
 
+    # If this is our first called URI
     top = allLinks is None
     if top:
         allLinks = set()
     allLinks.add(URI)
 
     def executeLink(linkItem, parent=None):
-        linkURI, autoExpand, linkType, linkSchema, innerJson = linkItem
+        linkURI, autoExpand, linkType, linkSchema, innerJson, original_name = linkItem
 
         if linkType is not None and autoExpand:
             returnVal = validateURITree(
@@ -1166,12 +1173,22 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
                 URI, uriName, expectedType, expectedSchema, expectedJson, parent)
     if validateSuccess:
         for linkName in links:
-            if 'Links' in linkName.split('.', 1)[0] or 'RelatedItem' in linkName.split('.', 1)[0] or 'Redundancy' in linkName.split('.',1)[0]:
+            if any(x in links[linkName].origin_property for x in ['RelatedItem', 'Redundancy', 'Links']):
                 refLinks[linkName] = (links[linkName], thisobj)
                 continue
-            if links[linkName][0] in allLinks:
+            if links[linkName].uri in allLinks:
                 counts['repeat'] += 1
                 continue
+            elif links[linkName].uri.split('#')[0].endswith('/'):
+                # (elegantly) add warn message to resource html
+                warnmsg = 'URI acquired ends in slash: {}'.format(links[linkName].uri)
+                traverseLogger.warning(warnmsg)
+                results[uriName]['warns'] += '\n' + warnmsg
+                counts['warnTrailingSlashLink'] += 1
+                newLink = ''.join(links[linkName].uri.split('/')[:-1])
+                if newLink in allLinks:
+                    counts['repeat'] += 1
+                    continue
 
             success, linkCounts, linkResults, xlinks, xobj = executeLink(links[linkName], thisobj)
             refLinks.update(xlinks)
@@ -1182,7 +1199,15 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     if top:
         for linkName in refLinks:
             ref_link, refparent = refLinks[linkName]
-            if ref_link[0] not in allLinks:
+            if ref_link.uri.split('#')[0].endswith('/'):
+                # (elegantly) add warn message to resource html
+                warnmsg = 'Referenced URI acquired ends in slash: {}'.format(ref_link.uri)
+                traverseLogger.warning(warnmsg)
+                results[uriName]['warns'] += '\n' + warnmsg
+                counts['warnTrailingSlashRefLink'] += 1
+                ref_link.uri = ''.join(links[linkName].uri.split('/')[:-1])
+
+            if ref_link.uri not in allLinks:
                 traverseLogger.verboseout('{}, {}'.format(linkName, ref_link))
                 counts['reflink'] += 1
             else:
