@@ -501,6 +501,8 @@ def displayType(propType, propRealType, is_collection=False):
         disp_type = 'primitive'
     elif propRealType == 'Edm.DateTimeOffset':
         disp_type = 'date'
+    elif propRealType == 'Edm.Duration':
+        disp_type = 'duration'
     elif propRealType == 'Password':
         disp_type = 'password'
     elif propRealType == 'enum' or propRealType == 'deprecatedEnum' or propRealType == 'Enumeration':
@@ -777,6 +779,9 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
 
             elif propRealType == 'Edm.DateTimeOffset':
                 paramPass = simpletypes.validateDatetime(sub_item, val)
+
+            elif propRealType == 'Edm.Duration':
+                paramPass = simpletypes.validateDayTimeDuration(sub_item, val)
 
             elif propRealType == 'Edm.Int16' or propRealType == 'Edm.Int32' or\
                     propRealType == 'Edm.Int64' or propRealType == 'Edm.Int':

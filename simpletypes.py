@@ -99,6 +99,20 @@ def validateDatetime(name: str, val):
     return paramPass
 
 
+def validateDayTimeDuration(name: str, val):
+    """validateDayTimeDuration
+
+    Validates a dayTimeDuration, given a value (pattern predetermined)
+
+    :param name: Name of property (printing purposes)
+    :type name: str
+    :param val: Value for a given property
+    """
+    paramPass = validateString(name, val, '-?P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?')
+    if not paramPass:
+        rsvLogger.error("\t...: Malformed DayTimeDuration")
+    return paramPass
+
 def validateGuid(name: str, val):
     """validateGuid
 
