@@ -585,7 +585,9 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
             else:
                 traverseLogger.debug('Acquired resource thru AutoExpanded means {}'.format(uri_item))
                 traverseLogger.info('Regetting resource from URI {}'.format(uri_item))
-                return createResourceObject(name, uri_item, None, typename, context, parent, isComplex)
+                new_payload = createResourceObject(name, uri_item, None, typename, context, parent, isComplex)
+                if new_payload is None:
+                    traverseLogger.warn('Could not acquire resource, reverting to original payload...')
         else:
             if original_jsondata is None:
                 traverseLogger.warn('Acquired Resource.Resource type with fragment, could cause issues  {}'.format(uri_item))

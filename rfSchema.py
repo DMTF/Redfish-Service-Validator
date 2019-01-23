@@ -124,10 +124,9 @@ def getSchemaDetails(SchemaType, SchemaURI):
         rst.traverseLogger.debug("This program is currently LOCAL ONLY")
     if ServiceOnly:
         rst.traverseLogger.debug("This program is currently SERVICE ONLY")
-    if not LocalOnly and not ServiceOnly and not inService and config['preferonline']:
+    if not LocalOnly and not ServiceOnly or (not inService and config['preferonline']):
         rst.traverseLogger.warning("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
-        return getSchemaDetailsLocal(SchemaType, SchemaURI)
-    return False, None, None
+    return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
 
 def getSchemaDetailsLocal(SchemaType, SchemaURI):
