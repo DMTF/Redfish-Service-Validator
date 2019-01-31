@@ -708,9 +708,14 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                 ['NavigationProperty', 'Property'], attrs={'Name': propertyName}, recursive=False)
 
             # start adding attrs and props together
-            propertyInnerTags = propertyTag.find_all()
+            propertyInnerTags = propertyTag.find_all(recursive=False)
             for tag in propertyInnerTags:
-                propEntry[tag['Term']] = tag.attrs
+                if(not tag.get('Term')):
+                    rst.traverseLogger.warn(tag, 'does not contain a Term name')
+                elif (tag.get('Term') == 'Redfish.Revisions'):
+                    propEntry[tag['Term']] = tag.find_all('Record')
+                else:
+                    propEntry[tag['Term']] = tag.attrs
             propertyFullType = propertyTag.get('Type')
         else:
             propEntry['isTerm'] = True
