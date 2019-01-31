@@ -501,6 +501,8 @@ def displayType(propType, propRealType, is_collection=False):
         disp_type = 'primitive'
     elif propRealType == 'Edm.DateTimeOffset':
         disp_type = 'date'
+    elif propRealType == 'Edm.Duration':
+        disp_type = 'duration'
     elif propRealType == 'Password':
         disp_type = 'password'
     elif propRealType == 'enum' or propRealType == 'deprecatedEnum' or propRealType == 'Enumeration':
@@ -721,6 +723,21 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
         counts['warnDeprecated'] += 1
         rsvLogger.warning('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String', '')))
 
+    validDeprecated = PropertyDict.get('Redfish.Revisions')
+    if validDeprecated is not None:
+        for tag_item in validDeprecated:
+            revision_tag = tag_item.find('PropertyValue', attrs={
+                'EnumMember': 'Redfish.RevisionKind/Deprecated',
+                'Property': 'Kind'})
+            if (revision_tag):
+                desc_tag = tag_item.find('PropertyValue', attrs={'Property': 'Description'})
+                deprecatedPass = False
+                counts['warnDeprecated'] += 1
+                if (desc_tag):
+                    rsvLogger.warning('{}: The given property is deprecated by revision: {}'.format(item, desc_tag.attrs.get('String', '')))
+                else:
+                    rsvLogger.warning('{}: The given property is deprecated by revision'.format(item))
+
     validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
         int(validMaxAttr['Int']) if validMaxAttr is not None else None
     validPattern = validPatternAttr.get('String', '') if validPatternAttr is not None else None
@@ -777,6 +794,9 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
 
             elif propRealType == 'Edm.DateTimeOffset':
                 paramPass = simpletypes.validateDatetime(sub_item, val)
+
+            elif propRealType == 'Edm.Duration':
+                paramPass = simpletypes.validateDayTimeDuration(sub_item, val)
 
             elif propRealType == 'Edm.Int16' or propRealType == 'Edm.Int32' or\
                     propRealType == 'Edm.Int64' or propRealType == 'Edm.Int':
@@ -1320,7 +1340,7 @@ def main(arglist=None, direct_parser=None):
 
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    fh.setLevel(min(logging.INFO if args.debug_logging else logging.DEBUG, logging.INFO if args.verbose_checks else VERBO_NUM ))
+    fh.setLevel(min(logging.INFO if not args.debug_logging else logging.DEBUG, logging.INFO if args.verbose_checks else VERBO_NUM ))
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)
 

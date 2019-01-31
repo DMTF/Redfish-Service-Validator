@@ -124,10 +124,9 @@ def getSchemaDetails(SchemaType, SchemaURI):
         rst.traverseLogger.debug("This program is currently LOCAL ONLY")
     if ServiceOnly:
         rst.traverseLogger.debug("This program is currently SERVICE ONLY")
-    if not LocalOnly and not ServiceOnly and not inService and config['preferonline']:
+    if not LocalOnly and not ServiceOnly or (not inService and config['preferonline']):
         rst.traverseLogger.warning("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
-        return getSchemaDetailsLocal(SchemaType, SchemaURI)
-    return False, None, None
+    return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
 
 def getSchemaDetailsLocal(SchemaType, SchemaURI):
@@ -709,9 +708,14 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                 ['NavigationProperty', 'Property'], attrs={'Name': propertyName}, recursive=False)
 
             # start adding attrs and props together
-            propertyInnerTags = propertyTag.find_all()
+            propertyInnerTags = propertyTag.find_all(recursive=False)
             for tag in propertyInnerTags:
-                propEntry[tag['Term']] = tag.attrs
+                if(not tag.get('Term')):
+                    rst.traverseLogger.warn(tag, 'does not contain a Term name')
+                elif (tag.get('Term') == 'Redfish.Revisions'):
+                    propEntry[tag['Term']] = tag.find_all('Record')
+                else:
+                    propEntry[tag['Term']] = tag.attrs
             propertyFullType = propertyTag.get('Type')
         else:
             propEntry['isTerm'] = True
