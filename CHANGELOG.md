@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.2.5] - 2019-02-01
+- Updated schema bundle reference to 2018.3
+- Fixed handling of Edm.Duration
+- Fixed handling of Redfish.Revision term
+
 ## [1.2.4] - 2018-11-09
 - Fixed check for empty strings to only report warnings if the property is writable
 - Added JSON output to expandable tag in the HTML report
