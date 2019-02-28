@@ -1225,7 +1225,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
                 traverseLogger.warning(warnmsg)
                 results[uriName]['warns'] += '\n' + warnmsg
                 counts['warnTrailingSlashRefLink'] += 1
-                ref_link.uri = ''.join(links[linkName].uri.split('/')[:-1])
+                ref_link.uri = ''.join(ref_link.uri.split('/')[:-1])
 
             if ref_link.uri not in allLinks:
                 traverseLogger.verboseout('{}, {}'.format(linkName, ref_link))
