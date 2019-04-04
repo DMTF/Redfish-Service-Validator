@@ -634,6 +634,8 @@ class ResourceObj:
         if parent_type is not None and getType(parent_type) == 'MessageRegistryFile':
             traverseLogger.debug('{} is a Registry resource'.format(self.uri))
             self.isRegistry = True
+            self.context = None
+            context = None
 
         # Check if we provide a valid json
         self.jsondata = jsondata
