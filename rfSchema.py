@@ -378,6 +378,17 @@ def getSchemaObject(typename, uri, metadata=None):
     return rfSchema(soup, uri, origin, metadata=metadata, name=typename) if success else None
 
 
+def get_fuzzy_property(newProp, jsondata, allPropList=[]):
+    pname = newProp
+    possibleMatch = difflib.get_close_matches(newProp, [s for s in jsondata], 1, 0.70)
+    if len(possibleMatch) > 0 and possibleMatch[0] not in [s[2] for s in allPropList if s[2] != newProp]:
+        val = jsondata.get(possibleMatch[0], 'n/a')
+        if val != 'n/a':
+            pname = possibleMatch[0]
+            rst.traverseLogger.error('{} was not found in payload, attempting closest match: {}'.format(newProp, pname))
+    return pname
+
+
 class PropType:
     robjcache = {}
 
@@ -459,12 +470,7 @@ class PropType:
             pname = newProp
             # if our val is empty, do fuzzy check for property that exists in payload but not in all properties
             if val == 'n/a':
-                possibleMatch = difflib.get_close_matches(newProp, [s for s in jsondata], 1, 0.70)
-                if len(possibleMatch) > 0 and possibleMatch[0] not in [s[2] for s in allPropList if s[2] != newProp]:
-                    val = jsondata.get(possibleMatch[0], 'n/a')
-                    if val != 'n/a':
-                        pname = possibleMatch[0]
-                        rst.traverseLogger.error('{} was not found in payload, attempting closest match: {}'.format(newProp, pname))
+                pname = get_fuzzy_property(newProp, jsondata, allPropList)
             props.append(PropItem(schemaObj, newPropOwner, newProp, val, topVersion, payloadName=pname))
 
         return props

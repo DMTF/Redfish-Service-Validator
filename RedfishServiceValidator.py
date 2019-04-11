@@ -1199,6 +1199,12 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
             if links[linkName].uri in allLinks:
                 counts['repeat'] += 1
                 continue
+            elif links[linkName].uri is None:
+                errmsg = 'URI for NavigationProperty is missing {} {}'.format(uriName, links[linkName].linktype)
+                traverseLogger.error(errmsg)
+                results[uriName]['errors'] += '\n' + errmsg
+                counts['errorMissingOdata'] += 1
+                continue
             elif links[linkName].uri.split('#')[0].endswith('/'):
                 # (elegantly) add warn message to resource html
                 warnmsg = 'URI acquired ends in slash: {}'.format(links[linkName].uri)
@@ -1219,7 +1225,13 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     if top:
         for linkName in refLinks:
             ref_link, refparent = refLinks[linkName]
-            if ref_link.uri.split('#')[0].endswith('/'):
+            if ref_link.uri is None:
+                errmsg = 'URI for ReferenceLink is missing {} {}'.format(uriName, ref_link.linktype)
+                traverseLogger.error(errmsg)
+                results[uriName]['errors'] += '\n' + errmsg
+                counts['errorMissingReferenceOdata'] += 1
+                continue
+            elif ref_link.uri.split('#')[0].endswith('/'):
                 # (elegantly) add warn message to resource html
                 warnmsg = 'Referenced URI acquired ends in slash: {}'.format(ref_link.uri)
                 traverseLogger.warning(warnmsg)
