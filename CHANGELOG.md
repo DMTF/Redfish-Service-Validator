@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.2.6] - 2019-04-11
+- Added missing @odata.context initialization for Message Registries
+- Fix to counter for reference links ending in trailing slash
+
 ## [1.2.5] - 2019-02-01
 - Updated schema bundle reference to 2018.3
 - Fixed handling of Edm.Duration
