@@ -1,4 +1,4 @@
-Copyright 2018 DMTF. All rights reserved.
+Copyright 2018-2019 DMTF. All rights reserved.
 
 # Self-signed Certificate Walkthrough
 

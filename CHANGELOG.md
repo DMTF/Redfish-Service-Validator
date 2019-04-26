@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.2.7] - 2019-04-26
+- Added enhancement to verify `@odata.id` is present when following a navigation property
+
 ## [1.2.6] - 2019-04-11
 - Added missing @odata.context initialization for Message Registries
 - Fix to counter for reference links ending in trailing slash
