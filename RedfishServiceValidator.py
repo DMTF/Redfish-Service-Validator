@@ -928,6 +928,8 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
             paramPass = isinstance(decoded[key], str)
             if paramPass:
                 paramPass = re.fullmatch('#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+        elif annotation == '@odata.etag':
+            paramPass = True
         else:
             rsvLogger.warn(prefix + key + " @odata item not checked: " + str(decoded[key]))
             paramPass = True
