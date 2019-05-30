@@ -186,7 +186,8 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
         else:
             rsvLogger.error("{}: Could not get schema file for Entity check".format(name))
     else:
-        rsvLogger.error("{}: Could not get resource for Entity check".format(name))
+        rsvLogger.error("{}: GET of resource at URI {} returned HTTP {}. Check URI."
+                        .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
     return paramPass
 
 
