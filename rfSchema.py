@@ -433,16 +433,14 @@ class PropType:
         self.initiated = True
 
     def getTypeChain(self):
-        if self.fulltype is None:
-            raise StopIteration
-        else:
+        if self.fulltype is not None:
             node = self
             tlist = []
             while node is not None:
                 tlist.append(node.fulltype)
                 yield node.fulltype
                 node = node.parent
-            raise StopIteration
+        return
 
     def getLinksFromType(self, jsondata, context, propList=None, oemCheck=True, linklimits={}, sample=None):
         node = self
@@ -481,7 +479,7 @@ class PropType:
             for prop in node.actionList:
                 yield prop
             node = node.parent
-        raise StopIteration
+        return
 
     def compareURI(self, uri, my_id):
         expected_uris = self.expectedURI
