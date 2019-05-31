@@ -1,5 +1,11 @@
 # Change Log
 
+## [1.2.8] - 2019-05-31
+- Updated schema bundle reference to 2019.1
+- Improved error messages for GET failures
+- Removed warnings for @odata.etag properties
+- Removed deprecated StopIteration exception
+
 ## [1.2.7] - 2019-04-26
 - Added enhancement to verify `@odata.id` is present when following a navigation property
 
