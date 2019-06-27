@@ -749,13 +749,21 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     isCollection = propCollectionType is not None
     if isCollection and propValue is None:
         # illegal for a collection to be null
-        rsvLogger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'
-                        .format(item))
-        counts['failNullCollection'] += 1
-        return {item: (
-            '-', displayType(propType, propRealType, is_collection=True),
-            'Yes' if propExists else 'No',
-            'FAIL')}, counts
+        if prop.propChild == 'HttpHeaders' and rst.getType(prop.propOwner) == 'EventDestination':
+            rsvLogger.info('Value HttpHeaders can be Null')
+            propNullable = True
+            propValueList = []
+            resultList[item] = ('Array (size: null)',
+                                displayType(propType, propRealType, is_collection=True),
+                                'Yes' if propExists else 'No', '...')
+        else:
+            rsvLogger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'
+                            .format(item))
+            counts['failNullCollection'] += 1
+            return {item: (
+                '-', displayType(propType, propRealType, is_collection=True),
+                'Yes' if propExists else 'No',
+                'FAIL')}, counts
     elif isCollection and propValue is not None:
         # note: handle collections correctly, this needs a nicer printout
         # rs-assumption: do not assume URIs for collections

@@ -583,6 +583,8 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
         if fragment is '':
             if original_jsondata is None:
                 traverseLogger.debug('Acquired resource OK {}'.format(uri_item))
+            elif os.path.isfile(uri_item):
+                traverseLogger.info('Acquired resource is File OK {}'.format(uri_item))
             else:
                 traverseLogger.debug('Acquired resource thru AutoExpanded means {}'.format(uri_item))
                 traverseLogger.info('Regetting resource from URI {}'.format(uri_item))
@@ -692,7 +694,7 @@ class ResourceObj:
                 elif isComplex:
                     pass
                 else:
-                    traverseLogger.error('{}:  Json does not contain @odata.context'.format(uri))
+                    traverseLogger.debug('{}:  Json does not contain @odata.context'.format(uri))
 
         self.context = context
 
