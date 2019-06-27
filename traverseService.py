@@ -694,7 +694,7 @@ class ResourceObj:
                 elif isComplex:
                     pass
                 else:
-                    traverseLogger.error('{}:  Json does not contain @odata.context'.format(uri))
+                    traverseLogger.debug('{}:  Json does not contain @odata.context'.format(uri))
 
         self.context = context
 
