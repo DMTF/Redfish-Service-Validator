@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.2.9] - 2019-06-28
+- Added special handling with `EventDestination` to allow for `HttpHeaders` to be null per description in the schema
+- Made change to make `@odata.context` optional in responses
+
 ## [1.2.8] - 2019-05-31
 - Updated schema bundle reference to 2019.1
 - Improved error messages for GET failures
