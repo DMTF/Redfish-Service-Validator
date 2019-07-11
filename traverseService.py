@@ -709,7 +709,7 @@ class ResourceObj:
         if acquiredtype is typename and not forceType:
             acquiredtype = self.schemaObj.getHighestType(typename, parent_type)
             if not isComplex:
-                traverseLogger.warning(
+                traverseLogger.debug(
                     'No @odata.type present, assuming highest type {} {}'.format(typename, acquiredtype))
 
         # Check if we provide a valid type (todo: regex)
