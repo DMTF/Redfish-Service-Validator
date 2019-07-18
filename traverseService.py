@@ -630,10 +630,12 @@ class ResourceObj:
         }
 
         oem = config.get('oemcheck', True)
+        acquiredtype = typename if forceType else jsondata.get('@odata.type', typename)
 
         # Check if this is a Registry resource
         parent_type = parent.typename if parent is not None and parent is not None else None
-        if parent_type is not None and getType(parent_type) == 'MessageRegistryFile':
+        if parent_type is not None and getType(parent_type) == 'MessageRegistryFile' or\
+                getType(acquiredtype) in ['MessageRegistry', 'AttributeRegistry', 'PrivilegeRegistry']:
             traverseLogger.debug('{} is a Registry resource'.format(self.uri))
             self.isRegistry = True
             self.context = None
@@ -658,7 +660,6 @@ class ResourceObj:
                 traverseLogger.error('{}: Json does not contain @odata.id'.format(self.uri))
 
         # Get our real type (check for version)
-        acquiredtype = typename if forceType else jsondata.get('@odata.type', typename)
         if acquiredtype is None:
             traverseLogger.error(
                 '{}:  Json does not contain @odata.type or NavType'.format(uri))
