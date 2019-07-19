@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.3.0] - 2019-07-19
+- Downgraded messages related to not finding `@odata.type` within nested objects of a resource
+- Fixed parent validation for registry resources
+
 ## [1.2.9] - 2019-06-28
 - Added special handling with `EventDestination` to allow for `HttpHeaders` to be null per description in the schema
 - Made change to make `@odata.context` optional in responses
