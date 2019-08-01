@@ -186,8 +186,14 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
         else:
             rsvLogger.error("{}: Could not get schema file for Entity check".format(name))
     else:
-        rsvLogger.error("{}: GET of resource at URI {} returned HTTP {}. Check URI."
-                        .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
+        if "OriginOfCondition" in name:
+            rsvLogger.verboseout("{}: GET of resource at URI {} returned HTTP {}, but was a temporary resource."
+                            .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
+            return True
+
+        else:
+            rsvLogger.error("{}: GET of resource at URI {} returned HTTP {}. Check URI."
+                            .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
     return paramPass
 
 
@@ -1204,7 +1210,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
                 URI, uriName, expectedType, expectedSchema, expectedJson, parent)
     if validateSuccess:
         for linkName in links:
-            if any(x in links[linkName].origin_property for x in ['RelatedItem', 'Redundancy', 'Links']):
+            if any(x in links[linkName].origin_property for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']):
                 refLinks[linkName] = (links[linkName], thisobj)
                 continue
             if links[linkName].uri in allLinks:
@@ -1262,7 +1268,13 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
             success, linkCounts, linkResults, xlinks, xobj = executeLink(ref_link, refparent)
             if not success:
                 counts['unvalidatedRef'] += 1
-            results.update(linkResults)
+                if 'OriginOfCondition' in ref_link.origin_property:
+                    traverseLogger.info('Link was unsuccessful, but non mandatory')
+                    pass
+                else:
+                    results.update(linkResults)
+            else:
+                results.update(linkResults)
 
     return validateSuccess, counts, results, refLinks, thisobj
 
