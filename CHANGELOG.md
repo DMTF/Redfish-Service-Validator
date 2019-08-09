@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.3.1] - 2019-08-09
+- Added special handling with `OriginOfCondition` to allow for the Resource to not exist
+
 ## [1.3.0] - 2019-07-19
 - Downgraded messages related to not finding `@odata.type` within nested objects of a resource
 - Fixed parent validation for registry resources
