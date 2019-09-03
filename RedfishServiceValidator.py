@@ -85,8 +85,8 @@ def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, pa
                 if prop not in ['target', 'title', '@Redfish.ActionInfo',
                                 '@Redfish.OperationApplyTimeSupport'] and '@Redfish.AllowableValues' not in prop:
                     actPass = False
-                    rsvLogger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}", "{}" and "{}"'
-                            .format(name + '.' + k, prop, 'target', 'title', '@Redfish.ActionInfo', '*@Redfish.AllowableValues'))
+                    rsvLogger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}", "{}", "{}" and "{}"'
+                            .format(name + '.' + k, prop, 'target', 'title', '@Redfish.ActionInfo', '@Redfish.OperationApplyTimeSupport', '*@Redfish.AllowableValues'))
         else:
             # <Annotation Term="Redfish.Required"/>
             if actDict is not None and actDict.find('annotation', {'term': 'Redfish.Required'}):
