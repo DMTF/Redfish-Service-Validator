@@ -82,7 +82,8 @@ def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, pa
                                     .format(name + '.' + k, str(type(target)).strip('<>')))
                 # check for unexpected properties
             for prop in actionDecoded:
-                if prop not in ['target', 'title', '@Redfish.ActionInfo'] and '@Redfish.AllowableValues' not in prop:
+                if prop not in ['target', 'title', '@Redfish.ActionInfo',
+                                '@Redfish.OperationApplyTimeSupport'] and '@Redfish.AllowableValues' not in prop:
                     actPass = False
                     rsvLogger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}", "{}" and "{}"'
                             .format(name + '.' + k, prop, 'target', 'title', '@Redfish.ActionInfo', '*@Redfish.AllowableValues'))
