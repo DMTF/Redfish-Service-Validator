@@ -722,7 +722,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     validMinAttr = PropertyDict.get('Validation.Minimum')
     validMaxAttr = PropertyDict.get('Validation.Maximum')
 
-    paramPass = propNullablePass = deprecatedPass = True
+    paramPass = propNullablePass = deprecatedPass = nullValid = True
 
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
     validDeprecated = PropertyDict.get('Redfish.Deprecated')
@@ -792,8 +792,10 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
         if isinstance(val, str):
             if val == '' and propPermissionsValue == 'OData.Permission/Read':
                 rsvLogger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
+                nullValid = False
             if val.lower() == 'null':
                 rsvLogger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item))
+                nullValid = False
         if propRealType is not None and propExists:
             paramPass = propNullablePass = True
             if val is None:
@@ -890,6 +892,9 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
             result_str = 'FAIL'
         elif not deprecatedPass:
             result_str = 'Deprecated'
+        elif not nullValid:
+            counts['invalidPropertyValue'] += 1
+            result_str = 'WARN'
         else:
             result_str = 'PASS'
         resultList[sub_item] = (
