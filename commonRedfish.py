@@ -16,7 +16,7 @@ versionpattern = 'v[0-9]_[0-9]_[0-9]'
 def navigateJsonFragment(decoded, URILink):
     traverseLogger = rst.getLogger()
     if '#' in URILink:
-        URILink, frag = tuple(URILink.rsplit('#', 1))
+        URIfragless, frag = tuple(URILink.rsplit('#', 1))
         fragNavigate = frag.split('/')
         for item in fragNavigate:
             if item == '':
@@ -25,13 +25,15 @@ def navigateJsonFragment(decoded, URILink):
                 decoded = decoded.get(item)
             elif isinstance(decoded, list):
                 if not item.isdigit():
-                    traverseLogger.error("This is an Array, but this is not an index, aborting: {} {}".format(URILink, item))
+                    traverseLogger.error("This URI ({}) is accessing an array, but this is not an index: {}".format(URILink, item))
                     return None
-                decoded = decoded[int(item)] if int(item) < len(decoded) else None
-        if not isinstance(decoded, dict):
-            traverseLogger.error(
-                "Decoded object no longer a dictionary {}".format(URILink))
-            return None
+                if int(item) >= len(decoded):
+                    traverseLogger.error("This URI ({}) is accessing an array, but the index is too large for an array of size {}: {}".format(URILink, len(decoded), item))
+                    return None
+                decoded = decoded[int(item)]
+            else:
+                traverseLogger.error("This URI ({}) has resolved to an invalid object that is neither an array or dictionary".format(URILink))
+                return None
     return decoded
 
 
