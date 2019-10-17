@@ -10,8 +10,46 @@ import traverseService as rst
  Power.1.1.1.Power , Power.v1_0_0.Power
 """
 
-versionpattern = 'v[0-9]_[0-9]_[0-9]'
+versionpattern = 'v[0-9]+_[0-9]+_[0-9]+'
 
+
+def splitVersionString(version):
+    v_payload = version
+    if(re.match('([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', version) is not None):
+        new_payload = getVersion(version)
+        if new_payload is not None:
+            v_payload = new_payload
+    if ('_' in v_payload):
+        v_payload = v_payload.replace('v', '')
+        payload_split = v_payload.split('_')
+    else:
+        payload_split = v_payload.split('.')
+    if len(payload_split) != 3:
+        return [1, 0, 0]
+    return payload_split
+
+
+def compareMinVersion(version, min_version):
+    """
+    Checks for the minimum version of a resource's type
+    """
+    # If version doesn't contain version as is, try it as v#_#_#
+    # get version from payload
+    min_split = splitVersionString(min_version)
+    payload_split = splitVersionString(version)
+
+    paramPass = True
+    for a, b in zip(min_split, payload_split):
+        b = 0 if b is None else int(b)
+        a = 0 if a is None else int(a)
+        if (b > a):
+            break
+        if (b < a):
+            paramPass = False
+            break
+
+    # use string comparison, given version numbering is accurate to regex
+    return paramPass
 
 def navigateJsonFragment(decoded, URILink):
     traverseLogger = rst.getLogger()

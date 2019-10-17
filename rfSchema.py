@@ -10,7 +10,7 @@ import re
 import difflib
 import os.path
 
-from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion
+from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion, compareMinVersion
 import traverseService as rst
 from urllib.parse import urlparse, urlunparse
 
@@ -639,8 +639,7 @@ class PropItem:
             self.propOwner, self.propChild = propOwner, propChild
             self.val = val
             self.valid = topVersion is None or \
-                    (getNamespaceUnversioned(propOwner) in topVersion and getNamespace(propOwner) <= topVersion)\
-                    or getNamespaceUnversioned(propOwner) not in topVersion
+                    compareMinVersion(topVersion, propOwner)
             self.exists = val != 'n/a'
             self.payloadName = payloadName if payloadName is not None else propChild
             self.propDict = getPropertyDetails(
