@@ -936,7 +936,7 @@ def checkPayloadConformance(uri, decoded, ParentItem=None):
         if annotation == '@odata.id' or annotation == '@odata.nextLink':
             paramPass = isinstance(decoded[key], str)
             if paramPass:
-                paramPass = re.fullmatch('(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
+                paramPass = re.fullmatch('(\/.*)+(#([a-zA-Z0-9_.-]+\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
         elif annotation == '@odata.count':
             display_type = 'number'
             paramPass = isinstance(decoded[key], int)
@@ -1055,11 +1055,15 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     messages.update(odataMessages)
 
     # verify odata_id properly resolves to its parent if holding fragment
-    odata_id = propResourceObj.jsondata.get('@odata.id', 'noid')
+    odata_id = propResourceObj.jsondata.get('@odata.id', 'void')
     if '#' in odata_id:
         if parent is not None:
-            if rst.navigateJsonFragment(parent.jsondata, URI) != propResourceObj.jsondata:
-                rsvLogger.error('@odata.id of ReferenceableMember does not properly resolve: {}'.format(odata_id))
+            payload_resolve = rst.navigateJsonFragment(parent.jsondata, URI)
+            if payload_resolve is None:
+                rsvLogger.error('@odata.id of ReferenceableMember does not contain a valid JSON pointer for this payload: {}'.format(odata_id))
+                counts['badOdataIdResolution'] += 1
+            elif payload_resolve != propResourceObj.jsondata:
+                rsvLogger.error('@odata.id of ReferenceableMember does not point to the correct object: {}'.format(odata_id))
                 counts['badOdataIdResolution'] += 1
         else:
             rsvLogger.warn('No parent found with which to test @odata.id of ReferenceableMember')

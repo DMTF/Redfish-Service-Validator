@@ -522,7 +522,6 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
             traverseLogger.error("Resource no longer a dictionary...")
         else:
             traverseLogger.debug("ComplexType does not have val")
-        return success, None, status
         return None
 
     acquiredtype = jsondata.get('@odata.type', typename)
