@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.3.2] - 2019-10-18
+- Clarified error message when a JSON pointer in an `@odata.id` property is invalid
+- Fixed some handling of properties than cannot be resolved in order to have better error messages
+- Enhanced schema version checking to allow for double digits
+
 ## [1.3.1] - 2019-08-09
 - Added special handling with `OriginOfCondition` to allow for the Resource to not exist
 
