@@ -10,7 +10,7 @@ import re
 import difflib
 import os.path
 
-from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion, compareMinVersion
+from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion, compareMinVersion, splitVersionString
 import traverseService as rst
 from urllib.parse import urlparse, urlunparse
 
@@ -350,16 +350,17 @@ class rfSchema:
             if limit is not None:
                 if getVersion(newNamespace) is None:
                     continue
-                if getVersion(newNamespace) > limit:
+                if compareMinVersion(limit, newNamespace):
                     continue
             if schema.find(['EntityType', 'ComplexType'], attrs={'Name': getType(acquiredtype)}, recursive=False):
-                typelist.append(newNamespace)
+                typelist.append(splitVersionString(newNamespace))
 
-        for ns in reversed(sorted(typelist)):
-            rst.traverseLogger.debug(
-                "{}   {}".format(ns, getType(acquiredtype)))
-            acquiredtype = ns + '.' + getType(acquiredtype)
-            return acquiredtype
+        if len(typelist) > 1:
+            for ns in reversed(sorted(typelist)):
+                rst.traverseLogger.debug(
+                    "{}   {}".format(ns, getType(acquiredtype)))
+                acquiredtype = getNamespaceUnversioned(acquiredtype) + '.v{}_{}_{}'.format(*ns) + '.' + getType(acquiredtype)
+                return acquiredtype
         return acquiredtype
 
 
