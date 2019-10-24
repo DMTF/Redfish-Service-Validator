@@ -26,7 +26,7 @@ def splitVersionString(version):
         payload_split = v_payload.split('.')
     if len(payload_split) != 3:
         return [1, 0, 0]
-    return payload_split
+    return [int(v) for v in payload_split]
 
 
 def compareMinVersion(version, min_version):
@@ -38,18 +38,8 @@ def compareMinVersion(version, min_version):
     min_split = splitVersionString(min_version)
     payload_split = splitVersionString(version)
 
-    paramPass = True
-    for a, b in zip(min_split, payload_split):
-        b = 0 if b is None else int(b)
-        a = 0 if a is None else int(a)
-        if (b > a):
-            break
-        if (b < a):
-            paramPass = False
-            break
-
-    # use string comparison, given version numbering is accurate to regex
-    return paramPass
+    # use array comparison, which compares each sequential number
+    return min_split <= payload_split
 
 def navigateJsonFragment(decoded, URILink):
     traverseLogger = rst.getLogger()
