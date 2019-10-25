@@ -350,7 +350,7 @@ class rfSchema:
             if limit is not None:
                 if getVersion(newNamespace) is None:
                     continue
-                if compareMinVersion(limit, newNamespace):
+                if compareMinVersion(newNamespace, limit):
                     continue
             if schema.find(['EntityType', 'ComplexType'], attrs={'Name': getType(acquiredtype)}, recursive=False):
                 typelist.append(splitVersionString(newNamespace))
@@ -639,8 +639,10 @@ class PropItem:
             self.name = propOwner + ':' + propChild
             self.propOwner, self.propChild = propOwner, propChild
             self.val = val
-            self.valid = topVersion is None or \
-                    compareMinVersion(topVersion, propOwner)
+            self.valid = topVersion is None or\
+                    compareMinVersion(topVersion, propOwner) or\
+                    topVersion == propOwner or\
+                    getVersion(topVersion) == getVersion(propOwner)
             self.exists = val != 'n/a'
             self.payloadName = payloadName if payloadName is not None else propChild
             self.propDict = getPropertyDetails(
