@@ -470,7 +470,11 @@ class PropType:
             # if our val is empty, do fuzzy check for property that exists in payload but not in all properties
             if val == 'n/a':
                 pname = get_fuzzy_property(newProp, jsondata, allPropList)
-            props.append(PropItem(schemaObj, newPropOwner, newProp, val, topVersion, payloadName=pname))
+            validTypes = [getNamespace(x) for x in self.getTypeChain()]
+            if (topVersion in validTypes):
+                validTypes = validTypes[validTypes.index(topVersion):]
+            props.append(PropItem(schemaObj, newPropOwner, newProp, val, topVersion, payloadName=pname, versionList=validTypes))
+
 
         return props
 
@@ -634,15 +638,14 @@ def getTypeObject(typename, schemaObj):
 
 
 class PropItem:
-    def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None, payloadName=None):
+    def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None, payloadName=None, versionList=None):
         try:
             self.name = propOwner + ':' + propChild
             self.propOwner, self.propChild = propOwner, propChild
             self.val = val
             self.valid = topVersion is None or\
-                    compareMinVersion(topVersion, propOwner) or\
-                    topVersion == propOwner or\
-                    getVersion(topVersion) == getVersion(propOwner)
+                    versionList is None or\
+                    (getNamespace( propOwner ) in versionList)
             self.exists = val != 'n/a'
             self.payloadName = payloadName if payloadName is not None else propChild
             self.propDict = getPropertyDetails(
