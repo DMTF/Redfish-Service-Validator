@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.3.3] - 2019-11-01
+- Additional fixes for handling schema version checking
+
 ## [1.3.2] - 2019-10-18
 - Clarified error message when a JSON pointer in an `@odata.id` property is invalid
 - Fixed some handling of properties than cannot be resolved in order to have better error messages
