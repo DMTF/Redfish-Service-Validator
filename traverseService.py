@@ -341,7 +341,6 @@ class rfService():
             traverseLogger.warn("This URI is empty!")
             return False, None, -1, 0
 
-        URILink = URILink.rstrip('/')
         config = currentService.config
         proxies = currentService.proxies
         ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['targetip'], config['usessl'], config['authtype'], \
@@ -916,12 +915,13 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                 if 'Oem' in item and not oemCheck:
                     continue
                 else:
-                    tp = propDict['typeprops']
+                    tp = propDict['typeprops']  # holds each complex item in this structure
                     if jsonData.get(item) is not None and tp is not None:
                         if cType is not None:
                             cTypeName = getType(cType)
-                            for item in tp:
-                                linkList.update(item.links)
+                            for member in tp:
+                                if member is not None:
+                                    linkList.update(member.links)
                         else:
                             linkList.update(tp.links)
         traverseLogger.debug(str(linkList))
