@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.3.4] - 2019-11-08
+- Fixed handling of null objects in arrays of objects
+
 ## [1.3.3] - 2019-11-01
 - Additional fixes for handling schema version checking
 
