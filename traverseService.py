@@ -779,39 +779,49 @@ class ResourceObj:
         allprops = self.propertyList + self.additionalList[:min(len(self.additionalList), 100)]
         return allprops
 
-    def checkPayloadConformance(self):
+    @staticmethod
+    def checkPayloadConformance(jsondata, uri):
         """
         checks for @odata entries and their conformance
         These are not checked in the normal loop
         """
         messages = dict()
-        decoded = self.jsondata
+        decoded = jsondata
         success = True
         for key in [k for k in decoded if '@odata' in k]:
             paramPass = False
+
             if key == '@odata.id':
                 paramPass = isinstance(decoded[key], str)
                 paramPass = re.match(
                     '(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
-                pass
+                if not paramPass:
+                    traverseLogger.error("{} {}: Expected format is /path/to/uri, but received: {}".format(uri, key, decoded[key]))
+                else:
+                    if decoded[key] != uri:
+                        traverseLogger.warn("{} {}: Expected @odata.id to match URI link {}".format(uri, key, decoded[key]))
             elif key == '@odata.count':
                 paramPass = isinstance(decoded[key], int)
-                pass
+                if not paramPass:
+                    traverseLogger.error("{} {}: Expected an integer, but received: {}".format(uri, key, decoded[key]))
             elif key == '@odata.context':
                 paramPass = isinstance(decoded[key], str)
                 paramPass = re.match(
                     '(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
-                pass
+                if not paramPass:
+                    traverseLogger.verboseout("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
+                    paramPass = True
             elif key == '@odata.type':
                 paramPass = isinstance(decoded[key], str)
                 paramPass = re.match(
                     '#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
-                pass
+                if not paramPass:
+                    traverseLogger.error("{} {}: Expected format is #Namespace.Type, but received: {}".format(uri, key, decoded[key]))
             else:
                 paramPass = True
-            if not paramPass:
-                traverseLogger.verboseout(key + " @odata item not conformant: " + decoded[key])
-                success = False
+
+            success = success and paramPass
+            
             messages[key] = (decoded[key], 'odata',
                             'Exists',
                             'PASS' if paramPass else 'FAIL')

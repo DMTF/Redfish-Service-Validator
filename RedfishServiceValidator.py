@@ -107,6 +107,12 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             results[uriName]['payload'] = jsondata
         else:
             results[uriName]['payload'] = expectedJson
+
+        # verify basic odata strings
+        if results[uriName]['payload'] is not None:
+            successPayload, odataMessages = rst.ResourceObj.checkPayloadConformance(results[uriName]['payload'], URI)
+            messages.update(odataMessages)
+
         propResourceObj = rst.createResourceObject(
             uriName, URI, expectedJson, expectedType, expectedSchema, parent)
         if not propResourceObj:
@@ -123,10 +129,6 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         results[uriName]['warns'], results[uriName]['errors'] = next(lc)
         return False, counts, results, None, None
     counts['passGet'] += 1
-
-    # verify basic odata strings
-    successPayload, odataMessages = propResourceObj.checkPayloadConformance()
-    messages.update(odataMessages)
 
     # verify odata_id properly resolves to its parent if holding fragment
     odata_id = propResourceObj.jsondata.get('@odata.id', 'void')
