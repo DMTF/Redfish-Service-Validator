@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2016-2019 DMTF. All rights reserved.
+# Copyright 2016-2020 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 import requests
@@ -16,7 +16,6 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from http.client import responses
 import configparser
 from urllib.parse import urlparse, urlunparse
-
 
 import metadata as md
 from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
@@ -779,6 +778,44 @@ class ResourceObj:
     def getResourceProperties(self):
         allprops = self.propertyList + self.additionalList[:min(len(self.additionalList), 100)]
         return allprops
+
+    def checkPayloadConformance(self):
+        """
+        checks for @odata entries and their conformance
+        These are not checked in the normal loop
+        """
+        messages = dict()
+        decoded = self.jsondata
+        success = True
+        for key in [k for k in decoded if '@odata' in k]:
+            paramPass = False
+            if key == '@odata.id':
+                paramPass = isinstance(decoded[key], str)
+                paramPass = re.match(
+                    '(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
+                pass
+            elif key == '@odata.count':
+                paramPass = isinstance(decoded[key], int)
+                pass
+            elif key == '@odata.context':
+                paramPass = isinstance(decoded[key], str)
+                paramPass = re.match(
+                    '(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                pass
+            elif key == '@odata.type':
+                paramPass = isinstance(decoded[key], str)
+                paramPass = re.match(
+                    '#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                pass
+            else:
+                paramPass = True
+            if not paramPass:
+                traverseLogger.verboseout(key + " @odata item not conformant: " + decoded[key])
+                success = False
+            messages[key] = (decoded[key], 'odata',
+                            'Exists',
+                            'PASS' if paramPass else 'FAIL')
+        return success, messages
 
 
 def enumerate_collection(items, cTypeName, linklimits, sample_size):

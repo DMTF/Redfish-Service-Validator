@@ -125,6 +125,10 @@ To run unittests, use the command:
     
     python3 -m unittest tests/*.py
 
+In order to print a csv report out to the text log, the command --csv_report may be added to the command line.  To convert a previous HTML log into a csv file, use the following command:
+
+    python3 tohtml.py htmllogfile
+
 ## Execution flow
 
 1. Redfish Service Validator starts with the Service root Resource Schema by querying the service with the service root URI and getting all the device information, the resources supported and their links. Once the response of the Service root query is verified against its schema, the tool traverses through all the collections and Navigation properties returned by the service.

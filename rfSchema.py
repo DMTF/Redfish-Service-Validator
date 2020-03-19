@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2016-2019 DMTF. All rights reserved.
+# Copyright 2016-2020 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 from collections import namedtuple
@@ -474,7 +474,6 @@ class PropType:
             if (topVersion in validTypes):
                 validTypes = validTypes[validTypes.index(topVersion):]
             props.append(PropItem(schemaObj, newPropOwner, newProp, val, topVersion, payloadName=pname, versionList=validTypes))
-
 
         return props
 
