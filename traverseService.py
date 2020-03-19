@@ -539,7 +539,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
             context = createContext(acquiredtype)
 
     # Get Schema object
-    schemaObj = rfSchema.getSchemaObject(acquiredtype, context)
+    schemaObj = rfSchema.getSchemaObject(acquiredtype, createContext(acquiredtype))
     if schemaObj is None:
         traverseLogger.error("ResourceObject creation: No schema XML for {} {}".format(acquiredtype, context))
         return None
@@ -697,7 +697,7 @@ class ResourceObj:
         self.context = context
 
         # Get Schema object
-        self.schemaObj = rfSchema.getSchemaObject(acquiredtype, self.context)
+        self.schemaObj = rfSchema.getSchemaObject(acquiredtype, createContext(acquiredtype))
 
         if self.schemaObj is None:
             traverseLogger.error("ResourceObject creation: No schema XML for {} {} {}".format(typename, acquiredtype, self.context))
@@ -807,10 +807,13 @@ class ResourceObj:
             elif key == '@odata.context':
                 paramPass = isinstance(decoded[key], str)
                 paramPass = re.match(
-                    '(\/.*)+#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                    '/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
                 if not paramPass:
-                    traverseLogger.verboseout("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
-                    paramPass = True
+                    traverseLogger.warn("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
+                    messages[key] = (decoded[key], 'odata',
+                                    'Exists',
+                                    'WARN')
+                    continue
             elif key == '@odata.type':
                 paramPass = isinstance(decoded[key], str)
                 paramPass = re.match(
@@ -821,10 +824,11 @@ class ResourceObj:
                 paramPass = True
 
             success = success and paramPass
-            
+
             messages[key] = (decoded[key], 'odata',
                             'Exists',
                             'PASS' if paramPass else 'FAIL')
+            
         return success, messages
 
 
