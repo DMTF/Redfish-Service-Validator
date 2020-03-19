@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2018-2019 DMTF. All rights reserved.
+# Copyright 2018-2020 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 import os
@@ -19,7 +19,7 @@ EDM_TAGS = ['Action', 'Annotation', 'Collection', 'ComplexType', 'EntityContaine
 EDMX_TAGS = ['DataServices', 'Edmx', 'Include', 'Reference']
 
 
-live_zip_uri = 'http://redfish.dmtf.org/schemas/DSP8010_2019.2.zip'
+live_zip_uri = 'http://redfish.dmtf.org/schemas/DSP8010_2019.4.zip'
 
 
 def setup_schema_pack(uri, local_dir, proxies, timeout):

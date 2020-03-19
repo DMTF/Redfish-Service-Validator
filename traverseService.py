@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2016-2019 DMTF. All rights reserved.
+# Copyright 2016-2020 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 import requests
@@ -16,7 +16,6 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from http.client import responses
 import configparser
 from urllib.parse import urlparse, urlunparse
-
 
 import metadata as md
 from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
@@ -540,7 +539,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
             context = createContext(acquiredtype)
 
     # Get Schema object
-    schemaObj = rfSchema.getSchemaObject(acquiredtype, context)
+    schemaObj = rfSchema.getSchemaObject(acquiredtype, createContext(acquiredtype))
     if schemaObj is None:
         traverseLogger.error("ResourceObject creation: No schema XML for {} {}".format(acquiredtype, context))
         return None
@@ -698,7 +697,7 @@ class ResourceObj:
         self.context = context
 
         # Get Schema object
-        self.schemaObj = rfSchema.getSchemaObject(acquiredtype, self.context)
+        self.schemaObj = rfSchema.getSchemaObject(acquiredtype, createContext(acquiredtype))
 
         if self.schemaObj is None:
             traverseLogger.error("ResourceObject creation: No schema XML for {} {} {}".format(typename, acquiredtype, self.context))
@@ -779,6 +778,58 @@ class ResourceObj:
     def getResourceProperties(self):
         allprops = self.propertyList + self.additionalList[:min(len(self.additionalList), 100)]
         return allprops
+
+    @staticmethod
+    def checkPayloadConformance(jsondata, uri):
+        """
+        checks for @odata entries and their conformance
+        These are not checked in the normal loop
+        """
+        messages = dict()
+        decoded = jsondata
+        success = True
+        for key in [k for k in decoded if '@odata' in k]:
+            paramPass = False
+
+            if key == '@odata.id':
+                paramPass = isinstance(decoded[key], str)
+                paramPass = re.match(
+                    '(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
+                if not paramPass:
+                    traverseLogger.error("{} {}: Expected format is /path/to/uri, but received: {}".format(uri, key, decoded[key]))
+                else:
+                    if decoded[key] != uri:
+                        traverseLogger.warn("{} {}: Expected @odata.id to match URI link {}".format(uri, key, decoded[key]))
+            elif key == '@odata.count':
+                paramPass = isinstance(decoded[key], int)
+                if not paramPass:
+                    traverseLogger.error("{} {}: Expected an integer, but received: {}".format(uri, key, decoded[key]))
+            elif key == '@odata.context':
+                paramPass = isinstance(decoded[key], str)
+                paramPass = re.match(
+                    '/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                if not paramPass:
+                    traverseLogger.warn("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
+                    messages[key] = (decoded[key], 'odata',
+                                    'Exists',
+                                    'WARN')
+                    continue
+            elif key == '@odata.type':
+                paramPass = isinstance(decoded[key], str)
+                paramPass = re.match(
+                    '#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                if not paramPass:
+                    traverseLogger.error("{} {}: Expected format is #Namespace.Type, but received: {}".format(uri, key, decoded[key]))
+            else:
+                paramPass = True
+
+            success = success and paramPass
+
+            messages[key] = (decoded[key], 'odata',
+                            'Exists',
+                            'PASS' if paramPass else 'FAIL')
+            
+        return success, messages
 
 
 def enumerate_collection(items, cTypeName, linklimits, sample_size):

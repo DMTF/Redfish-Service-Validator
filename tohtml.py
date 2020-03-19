@@ -2,7 +2,13 @@
 # Copyright 2016-2019 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
-from commonRedfish import getNamespace, getType
+if __name__ != '__main__':
+    import traverseService as rst
+    from commonRedfish import getNamespace, getType
+else:
+    import argparse
+    from bs4 import BeautifulSoup
+    import os, csv
 import RedfishLogo as logo
 from types import SimpleNamespace
 from collections import Counter, OrderedDict
@@ -91,11 +97,12 @@ def applyInfoSuccessColor(num, entry):
     return tag.div(entry, attr=style)
 
 
-def renderHtml(results, tool_version, startTick, nowTick, service):
+def renderHtml(results, tool_version, startTick, nowTick, service, printCSV):
     # Render html
     config = service.config
     config_str = ', '.join(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))))
     sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
+    rsvLogger = rst.getLogger()
     logpath = config['logpath']
     error_lines, finalCounts = count_errors(results)
     if service.metadata is not None:
@@ -240,13 +247,23 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
         entry.append(rhead)
 
         # actual table
-        rows = [[m] + list(val['messages'][m]) for m in val['messages']]
+        rows = [[str(m)] + list([str(x) for x in val['messages'][m]]) for m in val['messages']]
         titles = ['Property Name', 'Value', 'Type', 'Exists', 'Result']
         widths = ['15', '30', '30', '10', '15']
         tableHeader = tableBlock(rows, titles, widths, ffunc=applySuccessColor)
 
         #    lets wrap table and errors and warns into one single column table
         tableHeader = tag.tr(tag.td((tableHeader)))
+
+        infos_a = [str(val.get(x)) for x in ['uri'] if val.get(x) not in ['',None]]
+        infos_a.append(rtime)
+
+        if(printCSV):
+            rsvLogger.info(','.join(infos_a))
+            rsvLogger.info(','.join(infos))
+            rsvLogger.info(','.join(titles))
+            rsvLogger.info('\n'.join([','.join(x) for x in rows]))
+            rsvLogger.info(',')
 
         # warns and errors
         errors = val['errors']
@@ -283,3 +300,60 @@ def writeHtml(string, path):
     with open(path, 'w', encoding='utf-8') as f:
         f.write(string)
 
+
+def htmlLogScraper(htmlReport):
+    outputLogName = os.path.split(htmlReport)[0]
+    output = open(f'./logs/{outputLogName}.csv','w',newline='')
+    csv_output = csv.writer(output)
+    csv_output.writerow(['URI','Status','Response Time','Context','File Origin','Resource Type','Property Name','Value','Expected','Actual','Result'])
+    htmlLog = open(htmlReport,'r')
+    soup = BeautifulSoup(htmlLog, 'html.parser')
+    glanceDetails = {}
+    idList = []
+    table = soup.find_all('table', {'class':'titletable'})
+    for tbl in table:
+        tr = tbl.find('tr')
+        URIresp = tr.find('td',{'class':'title'}) # URI, response time, show results button
+        URI = URIresp.text.partition('(')[0]
+        responseTime = URIresp.text.partition('response time')[2].split(')')[0].strip(':s')
+        StatusGET = tr.find('td',{'class':'pass'}) or tr.find('td',{'class':'fail'})
+        if 'Success' in StatusGET.text:
+            Status = '200'
+        else:
+            Status = '400'
+
+        context,FileOrigin,ResourceType = ' ',' ',' '
+        if 'Context:' in tr.find_all('td')[1].text:
+            context = tr.find_all('td')[1].text.split('Context:')[1].split('File')[0]
+        if 'File Origin'in tr.find_all('td')[1].text:
+            FileOrigin = tr.find_all('td')[1].text.split('File Origin:')[1].split('Resource')[0]
+        if 'Resource Type'in tr.find_all('td')[1].text:
+            ResourceType = tr.find_all('td')[1].text.split('Resource Type:')[1]
+        resNumHtml = tr.find('div', {'class':'button warn'})
+        resNum = resNumHtml.attrs['onclick'].split(";")
+        resNum = resNum[0].split("'")[1] if len(resNum) < 3 else resNum[1].split("'")[1]
+        results = URI+'*'+Status+'*'+responseTime+'*'+context+'*'+FileOrigin+'*'+ResourceType+'*' #using * for csv splitting since some values have commas
+        glanceDetails[resNum] = results # mapping of results to their respective tables
+
+    properties = soup.findAll('td',{'class':'results'})
+    data = []
+    for table in properties:
+        tableID = table.attrs.get('id')
+        if len(table.find_all('table')) == 0 or tableID in ['resMetadata', None]:
+            continue
+        tableBody = table.find_all('table')[-1]
+        tableRows = tableBody.find_all('tr')[1:] #get rows from property tables excluding header
+        for tr in tableRows:
+            td = tr.find_all('td')
+            row = [i.text for i in td]
+            if tableID in glanceDetails:
+                data.append(glanceDetails[tableID]+'*'.join(row))
+    csv_output.writerows([x.split('*') for x in data]) #using * for csv splitting since some values have commas
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Get an excel sheet of details shown in the HTML reports for the Redfish Service Validator')
+    parser.add_argument('htmllog' ,type=str, help = 'Path of the HTML log to be converted to csv format' )
+    args = parser.parse_args()
+
+    htmlLogScraper(args.htmllog) 
