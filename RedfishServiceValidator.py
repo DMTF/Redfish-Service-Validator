@@ -22,7 +22,7 @@ from metadata import setup_schema_pack
 
 from commonValidator import *
 
-tool_version = '1.3.4'
+tool_version = '1.3.5'
 
 rsvLogger = rst.getLogger()
 

@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.3.5] - 2020-03-21
+- Added more descriptive text to `@odata.type` format errors
+- Downgraded `@odata.context` format errors to warnings
+
 ## [1.3.4] - 2019-11-08
 - Fixed handling of null objects in arrays of objects
 
