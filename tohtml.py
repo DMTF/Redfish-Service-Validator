@@ -302,14 +302,13 @@ def writeHtml(string, path):
 
 
 def htmlLogScraper(htmlReport):
-    outputLogName = os.path.split(htmlReport)[0]
-    output = open(f'./logs/{outputLogName}.csv','w',newline='')
+    outputLogName = os.path.split(htmlReport)[-1]
+    output = open('./logs/{}.csv'.format(outputLogName),'w',newline='')
     csv_output = csv.writer(output)
     csv_output.writerow(['URI','Status','Response Time','Context','File Origin','Resource Type','Property Name','Value','Expected','Actual','Result'])
     htmlLog = open(htmlReport,'r')
     soup = BeautifulSoup(htmlLog, 'html.parser')
     glanceDetails = {}
-    idList = []
     table = soup.find_all('table', {'class':'titletable'})
     for tbl in table:
         tr = tbl.find('tr')
@@ -349,6 +348,7 @@ def htmlLogScraper(htmlReport):
             if tableID in glanceDetails:
                 data.append(glanceDetails[tableID]+'*'.join(row))
     csv_output.writerows([x.split('*') for x in data]) #using * for csv splitting since some values have commas
+    output.close()
 
 
 if __name__ == '__main__':
