@@ -495,7 +495,7 @@ def callResourceURI(URILink):
         return currentService.callResourceURI(URILink)
 
 
-def createResourceObject(name, uri, jsondata=None, typename=None, context=None, parent=None, isComplex=False):
+def createResourceObject(name, uri, jsondata=None, typename=None, context=None, parent=None, isComplex=False, topVersion=None):
     """
     Factory for resource object, move certain work here
     """
@@ -547,6 +547,8 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
     forceType = False
     # Check if this is a Registry resource
     parent_type = parent.typename if parent is not None and parent.typeobj is not None else None
+    if topVersion is not None:
+        parent_type = topVersion
 
     # get highest type if type is invalid
     if schemaObj.getTypeTagInSchema(acquiredtype) is None:
@@ -608,7 +610,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
         else:
             traverseLogger.warn('@odata.id should have a fragment'.format(odata_id))
 
-    newResource = ResourceObj(name, uri, jsondata, typename, original_context, parent, isComplex, forceType=forceType)
+    newResource = ResourceObj(name, uri, jsondata, typename, original_context, parent, isComplex, forceType=forceType, topVersion=topVersion)
     newResource.rtime = rtime
     newResource.status = status
 
@@ -616,7 +618,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
 
 
 class ResourceObj:
-    def __init__(self, name: str, uri: str, jsondata: dict, typename: str, context: str, parent=None, isComplex=False, forceType=False):
+    def __init__(self, name: str, uri: str, jsondata: dict, typename: str, context: str, parent=None, isComplex=False, forceType=False, topVersion=None):
         self.initiated = False
         self.parent = parent
         self.uri, self.name = uri, name
@@ -637,6 +639,8 @@ class ResourceObj:
             self.isRegistry = True
             self.context = None
             context = None
+        if topVersion is not None:
+            parent_type = topVersion
 
         # Check if we provide a valid json
         self.jsondata = jsondata
@@ -734,7 +738,7 @@ class ResourceObj:
             regex = re.compile(prop_pattern)
             for key in [k for k in self.jsondata if k not in propertyList and regex.fullmatch(k)]:
                 val = self.jsondata.get(key)
-                value_obj = rfSchema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type)
+                value_obj = rfSchema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type, topVersion=parent_type)
                 self.additionalList.append(value_obj)
 
         if config['uricheck'] and self.typeobj.expectedURI is not None:
