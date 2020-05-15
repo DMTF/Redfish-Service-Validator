@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.3.6] - 2020-05-15
+- Corrected handling of version detection of resources
+
 ## [1.3.5] - 2020-03-21
 - Added more descriptive text to `@odata.type` format errors
 - Downgraded `@odata.context` format errors to warnings
