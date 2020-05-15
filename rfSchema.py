@@ -871,10 +871,10 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                         continue
             propEntry['realtype'] = 'complex'
             if propEntry.get('isCollection') is None:
-                propEntry['typeprops'] = rst.createResourceObject(propertyName, 'complex', val, context=schemaObj.context, typename=baseType, isComplex=True)
+                propEntry['typeprops'] = rst.createResourceObject(propertyName, 'complex', val, context=schemaObj.context, typename=baseType, isComplex=True, topVersion=topVersion)
             else:
                 val = val if val is not None else []
-                propEntry['typeprops'] = [rst.createResourceObject(propertyName, 'complex', item, context=schemaObj.context, typename=baseType, isComplex=True) for item in val]
+                propEntry['typeprops'] = [rst.createResourceObject(propertyName, 'complex', item, context=schemaObj.context, typename=baseType, isComplex=True, topVersion=topVersion) for item in val]
             break
 
         elif nameOfTag == 'EnumType':  # If enum, get all members
