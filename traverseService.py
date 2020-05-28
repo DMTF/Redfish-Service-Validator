@@ -995,9 +995,8 @@ def getAnnotations(metadata, decoded, prefix=''):
     Function to gather @ additional props in a payload
     """
     allowed_annotations = ['odata', 'Redfish', 'Privileges', 'Message']
-    if metadata is not None:
-        schemaObj = metadata.schema_obj
-    else:
+    schemaObj = metadata.schema_obj if metadata is not None else None
+    if schemaObj is None:
         traverseLogger.warn("Cannot work on annotations without a service or metadata")
         return False, []
     additionalProps = list()
