@@ -864,6 +864,9 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                     else:
                         nextEntity = currentSchema.find(
                             ['EntityType', 'ComplexType'], attrs={'Name': OwnerType})
+                        if nextEntity is None:
+                            baseType = schemaObj.getHighestType(baseType, topVersion)
+                            break
                         nextType = nextEntity.get('BaseType')
                         currentVersion = getNamespace(nextType)
                         currentSchema = baseSoup.find(
