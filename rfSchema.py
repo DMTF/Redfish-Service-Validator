@@ -454,7 +454,7 @@ class PropType:
                 node = node.parent
         return links
 
-    def getProperties(self, jsondata, topVersion=None):
+    def getProperties(self, jsondata, topVersion=None, parent=None):
         node = self
         allPropList = []
         # collect all properties
@@ -473,7 +473,7 @@ class PropType:
             validTypes = [getNamespace(x) for x in self.getTypeChain()]
             if (topVersion in validTypes):
                 validTypes = validTypes[validTypes.index(topVersion):]
-            props.append(PropItem(schemaObj, newPropOwner, newProp, val, topVersion, payloadName=pname, versionList=validTypes))
+            props.append(PropItem(schemaObj, newPropOwner, newProp, val, topVersion, payloadName=pname, versionList=validTypes, parent=parent))
 
         return props
 
@@ -637,18 +637,25 @@ def getTypeObject(typename, schemaObj):
 
 
 class PropItem:
-    def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None, payloadName=None, versionList=None):
+    def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None, payloadName=None, versionList=None, parent=None):
         try:
             self.name = propOwner + ':' + propChild
             self.propOwner, self.propChild = propOwner, propChild
             self.val = val
+            highest_version_of_payload = [1, 0, 0]
+            if parent is not None:
+                while parent.parent is not None:
+                    parent = parent.parent
+                highest_version_of_payload = splitVersionString(getNamespace(parent.typename))
             self.valid = topVersion is None or\
                     versionList is None or\
-                    (getNamespace( propOwner ) in versionList)
+                    (getNamespace( propOwner ) in versionList) or\
+                    (splitVersionString(propOwner) <= splitVersionString(topVersion)) or\
+                    (splitVersionString(propOwner) <= (highest_version_of_payload))
             self.exists = val != 'n/a'
             self.payloadName = payloadName if payloadName is not None else propChild
             self.propDict = getPropertyDetails(
-                schemaObj, propOwner, propChild, val, topVersion, customType)
+                schemaObj, propOwner, propChild, val, topVersion, customType, parent=parent)
             self.attr = self.propDict['attrs']
 
         except Exception as ex:
@@ -674,7 +681,7 @@ class PropAction:
             self.actTag = None
 
 
-def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=None, customType=None):
+def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=None, customType=None, parent=None):
     """
     Get dictionary of tag attributes for properties given, including basetypes.
 
@@ -874,10 +881,10 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
                         continue
             propEntry['realtype'] = 'complex'
             if propEntry.get('isCollection') is None:
-                propEntry['typeprops'] = rst.createResourceObject(propertyName, 'complex', val, context=schemaObj.context, typename=baseType, isComplex=True, topVersion=topVersion)
+                propEntry['typeprops'] = rst.createResourceObject(propertyName, 'complex', val, context=schemaObj.context, typename=baseType, isComplex=True, topVersion=topVersion, parent=parent)
             else:
                 val = val if val is not None else []
-                propEntry['typeprops'] = [rst.createResourceObject(propertyName, 'complex', item, context=schemaObj.context, typename=baseType, isComplex=True, topVersion=topVersion) for item in val]
+                propEntry['typeprops'] = [rst.createResourceObject(propertyName, 'complex', item, context=schemaObj.context, typename=baseType, isComplex=True, topVersion=topVersion, parent=parent) for item in val]
             break
 
         elif nameOfTag == 'EnumType':  # If enum, get all members
