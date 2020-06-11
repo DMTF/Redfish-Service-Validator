@@ -465,7 +465,7 @@ def main(arglist=None, direct_parser=None):
 
     fmt = logging.Formatter('%(levelname)s - %(message)s')
     fh = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    fh.setLevel(min(logging.INFO if not args.debug_logging else logging.DEBUG, logging.INFO if args.verbose_checks else VERBO_NUM ))
+    fh.setLevel(min(logging.INFO if not args.debug_logging else logging.DEBUG, logging.INFO if not args.verbose_checks else VERBO_NUM ))
     fh.setFormatter(fmt)
     rsvLogger.addHandler(fh)
 
