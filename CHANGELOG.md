@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.3.7] - 2020-06-13
+- Additional fixes to handling of version detection of resources
+
 ## [1.3.6] - 2020-05-15
 - Corrected handling of version detection of resources
 
