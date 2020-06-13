@@ -495,7 +495,7 @@ def callResourceURI(URILink):
         return currentService.callResourceURI(URILink)
 
 
-def createResourceObject(name, uri, jsondata=None, typename=None, context=None, parent=None, isComplex=False, topVersion=None):
+def createResourceObject(name, uri, jsondata=None, typename=None, context=None, parent=None, isComplex=False, topVersion=None, top_of_resource=None):
     """
     Factory for resource object, move certain work here
     """
@@ -587,7 +587,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
             else:
                 traverseLogger.debug('Acquired resource thru AutoExpanded means {}'.format(uri_item))
                 traverseLogger.info('Regetting resource from URI {}'.format(uri_item))
-                new_payload = createResourceObject(name, uri_item, None, typename, context, parent, isComplex)
+                new_payload = createResourceObject(name, uri_item, None, typename, context, parent, isComplex, top_of_resource=top_of_resource)
                 if new_payload is None:
                     traverseLogger.warn('Could not acquire resource, reverting to original payload...')
         else:
@@ -610,7 +610,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
         else:
             traverseLogger.warn('@odata.id should have a fragment'.format(odata_id))
 
-    newResource = ResourceObj(name, uri, jsondata, typename, original_context, parent, isComplex, forceType=forceType, topVersion=topVersion)
+    newResource = ResourceObj(name, uri, jsondata, typename, original_context, parent, isComplex, forceType=forceType, topVersion=topVersion, top_of_resource=top_of_resource)
     newResource.rtime = rtime
     newResource.status = status
 
@@ -618,7 +618,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
 
 
 class ResourceObj:
-    def __init__(self, name: str, uri: str, jsondata: dict, typename: str, context: str, parent=None, isComplex=False, forceType=False, topVersion=None):
+    def __init__(self, name: str, uri: str, jsondata: dict, typename: str, context: str, parent=None, isComplex=False, forceType=False, topVersion=None, top_of_resource=None):
         self.initiated = False
         self.parent = parent
         self.uri, self.name = uri, name
@@ -725,7 +725,7 @@ class ResourceObj:
 
         self.typeobj = rfSchema.getTypeObject(typename, self.schemaObj)
 
-        self.propertyList = self.typeobj.getProperties(self.jsondata, topVersion=getNamespace(typename), parent=self)
+        self.propertyList = self.typeobj.getProperties(self.jsondata, topVersion=getNamespace(typename), top_of_resource=self if top_of_resource is None else top_of_resource)
         propertyList = [prop.payloadName for prop in self.propertyList]
 
         # get additional
