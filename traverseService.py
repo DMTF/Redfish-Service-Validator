@@ -435,7 +435,7 @@ class rfService():
                     # non-service schemas can use "text/xml" Content-Type
                     if inService:
                         traverseLogger.warn(
-                                "Incorrect content type 'text/xml' for file within service".format(URILink))
+                                "Incorrect content type 'text/xml' for file within service {}".format(URILink))
                     decoded = response.text
                 else:
                     traverseLogger.error(
@@ -598,7 +598,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
         if fragment_odata is '':
             pass
         else:
-            traverseLogger.warn('@odata.id should not have a fragment'.format(odata_id))
+            traverseLogger.warn('@odata.id should not have a fragment {}'.format(odata_id))
 
     elif 'Resource.ReferenceableMember' in allTypes:
         if fragment is not '':
@@ -608,7 +608,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
         if fragment_odata is not '':
             pass
         else:
-            traverseLogger.warn('@odata.id should have a fragment'.format(odata_id))
+            traverseLogger.warn('@odata.id should have a fragment {}'.format(odata_id))
 
     newResource = ResourceObj(name, uri, jsondata, typename, original_context, parent, isComplex, forceType=forceType, topVersion=topVersion, top_of_resource=top_of_resource)
     newResource.rtime = rtime
