@@ -106,7 +106,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
     rsvLogger.debug('(success, uri, status, delay) = {}, (propType, propCollectionType) = {}, data = {}'
                     .format((success, uri, status, delay), (propType, propCollectionType), data))
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
-    generics = ['Resource.ItemOrCollection', 'Resource.ResourceCollection', 'Resource.Item']
+    generics = ['Resource.ItemOrCollection', 'Resource.ResourceCollection', 'Resource.Item', 'Resource.Resource']
     if (propCollectionType in generics or propType in generics) and success:
         return True
     elif success:
