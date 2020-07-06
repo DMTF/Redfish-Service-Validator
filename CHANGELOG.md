@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.3.8] - 2020-07-06
+- Added exception in link validation for `Resource.Resource` to allow for any type of resource to be found
+
 ## [1.3.7] - 2020-06-13
 - Additional fixes to handling of version detection of resources
 
