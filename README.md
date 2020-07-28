@@ -75,7 +75,7 @@ PreferOnline - (boolean) Prefer online/service schema over local schema.  This w
 
 MetadataFilePath - (string) This attribute points to the location of the DMTF schema file location, populated by xml files
 
-Schema_Pack - (string) URL path to an official zipped pack of DMTF Schema, to be extracted over the user's local schema directory.  Use 'latest' to pull the latest zip.  (To be used with option LocalOnly) 
+Schema_Pack - (string) URL path to an official zipped pack of DMTF Schema, to be extracted over the user's local schema directory.  Use 'latest' to pull the latest zip.  (To be used with option LocalOnlyMode)
 
 Timeout - (integer) Interval of time before timing out a request
 
