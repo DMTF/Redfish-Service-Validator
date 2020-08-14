@@ -645,7 +645,8 @@ class PropItem:
             highest_version_of_payload = [1, 0, 0]
             if top_of_resource is not None:
                 highest_version_of_payload = splitVersionString(getNamespace(top_of_resource.typename))
-            self.valid = topVersion is None or\
+            self.valid = getNamespaceUnversioned(propOwner) != getNamespaceUnversioned(top_of_resource.typename if top_of_resource else propOwner) or\
+                    topVersion is None or\
                     versionList is None or\
                     (getNamespace( propOwner ) in versionList) or\
                     (splitVersionString(propOwner) <= splitVersionString(topVersion)) or\
