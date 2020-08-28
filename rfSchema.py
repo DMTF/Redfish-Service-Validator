@@ -643,14 +643,19 @@ class PropItem:
             self.propOwner, self.propChild = propOwner, propChild
             self.val = val
             highest_version_of_payload = [1, 0, 0]
-            if top_of_resource is not None:
+            sub_valid = True
+            if isinstance(val, dict) and '@odata.type' in val:
+                highest_version_of_payload = splitVersionString(getNamespace(val['@odata.type']))
+            elif top_of_resource is not None:
                 highest_version_of_payload = splitVersionString(getNamespace(top_of_resource.typename))
-            self.valid = getNamespaceUnversioned(propOwner) != getNamespaceUnversioned(top_of_resource.typename if top_of_resource else propOwner) or\
+                sub_valid = getNamespaceUnversioned(propOwner) != getNamespaceUnversioned(top_of_resource.typename)
+            self.valid = sub_valid or\
                     topVersion is None or\
                     versionList is None or\
                     (getNamespace( propOwner ) in versionList) or\
                     (splitVersionString(propOwner) <= splitVersionString(topVersion)) or\
                     (splitVersionString(propOwner) <= (highest_version_of_payload))
+            
             self.exists = val != 'n/a'
             self.payloadName = payloadName if payloadName is not None else propChild
             self.propDict = getPropertyDetails(
