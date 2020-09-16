@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.3.9] - 2020-09-16
+- Several fixes in handling of detection of a proper version of a JSON object within a resource
+
 ## [1.3.8] - 2020-07-06
 - Added exception in link validation for `Resource.Resource` to allow for any type of resource to be found
 
