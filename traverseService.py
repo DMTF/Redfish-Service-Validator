@@ -347,9 +347,9 @@ class rfService():
         CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
 
         scheme, netloc, path, params, query, fragment = urlparse(URILink)
-        inService = scheme is '' and netloc is ''
-        scheme = ('https' if UseSSL else 'http') if scheme is '' else scheme
-        netloc = ConfigIP if netloc is '' else netloc
+        inService = scheme == '' and netloc == ''
+        scheme = ('https' if UseSSL else 'http') if scheme == '' else scheme
+        netloc = ConfigIP if netloc == '' else netloc
         URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
 
         payload, statusCode, elapsed, auth, noauthchk = None, '', 0, None, True
@@ -579,7 +579,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
     scheme, netloc, path, params, query, fragment_odata = urlparse(odata_id)
 
     if 'Resource.Resource' in allTypes:
-        if fragment is '':
+        if fragment == '':
             if original_jsondata is None:
                 traverseLogger.debug('Acquired resource OK {}'.format(uri_item))
             elif os.path.isfile(uri_item):
@@ -595,17 +595,17 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
                 traverseLogger.warn('Acquired Resource.Resource type with fragment, could cause issues  {}'.format(uri_item))
             else:
                 traverseLogger.warn('Found uri with fragment, which Resource.Resource types do not use {}'.format(uri_item))
-        if fragment_odata is '':
+        if fragment_odata == '':
             pass
         else:
             traverseLogger.warn('@odata.id should not have a fragment {}'.format(odata_id))
 
     elif 'Resource.ReferenceableMember' in allTypes:
-        if fragment is not '':
+        if fragment != '':
             pass
         else:
             traverseLogger.warn('No fragment, but ReferenceableMembers require it {}'.format(uri_item))
-        if fragment_odata is not '':
+        if fragment_odata != '':
             pass
         else:
             traverseLogger.warn('@odata.id should have a fragment {}'.format(odata_id))
