@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.4.0] - 2021-04-16
+- Fixed 'is' and 'is not' comparisions that are not allowed in Python3.8+
+
 ## [1.3.9] - 2020-09-16
 - Several fixes in handling of detection of a proper version of a JSON object within a resource
 
