@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.4.1] - 2021-06-18
+- Modified calls to requests package to reuse HTTP sessions for better performance
+
 ## [1.4.0] - 2021-04-16
 - Fixed 'is' and 'is not' comparisions that are not allowed in Python3.8+
 
