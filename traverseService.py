@@ -251,6 +251,9 @@ class rfService():
         self.proxies = dict()
         self.active = False
 
+        # Create a Session to optimize connection times
+        self.session = requests.Session()
+
         config['configuri'] = ('https' if config.get('usessl', True) else 'http') + '://' + config['targetip']
         httpprox = config['httpproxy']
         httpsprox = config['httpsproxy']
@@ -408,7 +411,7 @@ class rfService():
         try:
             if payload is not None and CacheMode == 'Prefer':
                 return True, payload, -1, 0
-            response = requests.get(URLDest,
+            response = self.session.get(URLDest,
                                     headers=headers, auth=auth, verify=certVal, timeout=timeout,
                                     proxies=proxies if not inService else None)  # only proxy non-service
             expCode = [200]
