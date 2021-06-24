@@ -72,7 +72,7 @@ def getSchemaDetails(SchemaType, SchemaURI):
         if success:
             return success, soup, origin
 
-    xml_suffix = currentService.config['schemasuffix']
+    xml_suffix = '_v1.xml'
 
     config = rst.currentService.config
     LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
@@ -139,14 +139,14 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
     """
     Alias = getNamespaceUnversioned(SchemaType)
     config = rst.config
-    SchemaLocation, SchemaSuffix = config['metadatafilepath'], config['schemasuffix']
+    SchemaLocation, SchemaSuffix = config['metadatafilepath'], '_v1.xml'
     if SchemaURI is not None:
         uriparse = SchemaURI.split('/')[-1].split('#')
         xml = uriparse[0]
     else:
         rst.traverseLogger.warning("SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
         return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix)
-    rst.traverseLogger.debug((SchemaType, SchemaURI, SchemaLocation + '/' + xml))
+    rst.traverseLogger.debug(('local', SchemaType, SchemaURI, SchemaLocation + '/' + xml))
     filestring = Alias + SchemaSuffix if xml is None else xml
     try:
         # get file

@@ -14,27 +14,20 @@ import logging
 from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from http.client import responses
-import configparser
-from urllib.parse import urlparse, urlunparse
 
-import metadata as md
 from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
 import rfSchema
 
 traverseLogger = logging.getLogger(__name__)
-traverseLogger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.INFO)
-traverseLogger.addHandler(ch)
+my_logger = traverseLogger
+currentService = None
+config = {}
 
 commonHeader = {'OData-Version': '4.0'}
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # dictionary to hold sampling notation strings for URIs
 uri_sample_map = dict()
-
-currentService = None
-
 
 class AuthenticationError(Exception):
     """Exception used for failed basic auth or token auth"""
@@ -49,66 +42,7 @@ def getLogger():
     return traverseLogger
 
 
-# default config
-argparse2configparser = {
-        'user': 'username', 'nochkcert': '!certificatecheck', 'ca_bundle': 'certificatebundle', 'schemamode': 'schemamode',
-        'suffix': 'schemasuffix', 'schemadir': 'metadatafilepath', 'nossl': '!usessl', 'timeout': 'timeout', 'service': 'servicemode',
-        'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
-        'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
-        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
-        'linklimit': 'linklimit', 'sample': 'sample', 'nooemcheck': '!oemcheck', 'preferonline': 'preferonline',
-        'uri_check': 'uricheck', 'version_check': 'versioncheck'
-        }
-
-configset = {
-        "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
-        "metadatafilepath": str, "cachemode": (bool, str), "cachefilepath": str, "schemasuffix": str, "timeout": int, "httpproxy": str, "httpsproxy": str,
-        "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': str, 'extraxmlheaders': str, "schema_pack": str,
-        "forceauth": bool, "oemcheck": bool, 'preferonline': bool, 'uricheck': bool, 'versioncheck': str
-        }
-
-defaultconfig = {
-        'authtype': 'Basic',
-        'username': "",
-        'password': "",
-        'token': "",
-        'oemcheck': True,
-        'certificatecheck': True,
-        'certificatebundle': "",
-        'metadatafilepath': './SchemaFiles/metadata',
-        'cachemode': 'Off',
-        'cachefilepath': './cache',
-        'schemasuffix': '_v1.xml',
-        'httpproxy': "",
-        'httpsproxy': "",
-        'localonlymode': False,
-        'servicemode': False,
-        'preferonline': False,
-        'linklimit': {'LogEntry': 20},
-        'sample': 0,
-        'usessl': True,
-        'timeout': 30,
-        'schema_pack': None,
-        'forceauth': False,
-        'uricheck': False,
-        'versioncheck': '',
-        }
-
-defaultconfig_by_version = {
-        '1.0.0': {'schemasuffix': '.xml'},
-        '1.0.6': {'uricheck': True}
-        }
-
-customval = {
-        'linklimit': lambda v: re.findall('[A-Za-z_]+:[0-9]+', v)
-        }
-
-configSet = False
-
-config = dict(defaultconfig)
-
-
-def startService(config, defaulted=[]):
+def startService(config):
     """startService
 
     Begin service to use, sets as global
@@ -121,190 +55,91 @@ def startService(config, defaulted=[]):
     global currentService
     if currentService is not None:
         currentService.close()
-    currentService = rfService(config, defaulted)
+    currentService = rfService(config)
+    config = currentService.config
     return currentService
 
-
-def convertConfigParserToDict(configpsr):
-    """convertConfigParserToDict
-
-    Takes a raw config parser and strips out its options
-    Used to circumvent normal config parser calls
-
-    Notes: make function independent of tool
-
-    :param configpsr: config parser
-    """
-    cdict = {}
-    for category in configpsr:
-        for option in configpsr[category]:
-            val = configpsr[category][option]
-            if option not in configset.keys() and category not in ['Information', 'Validator']:
-                traverseLogger.error('Config option {} in {} unsupported!'.format(option, category))
-            if val in ['', None]:
-                continue
-            if val.isdigit():
-                val = int(val)
-            elif option in customval:
-                val = customval[option](val)
-            elif str(val).lower() in ['on', 'true', 'yes']:
-                val = True
-            elif str(val).lower() in ['off', 'false', 'no']:
-                val = False
-            cdict[option] = val
-    return cdict
-
-
-def setByArgparse(args):
-    """setByArgparse
-
-    Set config via args namespace parsed by argsparse
-
-    :param args: arg namespace
-    """
-    if args.config is not None:
-        configpsr = configparser.ConfigParser()
-        configpsr.read(args.config)
-        cdict = convertConfigParserToDict(configpsr)
-    else:
-        cdict = {}
-    for param in args.__dict__:
-        if args.__dict__[param] is not None:
-            if param in argparse2configparser:
-                if isinstance(args.__dict__[param], list):
-                    for cnt, item in enumerate(argparse2configparser[param].split('+')):
-                        cdict[item] = args.__dict__[param][cnt]
-                elif '+' not in argparse2configparser[param]:
-                    if '!' in argparse2configparser[param]:
-                        cdict[argparse2configparser[param].replace('!', '')] = not args.__dict__[param]
-                    else:
-                        cdict[argparse2configparser[param]] = args.__dict__[param]
-            else:
-                cdict[param] = args.__dict__[param]
-    return setConfig(cdict)
-
-
-def setConfig(cdict):
-    """
-    Set config based on configurable dictionary
-    """
-    # Send config only with keys supported by program
-    linklimitdict = {}
-    if cdict.get('linklimit') is not None:
-        for item in cdict.get('linklimit'):
-            if re.match('[A-Za-z_]+:[0-9]+', item) is not None:
-                typename, count = tuple(item.split(':')[:2])
-                if typename not in linklimitdict:
-                    linklimitdict[typename] = int(count)
-                else:
-                    traverseLogger.error('Limit already exists for {}'.format(typename))
-    cdict['linklimit'] = linklimitdict
-
-    for item in cdict:
-        if item not in configset:
-            traverseLogger.debug('Unsupported {}'.format(item))
-        elif cdict[item] is None and configset[item] is str:
-            cdict[item] = ''
-        elif not isinstance(cdict[item], configset[item]):
-            traverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
-
-    global config
-    config = dict()
-
-    # set linklimit
-    defaultlinklimit = defaultconfig['linklimit']
-
-    config.update(cdict)
-
-    config['certificatecheck'] = config.get('certificatecheck', True) and config.get('usessl', True)
-
-    if 'extrajsonheaders' in config:
-        config['extrajsonheaders'] = json.loads(config['extrajsonheaders'])
-    if 'extraxmlheaders' in config:
-        config['extraxmlheaders'] = json.loads(config['extraxmlheaders'])
-
-    defaultlinklimit.update(config['linklimit'])
-    config['linklimit'] = defaultlinklimit
-
-    if 'cachemode' in config and config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
-        if config['cachemode'] is not False:
-            traverseLogger.error('CacheMode or path invalid, defaulting to Off')
-        config['cachemode'] = 'Off'
-
-    if 'authtype' in config and config['authtype'] not in ['None', 'Basic', 'Session', 'Token']:
-        config['authtype'] = 'Basic'
-        traverseLogger.error('AuthType invalid, defaulting to Basic')
-
-    # report keys not explicitly set in config
-    defaultkeys = [key for key in defaultconfig if key not in config]
-    config.update({key: defaultconfig[key] for key in defaultkeys})
-
-    return config, defaultkeys
-
-
 class rfService():
-    def __init__(self, config, default_entries=[]):
+    def __init__(self, my_config):
         traverseLogger.info('Setting up service...')
-        global currentService
-        currentService = self
-        self.config = config
-        self.proxies = dict()
+        global config
+        config = my_config
+        self.config = my_config
+        # self.proxies = dict()
         self.active = False
-
         # Create a Session to optimize connection times
         self.session = requests.Session()
 
-        config['configuri'] = ('https' if config.get('usessl', True) else 'http') + '://' + config['targetip']
-        httpprox = config['httpproxy']
-        httpsprox = config['httpsproxy']
-        self.proxies['http'] = httpprox if httpprox != "" else None
-        self.proxies['https'] = httpsprox if httpsprox != "" else None
+        # setup URI
+        from urllib.parse import urlparse
+        self.config['configuri'] = self.config['ip']
+        self.config['metadatafilepath'] = self.config['schema_directory']
+        self.config['usessl'] = urlparse(self.config['configuri']).scheme in ['https']
+        self.config['certificatecheck'] = not self.config['nochkcert']
+        self.config['certificatebundle'] = None
+        self.config['timeout'] = 10
+
+        # httpprox = config['httpproxy']
+        # httpsprox = config['httpsproxy']
+        # self.proxies['http'] = httpprox if httpprox != "" else None
+        # self.proxies['https'] = httpsprox if httpsprox != "" else None
 
         # Convert list of strings to dict
-        self.chkcertbundle = config['certificatebundle']
-        chkcertbundle = self.chkcertbundle
-        if chkcertbundle not in [None, ""] and config['certificatecheck']:
-            if not os.path.isfile(chkcertbundle) and not os.path.isdir(chkcertbundle):
-                self.chkcertbundle = None
-                traverseLogger.error('ChkCertBundle is not found, defaulting to None')
-        else:
-            config['certificatebundle'] = None
+        # self.chkcertbundle = config['certificatebundle']
+        # chkcertbundle = self.chkcertbundle
+        # if chkcertbundle not in [None, ""] and config['certificatecheck']:
+        #     if not os.path.isfile(chkcertbundle) and not os.path.isdir(chkcertbundle):
+        #         self.chkcertbundle = None
+        #         traverseLogger.error('ChkCertBundle is not found, defaulting to None')
+        # else:
+        #     config['certificatebundle'] = None
 
-        ChkCert = config['certificatecheck']
-        AuthType = config['authtype']
 
         self.currentSession = None
-        if not config.get('usessl', True) and not config['forceauth']:
-            if config['username'] not in ['', None] or config['password'] not in ['', None]:
+        if not self.config['usessl'] and not self.config['forceauth']:
+            if config['user'] not in ['', None] or config['password'] not in ['', None]:
                 traverseLogger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
                 config['username'] = ''
                 config['password'] = ''
-        if AuthType == 'Session':
-            certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
+        if config['authtype'].lower() == 'session':
+            # certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
-            self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
+            # self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
+            self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None)
             self.currentSession.startSession()
-        self.metadata = md.Metadata(traverseLogger)
 
-        target_version = self.config.get('versioncheck')
+        from metadata import Metadata
+        success, data, status, delay = self.callResourceURI(Metadata.metadata_uri)
+        if success:
+            soup = rfSchema.BeautifulSoup(data, "xml")
+            schema_obj = rfSchema.rfSchema(soup, '$metadata', 'service')
+            self.metadata = Metadata(schema_obj, my_logger)
+        else:
+            pass
+            self.metadata = Metadata(None, my_logger)
+
+        target_version = 'n/a'
 
         # get Version
         success, data, status, delay = self.callResourceURI('/redfish/v1')
         if not success:
             traverseLogger.warn('Could not get ServiceRoot')
-        elif target_version in [None, '']:
+        else:
             if 'RedfishVersion' not in data:
                 traverseLogger.warn('Could not get RedfishVersion from ServiceRoot')
             else:
                 traverseLogger.info('Redfish Version of Service: {}'.format(data['RedfishVersion']))
                 target_version = data['RedfishVersion']
+        if target_version in ['1.0.0', 'n/a']:
+            traverseLogger.warning('!!Version of target may produce issues!!')
 
         # with Version, get default and compare to user defined values
-        default_config_target = defaultconfig_by_version.get(target_version, dict())
-        override_with = {k: default_config_target[k] for k in default_config_target if k in default_entries}
-        if len(override_with) > 0:
-            traverseLogger.info('CONFIG: RedfishVersion {} has augmented these tool defaults {}'.format(target_version, override_with))
-        self.config.update(override_with)
+        # default_config_target = defaultconfig_by_version.get(target_version, dict())
+        # override_with = {k: default_config_target[k] for k in default_config_target if k in default_entries}
+        # if len(override_with) > 0:
+        #     traverseLogger.info('CONFIG: RedfishVersion {} has augmented these tool defaults {}'.format(target_version, override_with))
+        # self.config.update(override_with)
+
 
         self.active = True
 
@@ -343,22 +178,25 @@ class rfService():
             traverseLogger.warn("This URI is empty!")
             return False, None, -1, 0
 
-        config = currentService.config
-        proxies = currentService.proxies
-        ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['targetip'], config['usessl'], config['authtype'], \
+        config = self.config
+        # proxies = self.proxies
+        ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['configuri'], config['usessl'], config['authtype'], \
                 config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
-        CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
+        # CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
 
+        from urllib.parse import urlparse, urlunparse
         scheme, netloc, path, params, query, fragment = urlparse(URILink)
         inService = scheme == '' and netloc == ''
-        scheme = ('https' if UseSSL else 'http') if scheme == '' else scheme
-        netloc = ConfigIP if netloc == '' else netloc
-        URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
+        if inService:
+            scheme, netloc, _path, __params, ___query, ____fragment = urlparse(ConfigIP)
+            URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
+        else:
+            URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
 
         payload, statusCode, elapsed, auth, noauthchk = None, '', 0, None, True
 
         isXML = False
-        if "$metadata" in URILink or ".xml" in URILink[:-5]:
+        if "$metadata" in path or ".xml" in path[:-5]:
             isXML = True
             traverseLogger.debug('Should be XML')
 
@@ -376,8 +214,8 @@ class rfService():
             auth = None if noauthchk else (config['username'], config['password'])
             traverseLogger.debug('dont chkauth' if noauthchk else 'chkauth')
 
-            if CacheMode in ["Fallback", "Prefer"]:
-                payload = rfService.getFromCache(URILink, CacheDir)
+            # if CacheMode in ["Fallback", "Prefer"]:
+            #     payload = rfService.getFromCache(URILink, CacheDir)
 
         if not inService and config['servicemode']:
             traverseLogger.debug('Disallowed out of service URI ' + URILink)
@@ -409,7 +247,7 @@ class rfService():
             'out of service ' if not inService else '', AuthType, UseSSL, URILink, headers))
         response = None
         try:
-            if payload is not None and CacheMode == 'Prefer':
+            if payload is not None: # and CacheMode == 'Prefer':
                 return True, payload, -1, 0
             response = self.session.get(URLDest,
                                     headers=headers, auth=auth, verify=certVal, timeout=timeout,
