@@ -13,6 +13,7 @@ from functools import lru_cache
 import logging
 from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+from urllib.parse import urlparse, urlunparse
 from http.client import responses
 
 from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
@@ -71,11 +72,10 @@ class rfService():
         self.session = requests.Session()
 
         # setup URI
-        from urllib.parse import urlparse
         self.config['configuri'] = self.config['ip']
         self.config['metadatafilepath'] = self.config['schema_directory']
         self.config['usessl'] = urlparse(self.config['configuri']).scheme in ['https']
-        self.config['certificatecheck'] = not self.config['nochkcert']
+        self.config['certificatecheck'] = False
         self.config['certificatebundle'] = None
         self.config['timeout'] = 10
 
@@ -97,7 +97,7 @@ class rfService():
 
         self.currentSession = None
         if not self.config['usessl'] and not self.config['forceauth']:
-            if config['user'] not in ['', None] or config['password'] not in ['', None]:
+            if config['username'] not in ['', None] or config['password'] not in ['', None]:
                 traverseLogger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
                 config['username'] = ''
                 config['password'] = ''
@@ -184,7 +184,6 @@ class rfService():
                 config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
         # CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
 
-        from urllib.parse import urlparse, urlunparse
         scheme, netloc, path, params, query, fragment = urlparse(URILink)
         inService = scheme == '' and netloc == ''
         if inService:
@@ -211,15 +210,15 @@ class rfService():
             noauthchk =  URILink in ['/redfish', '/redfish/v1', '/redfish/v1/odata'] or\
                 '/redfish/v1/$metadata' in URILink
 
-            auth = None if noauthchk else (config['username'], config['password'])
+            auth = None if noauthchk else (config.get('username'), config.get('password'))
             traverseLogger.debug('dont chkauth' if noauthchk else 'chkauth')
 
             # if CacheMode in ["Fallback", "Prefer"]:
             #     payload = rfService.getFromCache(URILink, CacheDir)
 
-        if not inService and config['servicemode']:
-            traverseLogger.debug('Disallowed out of service URI ' + URILink)
-            return False, None, -1, 0
+        # if not inService and config['schema_origin'].lower() == 'service':
+        #     traverseLogger.debug('Disallowed out of service URI ' + URILink)
+        #     return False, None, -1, 0
 
         # rs-assertion: do not send auth over http
         # remove UseSSL if necessary if you require unsecure auth
@@ -250,8 +249,7 @@ class rfService():
             if payload is not None: # and CacheMode == 'Prefer':
                 return True, payload, -1, 0
             response = self.session.get(URLDest,
-                                    headers=headers, auth=auth, verify=certVal, timeout=timeout,
-                                    proxies=proxies if not inService else None)  # only proxy non-service
+                                    headers=headers, auth=auth, verify=certVal, timeout=timeout)  # only proxy non-service
             expCode = [200]
             elapsed = response.elapsed.total_seconds()
             statusCode = response.status_code
@@ -582,24 +580,24 @@ class ResourceObj:
                 value_obj = rfSchema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type, topVersion=parent_type)
                 self.additionalList.append(value_obj)
 
-        if config['uricheck'] and self.typeobj.expectedURI is not None:
-            my_id = self.jsondata.get('Id')
-            self.errorIndex['bad_uri_schema_uri'] = not self.typeobj.compareURI(uri, my_id)
-            self.errorIndex['bad_uri_schema_odata'] = not self.typeobj.compareURI(odata_id, my_id)
+        # if config['uricheck'] and self.typeobj.expectedURI is not None:
+        #     my_id = self.jsondata.get('Id')
+        #     self.errorIndex['bad_uri_schema_uri'] = not self.typeobj.compareURI(uri, my_id)
+        #     self.errorIndex['bad_uri_schema_odata'] = not self.typeobj.compareURI(odata_id, my_id)
 
-            if self.errorIndex['bad_uri_schema_uri']:
-                traverseLogger.error('{}: URI not in Redfish.Uris: {}'.format(uri, self.typename))
-                if my_id != uri.rsplit('/', 1)[-1]:
-                    traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
-            else:
-                traverseLogger.debug('{} in Redfish.Uris: {}'.format(uri, self.typename))
+        #     if self.errorIndex['bad_uri_schema_uri']:
+        #         traverseLogger.error('{}: URI not in Redfish.Uris: {}'.format(uri, self.typename))
+        #         if my_id != uri.rsplit('/', 1)[-1]:
+        #             traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
+        #     else:
+        #         traverseLogger.debug('{} in Redfish.Uris: {}'.format(uri, self.typename))
 
-            if self.errorIndex['bad_uri_schema_odata']:
-                traverseLogger.error('{}: odata_id not in Redfish.Uris: {}'.format(odata_id, self.typename))
-                if my_id != uri.rsplit('/', 1)[-1]:
-                    traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
-            else:
-                traverseLogger.debug('{} in Redfish.Uris: {}'.format(odata_id, self.typename))
+        #     if self.errorIndex['bad_uri_schema_odata']:
+        #         traverseLogger.error('{}: odata_id not in Redfish.Uris: {}'.format(odata_id, self.typename))
+        #         if my_id != uri.rsplit('/', 1)[-1]:
+        #             traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
+        #     else:
+        #         traverseLogger.debug('{} in Redfish.Uris: {}'.format(odata_id, self.typename))
 
         # get annotation
         successService, annotationProps = getAnnotations(metadata, self.jsondata)
@@ -610,9 +608,9 @@ class ResourceObj:
         self.unknownProperties = [k for k in self.jsondata if k not in propertyList +
                 [prop.payloadName for prop in self.additionalList] and '@odata' not in k]
 
-        self.links = OrderedDict()
+        self.links = {}
 
-        sample = config.get('sample')
+        sample = config.get('sample', 5)
         linklimits = config.get('linklimit', {})
         self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList, oem, linklimits, sample))
 
@@ -731,7 +729,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
     :param context: default blank, for AutoExpanded types
     :return: list of links
     """
-    linkList = OrderedDict()
+    linkList = {}
     if linklimits is None:
         linklimits = {}
     # check keys in propertyDictionary

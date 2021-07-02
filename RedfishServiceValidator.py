@@ -29,10 +29,9 @@ def main(argslist=None):
 
     # host info
     argget.add_argument('-i', '--ip', type=str, help='Address of host to test against, using http or https (example: https://123.45.6.7:8000)')
-    argget.add_argument('-u', '--user', type=str, help='Username for Authentication')
+    argget.add_argument('-u', '--username', type=str, help='Username for Authentication')
     argget.add_argument('-p', '--password', type=str, help='Password for Authentication')
     argget.add_argument('--description', type=str, help='sysdescription for identifying logs, if none is given, draw from serviceroot')
-    argget.add_argument('--nochkcert', action='store_true', help='Ignore check for HTTPS certificate')
     argget.add_argument('--forceauth', action='store_true', help='Force authentication on unsecure connections')
     argget.add_argument('--authtype', type=str, default='Basic', help='authorization type (None|Basic|Session|Token)')
     argget.add_argument('--token', type=str, help='bearer token for authtype Token')
@@ -43,8 +42,6 @@ def main(argslist=None):
     argget.add_argument('--nooemcheck', action='store_const', const=True, default=None, help='Don\'t check OEM items')
     argget.add_argument('--debugging', action="store_true", help='Output debug statements to text log, otherwise it only uses INFO')
     argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
-    argget.add_argument('--schema_origin', type=str, default='local', help='Preferred location of schemafiles.  Can be local, for a local directory, online or only from the host service itself [local, online, service]')
-    argget.add_argument('--schema_pack', type=str, help='Deploy DMTF schema from zip distribution, for use with --localonly (Specify url or type "latest", overwrites current schema)')
 
     args = argget.parse_args(argslist)
 
@@ -65,36 +62,32 @@ def main(argslist=None):
     my_logger.addHandler(file_handler)
 
     my_logger.info("Redfish Service Validator, version {}".format(tool_version))
+    my_logger.info("")
+
+    if args.ip is None:
+        my_logger.error('No IP or Config Specified')
+        argget.print_help()
+        return 1, None, 'Config Incomplete'
 
     # start printing config details, remove redundant/private info from print
     my_logger.info('Target URI: ' + args.ip)
     my_logger.info('\n'.join(
         ['{}: {}'.format(x, vars(args)[x] if x not in ['password'] else '******') for x in sorted(list(vars(args).keys() - set(['description']))) if vars(args)[x] not in ['', None]]))
     my_logger.info('Start time: ' + startTick.strftime('%x - %X'))
+    my_logger.info("")
 
-    if args.ip is None:
-        my_logger.error('No IP or Config Specified')
-        argget.print_help()
-        return 1, None, 'Config Incomplete'
-    else:
-        print(args.ip)
 
-    if args.schema_pack not in ['', None]:
+    schemadir = args.schema_directory
+
+    if not os.path.isdir(schemadir):
+        my_logger.info('Downloading initial schemas from online')
+        my_logger.info('The tool will, by default, attempt to download and store XML files to relieve traffic from DMTF/service')
         import schema_pack
         schema_pack.my_logger.addHandler(file_handler)
         schema_pack.setup_schema_pack(args.schema_pack, args.schema_directory)
 
-    schemadir = args.schema_directory
-
-    if not os.path.isdir(schemadir) and args.schema_origin.lower() not in ['online']:
-        my_logger.info('First run suggested to create and own local schema files, please download manually or use --schema_pack latest')
-        my_logger.info('Alternatively, use the option --prefer_online to skip local schema file checks')
-        my_logger.info('The tool will, by default, attempt to download and store XML files to relieve traffic from DMTF/service')
-    elif args.schema_origin.lower() in ['online']:
-        my_logger.info('Using option PreferOnline, retrieving solely from online sources may be slow...')
-
+    import traverseService as rst
     try:
-        import traverseService as rst
         rst.my_logger.addHandler(file_handler)
         currentService = rst.startService(vars(args))
     except Exception as ex:
@@ -106,72 +99,85 @@ def main(argslist=None):
     status_code = 1
     jsonData = None
 
-    # pmode, ppath = config.get('payloadmode', 'Default'), config.get('payloadfilepath')
-    # if pmode not in ['Tree', 'Single', 'SingleFile', 'TreeFile', 'Default']:
-    #     pmode = 'Default'
-    #     rsvLogger.error('PayloadMode or path invalid, using Default behavior')
-    # if 'File' in pmode:
-    #     if ppath is not None and os.path.isfile(ppath):
-    #         with open(ppath) as f:
-    #             jsonData = json.load(f)
-    #             f.close()
-    #     else:
-    #         rsvLogger.error('File not found: {}'.format(ppath))
-    #         return 1, None, 'File not found: {}'.format(ppath)
-    # try:
-    #     if 'Single' in pmode:
-    #         success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
-    #     elif 'Tree' in pmode:
-    #         success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
-    #     else:
-    #         success, counts, results, xlinks, topobj = validateURITree('/redfish/v1/', 'ServiceRoot', expectedJson=jsonData)
-    # except AuthenticationError as e:
-    #     # log authentication error and terminate program
-    #     rsvLogger.error('{}'.format(e))
-    #     return 1, None, 'Failed to authenticate with the service'
+    if args.payload:
+        pmode, ppath = args.payload
+    else:
+        pmode, ppath = 'Default', ''
+    pmode = pmode.lower()
+
+    if pmode not in ['tree', 'single', 'singlefile', 'treefile', 'default']:
+        pmode = 'Default'
+        my_logger.error('PayloadMode or path invalid, using Default behavior')
+    if 'file' in pmode:
+        if ppath is not None and os.path.isfile(ppath):
+            import json
+            with open(ppath) as f:
+                jsonData = json.load(f)
+                f.close()
+        else:
+            my_logger.error('File not found for payload: {}'.format(ppath))
+            return 1, None, 'File not found for payload: {}'.format(ppath)
+    try:
+        from validateResource import validateSingleURI, validateURITree
+        if 'single' in pmode:
+            success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
+        elif 'tree' in pmode:
+            success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
+        else:
+            success, counts, results, xlinks, topobj = validateURITree('/redfish/v1/', 'ServiceRoot', expectedJson=jsonData)
+    except rst.AuthenticationError as e:
+        # log authentication error and terminate program
+        my_logger.error('{}'.format(e))
+        return 1, None, 'Failed to authenticate with the service'
 
     currentService.close()
 
-    # rsvLogger.debug('Metadata: Namespaces referenced in service: {}'.format(metadata.get_service_namespaces()))
-    # rsvLogger.debug('Metadata: Namespaces missing from $metadata: {}'.format(metadata.get_missing_namespaces()))
+    metadata = currentService.metadata
+    my_logger.info('\nMetadata: Namespaces referenced in service: {}'.format(metadata.get_service_namespaces()))
+    my_logger.info('Metadata: Namespaces missing from $metadata: {}'.format(metadata.get_missing_namespaces()))
 
-    # finalCounts = Counter()
-    # nowTick = datetime.now()
-    # rsvLogger.info('Elapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
+    from collections import Counter
+    finalCounts = Counter()
+    nowTick = datetime.now()
+    my_logger.info('\nElapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
 
-    # error_lines, finalCounts = count_errors(results)
+    import tohtml
+    error_lines, finalCounts = tohtml.count_errors(results)
 
-    # for line in error_lines:
-    #     rsvLogger.error(line)
+    for line in error_lines:
+        my_logger.error(line)
 
-    # finalCounts.update(metadata.get_counter())
+    finalCounts.update(metadata.get_counter())
 
-    # fails = 0
-    # for key in [key for key in finalCounts.keys()]:
-    #     if finalCounts[key] == 0:
-    #         del finalCounts[key]
-    #         continue
-    #     if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
-    #         fails += finalCounts[key]
+    fails = 0
+    for key in [key for key in finalCounts.keys()]:
+        if finalCounts[key] == 0:
+            del finalCounts[key]
+            continue
+        if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
+            fails += finalCounts[key]
 
-    # html_str = renderHtml(results, tool_version, startTick, nowTick, currentService, args.csv_report)
+    html_str = tohtml.renderHtml(results, tool_version, startTick, nowTick, currentService)
 
-    # lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
+    lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
 
-    # writeHtml(html_str, lastResultsPage)
+    tohtml.writeHtml(html_str, lastResultsPage)
 
-    # success = success and not (fails > 0)
-    # rsvLogger.info(finalCounts)
+    finalCounts = {}
+    success = success and not (fails > 0)
+    my_logger.info(" ".join(finalCounts.items()))
 
-    # # dump cache info to debug log
-    # rsvLogger.debug('getSchemaDetails() -> {}'.format(rst.rfSchema.getSchemaDetails.cache_info()))
-    # rsvLogger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
+    # dump cache info to debug log
+    my_logger.debug('getSchemaDetails() -> {}'.format(rst.rfSchema.getSchemaDetails.cache_info()))
+    my_logger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
 
-    # if not success:
-    #     rsvLogger.error("Validation has failed: {} problems found".format(fails))
-    # else:
-    #     rsvLogger.info("Validation has succeeded.")
-    #     status_code = 0
+    success, fails = True, 0
+
+    if not success:
+        my_logger.error("Validation has failed: {} problems found".format(fails))
+    else:
+        my_logger.info("Validation has succeeded.")
+        status_code = 0
 
     return status_code, lastResultsPage, 'Validation done'
 

@@ -97,13 +97,13 @@ def applyInfoSuccessColor(num, entry):
     return tag.div(entry, attr=style)
 
 
-def renderHtml(results, tool_version, startTick, nowTick, service, printCSV):
+def renderHtml(results, tool_version, startTick, nowTick, service):
     # Render html
     config = service.config
-    config_str = ', '.join(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))))
-    sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
+    config_str = ', '.join(sorted(list(config.keys() - set(['desc', 'targetip', 'password', 'description']))))
+    sysDescription, ConfigURI = (config['description'], config['ip'])
     rsvLogger = rst.getLogger()
-    logpath = config['logpath']
+    logpath = config['logdir']
     error_lines, finalCounts = count_errors(results)
     if service.metadata is not None:
         finalCounts.update(service.metadata.get_counter())
@@ -153,7 +153,7 @@ def renderHtml(results, tool_version, startTick, nowTick, service, printCSV):
 
     htmlStrBodyHeader += tag.tr(tag.th(infoBlock(infos)))
 
-    infos = {x: config[x] for x in config if x not in ['systeminfo', 'targetip', 'password', 'description']}
+    infos = {x: config[x] for x in config if x not in ['systeminfo', 'ip', 'password', 'description']}
     infos_left, infos_right = dict(), dict()
     for key in sorted(infos.keys()):
         if len(infos_left) <= len(infos_right):
@@ -258,12 +258,12 @@ def renderHtml(results, tool_version, startTick, nowTick, service, printCSV):
         infos_a = [str(val.get(x)) for x in ['uri'] if val.get(x) not in ['',None]]
         infos_a.append(rtime)
 
-        if(printCSV):
-            rsvLogger.info(','.join(infos_a))
-            rsvLogger.info(','.join(infos))
-            rsvLogger.info(','.join(titles))
-            rsvLogger.info('\n'.join([','.join(x) for x in rows]))
-            rsvLogger.info(',')
+        # if(printCSV):
+        #     rsvLogger.info(','.join(infos_a))
+        #     rsvLogger.info(','.join(infos))
+        #     rsvLogger.info(','.join(titles))
+        #     rsvLogger.info('\n'.join([','.join(x) for x in rows]))
+        #     rsvLogger.info(',')
 
         # warns and errors
         errors = val['errors']

@@ -7,6 +7,8 @@ import simpletypes
 
 rsvLogger = rst.getLogger()
 
+import logging
+
 def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, payloadType: str):
     """validateActions
 
@@ -21,7 +23,7 @@ def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, pa
     :param payloadType:  Payload type of the owner of Actions
     :type payloadType: str
     """
-    actionMessages, actionCounts = OrderedDict(), Counter()
+    actionMessages, actionCounts = {}, Counter()
 
     parentTypeObj = rst.rfSchema.PropType(payloadType, propTypeObj.schemaObj)
     actionsDict = {act.name: (val.get(act.name, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
@@ -158,7 +160,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             rsvLogger.error("{}: Could not get schema file for Entity check".format(name))
     else:
         if "OriginOfCondition" in name:
-            rsvLogger.verboseout("{}: GET of resource at URI {} returned HTTP {}, but was a temporary resource."
+            rsvLogger.log(logging.INFO-1, "{}: GET of resource at URI {} returned HTTP {}, but was a temporary resource."
                             .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
             return True
 
@@ -172,13 +174,13 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     """
     Validate a complex property
     """
-    rsvLogger.verboseout('\t***going into Complex')
+    rsvLogger.log(logging.INFO-1,'\t***going into Complex')
     if not isinstance(val, dict):
         rsvLogger.error(name + ': Complex item not a dictionary')
         return False, None, None
 
     # Check inside of complexType, treat it like an Entity
-    complexMessages = OrderedDict()
+    complexMessages = {}
     complexCounts = Counter()
 
     if 'OemObject' in propComplexObj.typeobj.fulltype:
@@ -214,8 +216,8 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     if not successPayload:
         complexCounts['failComplexPayloadError'] += 1
         rsvLogger.error('{}: complex payload error, @odata property non-conformant'.format(str(name)))
-    rsvLogger.verboseout('\t***out of Complex')
-    rsvLogger.verboseout('complex {}'.format(str(complexCounts)))
+    rsvLogger.log(logging.INFO-1,'\t***out of Complex')
+    rsvLogger.log(logging.INFO-1,'complex {}'.format(str(complexCounts)))
 
     propTypeObj = propComplexObj.typeobj
 
@@ -382,7 +384,7 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
     :return: the messages and counts of the validation results
     """
     fn = 'validateDynamicPropertyPatterns'
-    messages = OrderedDict()
+    messages = {}
     counts = Counter()
     rsvLogger.debug('{}: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
                     .format(fn, name, type(val), propTypeObj.propPattern, payloadType))
@@ -616,14 +618,14 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     :param parentURI:
     """
 
-    resultList = OrderedDict()
+    resultList = {}
     counts = Counter()
 
-    rsvLogger.verboseout(PropertyName)
+    rsvLogger.log(logging.INFO-1, PropertyName)
     item = prop.payloadName
 
     propValue = prop.val
-    rsvLogger.verboseout("\tvalue: {} {}".format(propValue, type(propValue)))
+    rsvLogger.log(logging.INFO-1,"\tvalue: {} {}".format(propValue, type(propValue)))
 
     propExists = not (propValue == 'n/a')
 
@@ -634,7 +636,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
 
     if PropertyDict is None:
         if not propExists:
-            rsvLogger.verboseout('{}: Item is skipped, no schema'.format(item))
+            rsvLogger.log(logging.INFO-1,'{}: Item is skipped, no schema'.format(item))
             counts['skipNoSchema'] += 1
             return {item: ('-', '-',
                                 'Yes' if propExists else 'No', 'NoSchema')}, counts
@@ -648,12 +650,12 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
 
     propType = propAttr.get('Type')
     propRealType = PropertyDict.get('realtype')
-    rsvLogger.verboseout("\thas Type: {} {}".format(propType, propRealType))
+    rsvLogger.log(logging.INFO-1,"\thas Type: {} {}".format(propType, propRealType))
 
     # why not actually check oem
     # rs-assertion: 7.4.7.2
     if 'Oem' in PropertyName and not rst.config.get('oemcheck', False):
-        rsvLogger.verboseout('\tOem is skipped')
+        rsvLogger.log(logging.INFO-1,'\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts
 
@@ -663,12 +665,12 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     if 'Redfish.Required' in PropertyDict:
         propMandatory = True
         propMandatoryPass = True if propExists else False
-        rsvLogger.verboseout("\tMandatory Test: {}".format(
+        rsvLogger.log(logging.INFO-1,"\tMandatory Test: {}".format(
                        'OK' if propMandatoryPass else 'FAIL'))
     else:
-        rsvLogger.verboseout("\tis Optional")
+        rsvLogger.log(logging.INFO-1,"\tis Optional")
         if not propExists:
-            rsvLogger.verboseout("\tprop Does not exist, skip...")
+            rsvLogger.log(logging.INFO-1,"\tprop Does not exist, skip...")
             counts['skipOptional'] += 1
             return {item: (
                 '-', displayType(propType, propRealType),
@@ -683,7 +685,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     propPermissionsValue = None
     if propPermissions is not None:
         propPermissionsValue = propPermissions['EnumMember']
-        rsvLogger.verboseout("\tpermission {}".format(propPermissionsValue))
+        rsvLogger.debug("\tpermission {}".format(propPermissionsValue))
 
     autoExpand = PropertyDict.get('OData.AutoExpand', None) is not None or\
         PropertyDict.get('OData.AutoExpand'.lower(), None) is not None
@@ -747,7 +749,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
         # rs-assumption: do not assume URIs for collections
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
-        rsvLogger.verboseout("\tis Collection")
+        rsvLogger.log(logging.INFO-1,"\tis Collection")
         if propValue == 'n/a':
             propValueList = []
             resultList[item] = ('Array (absent)'.format(len(propValue)),
@@ -881,7 +883,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
                 'Yes' if propExists else 'No', result_str)
         if paramPass and propNullablePass and propMandatoryPass:
             counts['pass'] += 1
-            rsvLogger.verboseout("\tSuccess")
+            rsvLogger.log(logging.INFO-1,"\tSuccess")
         else:
             counts['err.' + str(propType)] += 1
             if not paramPass:
@@ -895,6 +897,6 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
             elif not propNullablePass:
                 rsvLogger.error('{}: Property is null but is not Nullable'.format(sub_item))
                 counts['failNullable'] += 1
-            rsvLogger.verboseout("\tFAIL")
+            rsvLogger.log(logging.INFO-1,"\tFAIL")
 
     return resultList, counts
