@@ -11,13 +11,14 @@ import random
 from collections import OrderedDict, namedtuple
 from functools import lru_cache
 import logging
-from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from urllib.parse import urlparse, urlunparse
 from http.client import responses
 
-from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
-import rfSchema
+from common.redfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
+import common.session as session
+import common.schema as schema
+from common.metadata import Metadata
 
 traverseLogger = logging.getLogger(__name__)
 my_logger = traverseLogger
@@ -105,14 +106,13 @@ class rfService():
             # certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
             # self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
-            self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None)
+            self.currentSession = session(config['username'], config['password'], config['configuri'], None)
             self.currentSession.startSession()
 
-        from metadata import Metadata
         success, data, status, delay = self.callResourceURI(Metadata.metadata_uri)
         if success:
-            soup = rfSchema.BeautifulSoup(data, "xml")
-            schema_obj = rfSchema.rfSchema(soup, '$metadata', 'service')
+            soup = schema.BeautifulSoup(data, "xml")
+            schema_obj = schema.rfSchema(soup, '$metadata', 'service')
             self.metadata = Metadata(schema_obj, my_logger)
         else:
             pass
@@ -248,13 +248,11 @@ class rfService():
         try:
             if payload is not None: # and CacheMode == 'Prefer':
                 return True, payload, -1, 0
-            response = self.session.get(URLDest,
-                                    headers=headers, auth=auth, verify=certVal, timeout=timeout)  # only proxy non-service
+            response = self.session.get(URLDest, headers=headers, auth=auth, verify=certVal, timeout=timeout)  # only proxy non-service
             expCode = [200]
             elapsed = response.elapsed.total_seconds()
             statusCode = response.status_code
-            traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode,
-                                 expCode, response.headers, elapsed))
+            traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode, expCode, response.headers, elapsed))
             if statusCode in expCode:
                 contenttype = response.headers.get('content-type')
                 if contenttype is None:
@@ -321,7 +319,7 @@ class rfService():
             if response and response.text:
                 traverseLogger.debug("payload: {}".format(response.text))
 
-        if payload is not None and CacheMode == 'Fallback':
+        if payload is not None:
             return True, payload, -1, 0
         return False, None, statusCode, elapsed
 
@@ -378,7 +376,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
             context = createContext(acquiredtype)
 
     # Get Schema object
-    schemaObj = rfSchema.getSchemaObject(acquiredtype, createContext(acquiredtype))
+    schemaObj = schema.getSchemaObject(acquiredtype, createContext(acquiredtype))
     if schemaObj is None:
         traverseLogger.error("ResourceObject creation: No schema XML for {} {}".format(acquiredtype, context))
         return None
@@ -540,7 +538,7 @@ class ResourceObj:
         self.context = context
 
         # Get Schema object
-        self.schemaObj = rfSchema.getSchemaObject(acquiredtype, createContext(acquiredtype))
+        self.schemaObj = schema.getSchemaObject(acquiredtype, createContext(acquiredtype))
 
         if self.schemaObj is None:
             traverseLogger.error("ResourceObject creation: No schema XML for {} {} {}".format(typename, acquiredtype, self.context))
@@ -562,7 +560,7 @@ class ResourceObj:
         # get our metadata
         metadata = currentService.metadata if currentService else None
 
-        self.typeobj = rfSchema.getTypeObject(typename, self.schemaObj)
+        self.typeobj = schema.getTypeObject(typename, self.schemaObj)
 
         self.propertyList = self.typeobj.getProperties(self.jsondata, topVersion=getNamespace(typename), top_of_resource=self if top_of_resource is None else top_of_resource)
         propertyList = [prop.payloadName for prop in self.propertyList]
@@ -577,7 +575,7 @@ class ResourceObj:
             regex = re.compile(prop_pattern)
             for key in [k for k in self.jsondata if k not in propertyList and regex.fullmatch(k)]:
                 val = self.jsondata.get(key)
-                value_obj = rfSchema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type, topVersion=parent_type)
+                value_obj = schema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type, topVersion=parent_type)
                 self.additionalList.append(value_obj)
 
         # if config['uricheck'] and self.typeobj.expectedURI is not None:
@@ -822,10 +820,6 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
     except Exception as e:
         traverseLogger.debug('Exception caught while getting all links', exc_info=1)
         traverseLogger.error('Unexpected error while extracting links from payload: {}'.format(repr(e)))
-    # contents of Registries may be needed to validate other resources (like Bios), so move to front of linkList
-    if 'Registries.Registries' in linkList:
-        linkList.move_to_end('Registries.Registries', last=False)
-        traverseLogger.debug('getAllLinks: Moved Registries.Registries to front of list')
     return linkList
 
 
@@ -859,6 +853,6 @@ def getAnnotations(metadata, decoded, prefix=''):
             realType = annotationSchemaObj.name
             realItem = realType + '.' + fullItem.split('.', 1)[1]
             additionalProps.append(
-                rfSchema.PropItem(annotationSchemaObj, realItem, key, decoded[key]))
+                schema.PropItem(annotationSchemaObj, realItem, key, decoded[key]))
     traverseLogger.debug("Annotations generated: {} out of {}".format(len(additionalProps), annotationsFound))
     return True, additionalProps

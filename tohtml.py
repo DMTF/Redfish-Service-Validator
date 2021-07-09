@@ -4,12 +4,12 @@
 
 if __name__ != '__main__':
     import traverseService as rst
-    from commonRedfish import getNamespace, getType
+    from common.redfish import getNamespace, getType
 else:
     import argparse
     from bs4 import BeautifulSoup
     import os, csv
-import RedfishLogo as logo
+import common.RedfishLogo as logo
 from types import SimpleNamespace
 from collections import Counter, OrderedDict
 import html

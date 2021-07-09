@@ -118,7 +118,7 @@ class Metadata(object):
             logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
             for schema in self.service_refs:
                 name, uri = self.service_refs[schema]
-                self.schema_store[name] = rst.rfSchema.getSchemaObject(name, uri)
+                self.schema_store[name] = rst.schema.getSchemaObject(name, uri)
                 if self.schema_store[name] is not None:
                     for ref in self.schema_store[name].refs:
                         pass
@@ -188,7 +188,7 @@ class Metadata(object):
             if '#' in schema_uri:
                 schema_uri, frag = k.split('#', 1)
             schema_type = os.path.basename(os.path.normpath(k)).strip('.xml').strip('_v1')
-            success, soup, _ = rst.rfSchema.getSchemaDetails(schema_type, schema_uri)
+            success, soup, _ = rst.schema.getSchemaDetails(schema_type, schema_uri)
             if success:
                 for namespace in self.uri_to_namespaces[k]:
                     if soup.find('Schema', attrs={'Namespace': namespace}) is None:

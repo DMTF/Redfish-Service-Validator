@@ -1,15 +1,15 @@
 
 from collections import Counter, OrderedDict
 
-import traverseService as rst
 import re
-import simpletypes
+import traverseService as my_logger
+import common.simpletypes as simpletypes
 
-rsvLogger = rst.getLogger()
+rsvLogger = my_logger.getLogger()
 
 import logging
 
-def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, payloadType: str):
+def validateActions(name: str, val: dict, propTypeObj: my_logger.schema.PropType, payloadType: str):
     """validateActions
 
     Validates actions dict
@@ -19,17 +19,17 @@ def validateActions(name: str, val: dict, propTypeObj: rst.rfSchema.PropType, pa
     :param val:  Dictionary of the Actions
     :type val: dict
     :param propTypeObj:  TypeObject of the Actions
-    :type propTypeObj: rst.PropType
+    :type propTypeObj: my_logger.PropType
     :param payloadType:  Payload type of the owner of Actions
     :type payloadType: str
     """
     actionMessages, actionCounts = {}, Counter()
 
-    parentTypeObj = rst.rfSchema.PropType(payloadType, propTypeObj.schemaObj)
+    parentTypeObj = my_logger.schema.PropType(payloadType, propTypeObj.schemaObj)
     actionsDict = {act.name: (val.get(act.name, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
 
     if 'Oem' in val:
-        if rst.currentService.config.get('oemcheck'):
+        if my_logger.currentService.config.get('oemcheck'):
             for newAct in val['Oem']:
                 actionsDict['Oem.' + newAct] = (val['Oem'][newAct], None)
         else:
@@ -102,7 +102,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
     paramPass = False
     # if not autoexpand, we must grab the resource
     if not autoExpand:
-        success, data, status, delay = rst.callResourceURI(uri)
+        success, data, status, delay = my_logger.callResourceURI(uri)
     else:
         success, data, status, delay = True, val, 200, 0
     rsvLogger.debug('(success, uri, status, delay) = {}, (propType, propCollectionType) = {}, data = {}'
@@ -118,14 +118,14 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
         if currentType is None:
             currentType = propType
         soup, refs = schemaObj.soup, schemaObj.refs
-        baseLink = refs.get(rst.getNamespace(propCollectionType if propCollectionType is not None else propType))
+        baseLink = refs.get(my_logger.getNamespace(propCollectionType if propCollectionType is not None else propType))
         # if schema in current schema, then use it
         #   elif namespace in References, use that
         #   else we have no lead
-        if soup.find('Schema', attrs={'Namespace': rst.getNamespace(currentType)}) is not None:
+        if soup.find('Schema', attrs={'Namespace': my_logger.getNamespace(currentType)}) is not None:
             success, baseObj = True, schemaObj
         elif baseLink is not None:
-            baseObj = schemaObj.getSchemaFromReference(rst.getNamespaceUnversioned(currentType))
+            baseObj = schemaObj.getSchemaFromReference(my_logger.getNamespaceUnversioned(currentType))
             success = baseObj is not None
         else:
             success = False
@@ -210,7 +210,7 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
         complexMessages.update(propMessages)
         complexCounts.update(propCounts)
 
-    successPayload, odataMessages = rst.ResourceObj.checkPayloadConformance(propComplexObj.jsondata, propComplexObj.uri)
+    successPayload, odataMessages = my_logger.ResourceObj.checkPayloadConformance(propComplexObj.jsondata, propComplexObj.uri)
     complexMessages.update(odataMessages)
 
     if not successPayload:
@@ -654,7 +654,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
 
     # why not actually check oem
     # rs-assertion: 7.4.7.2
-    if 'Oem' in PropertyName and not rst.config.get('oemcheck', False):
+    if 'Oem' in PropertyName and not my_logger.config.get('oemcheck', False):
         rsvLogger.log(logging.INFO-1,'\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts
@@ -729,7 +729,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     isCollection = propCollectionType is not None
     if isCollection and propValue is None:
         # illegal for a collection to be null
-        if prop.propChild == 'HttpHeaders' and rst.getType(prop.propOwner) == 'EventDestination':
+        if prop.propChild == 'HttpHeaders' and my_logger.getType(prop.propOwner) == 'EventDestination':
             rsvLogger.info('Value HttpHeaders can be Null')
             propNullable = True
             propValueList = []

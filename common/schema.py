@@ -10,7 +10,7 @@ import re
 import difflib
 import os.path
 
-from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion, compareMinVersion, splitVersionString
+from common.redfish import getType, getNamespace, getNamespaceUnversioned, getVersion, compareMinVersion, splitVersionString
 import traverseService as rst
 from urllib.parse import urlparse, urlunparse
 

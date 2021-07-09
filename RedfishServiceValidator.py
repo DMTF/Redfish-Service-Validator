@@ -6,6 +6,7 @@ import os
 import sys
 import argparse
 import logging
+import json
 from datetime import datetime
 
 tool_version = '1.4.1'
@@ -26,6 +27,7 @@ def main(argslist=None):
 
     # base tool
     argget.add_argument('-v', '--verbose', action='count', default=0, help='Verbosity of tool in stdout')
+    argget.add_argument('-c', '--config', type=str, help='Configuration for this tool')
 
     # host info
     argget.add_argument('-i', '--ip', type=str, help='Address of host to test against, using http or https (example: https://123.45.6.7:8000)')
@@ -68,6 +70,17 @@ def main(argslist=None):
         my_logger.error('No IP or Config Specified')
         argget.print_help()
         return 1, None, 'Config Incomplete'
+    
+    from urllib.parse import urlparse, urlunparse
+    scheme, netloc, path, params, query, fragment = urlparse(args.ip)
+    if scheme not in ['http', 'https']:
+        my_logger.error('IP is missing http or https')
+        return 1, None, 'IP Incomplete'
+
+    if netloc == '':
+        my_logger.error('IP is missing ip/host')
+        return 1, None, 'IP Incomplete'
+
 
     # start printing config details, remove redundant/private info from print
     my_logger.info('Target URI: ' + args.ip)
@@ -80,16 +93,16 @@ def main(argslist=None):
     schemadir = args.schema_directory
 
     if not os.path.isdir(schemadir):
+        import schema_pack
         my_logger.info('Downloading initial schemas from online')
         my_logger.info('The tool will, by default, attempt to download and store XML files to relieve traffic from DMTF/service')
-        import schema_pack
         schema_pack.my_logger.addHandler(file_handler)
         schema_pack.setup_schema_pack(args.schema_pack, args.schema_directory)
 
-    import traverseService as rst
+    import traverseService
     try:
-        rst.my_logger.addHandler(file_handler)
-        currentService = rst.startService(vars(args))
+        traverseService.my_logger.addHandler(file_handler)
+        currentService = traverseService.startService(vars(args))
     except Exception as ex:
         my_logger.debug('Exception caught while creating Service', exc_info=1)
         my_logger.error("Service could not be started: {}".format(ex))
@@ -110,7 +123,6 @@ def main(argslist=None):
         my_logger.error('PayloadMode or path invalid, using Default behavior')
     if 'file' in pmode:
         if ppath is not None and os.path.isfile(ppath):
-            import json
             with open(ppath) as f:
                 jsonData = json.load(f)
                 f.close()
@@ -125,7 +137,7 @@ def main(argslist=None):
             success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
         else:
             success, counts, results, xlinks, topobj = validateURITree('/redfish/v1/', 'ServiceRoot', expectedJson=jsonData)
-    except rst.AuthenticationError as e:
+    except traverseService.AuthenticationError as e:
         # log authentication error and terminate program
         my_logger.error('{}'.format(e))
         return 1, None, 'Failed to authenticate with the service'
@@ -168,7 +180,7 @@ def main(argslist=None):
     my_logger.info(" ".join(finalCounts.items()))
 
     # dump cache info to debug log
-    my_logger.debug('getSchemaDetails() -> {}'.format(rst.rfSchema.getSchemaDetails.cache_info()))
+    my_logger.debug('getSchemaDetails() -> {}'.format(traverseService.schema.getSchemaDetails.cache_info()))
     my_logger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
 
     success, fails = True, 0

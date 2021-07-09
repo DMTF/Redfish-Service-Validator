@@ -4,11 +4,45 @@
 
 import logging
 from collections import Counter
-import traverseService as rst
-from commonValidator import loadAttributeRegDict, checkPropertyConformance, displayValue
+from io import StringIO
+
+import traverseService
+from validateSpecial import loadAttributeRegDict, checkPropertyConformance, displayValue
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
+class WarnFilter(logging.Filter):
+       def filter(self, rec):
+           return rec.levelno == logging.WARN
+
+fmt = logging.Formatter('%(levelname)s - %(message)s')
+
+
+def create_logging_capture(this_logger):
+    errorMessages = StringIO()
+    warnMessages = StringIO()
+
+    errh = logging.StreamHandler(errorMessages)
+    errh.setLevel(logging.ERROR)
+    errh.setFormatter(fmt)
+
+    warnh = logging.StreamHandler(warnMessages)
+    warnh.setLevel(logging.WARN)
+    warnh.addFilter(WarnFilter())
+    warnh.setFormatter(fmt)
+
+    this_logger.addHandler(errh)
+    this_logger.addHandler(warnh)
+
+    return errh, warnh
+
+
+def get_my_capture(this_logger, handler):
+    this_logger.removeHandler(handler)
+    strings = handler.stream.getvalue()
+    handler.stream.close()
+    return strings
+
 
 def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, expectedJson=None, parent=None):
     # rs-assertion: 9.4.1
@@ -18,6 +52,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     my_logger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)
     counts = Counter()
     results, messages = {}, {}
+
+    ehandler, whandler = create_logging_capture(my_logger)
 
     results[uriName] = {'uri': URI,
                         'success': False,
@@ -47,30 +83,30 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     # Generate dictionary of property info
     try:
         if expectedJson is None:
-            success, jsondata, status, rtime = rst.callResourceURI(URI)
+            success, jsondata, status, rtime = traverseService.callResourceURI(URI)
             results[uriName]['payload'] = jsondata
         else:
             results[uriName]['payload'] = expectedJson
 
         # verify basic odata strings
         if results[uriName]['payload'] is not None:
-            successPayload, odataMessages = rst.ResourceObj.checkPayloadConformance(results[uriName]['payload'], URI)
+            successPayload, odataMessages = traverseService.ResourceObj.checkPayloadConformance(results[uriName]['payload'], URI)
             messages.update(odataMessages)
 
-        propResourceObj = rst.createResourceObject(
+        propResourceObj = traverseService.createResourceObject(
             uriName, URI, expectedJson, expectedType, expectedSchema, parent)
         if not propResourceObj:
             counts['problemResource'] += 1
-            results[uriName]['warns'], results[uriName]['errors'] = [], []
+            results[uriName]['warns'], results[uriName]['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
             return False, counts, results, None, None
-    except rst.AuthenticationError as e:
+    except traverseService.AuthenticationError as e:
         raise  # re-raise exception
     except Exception as e:
         my_logger.debug('Exception caught while creating ResourceObj', exc_info=1)
         my_logger.error('Unable to gather property info for URI {}: {}'
                         .format(URI, repr(e)))
         counts['exceptionResource'] += 1
-        results[uriName]['warns'], results[uriName]['errors'] = [], []
+        results[uriName]['warns'], results[uriName]['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
         return False, counts, results, None, None
 
     counts['passGet'] += 1
@@ -79,7 +115,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     odata_id = propResourceObj.jsondata.get('@odata.id', '')
     if '#' in odata_id:
         if parent is not None:
-            payload_resolve = rst.navigateJsonFragment(parent.jsondata, URI)
+            payload_resolve = traverseService.navigateJsonFragment(parent.jsondata, URI)
             if payload_resolve is None:
                 my_logger.error('@odata.id of ReferenceableMember does not contain a valid JSON pointer for this payload: {}'.format(odata_id))
                 counts['badOdataIdResolution'] += 1
@@ -93,8 +129,8 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         counts['failPayloadError'] += 1
         my_logger.error(str(URI) + ': payload error, @odata property non-conformant',)
 
-    # if URI was sampled, get the notation text from rst.uri_sample_map
-    sample_string = rst.uri_sample_map.get(URI)
+    # if URI was sampled, get the notation text from traverseService.uri_sample_map
+    sample_string = traverseService.uri_sample_map.get(URI)
     sample_string = sample_string + ', ' if sample_string is not None else ''
 
     results[uriName]['uri'] = (str(URI))
@@ -144,7 +180,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
             messages.update(propMessages)
             counts.update(propCounts)
-        except rst.AuthenticationError as e:
+        except traverseService.AuthenticationError as e:
             raise  # re-raise exception
         except Exception as ex:
             my_logger.debug('Exception caught while validating single URI', exc_info=1)
@@ -153,7 +189,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
 
 
     uriName, SchemaFullType, jsonData = propResourceObj.name, propResourceObj.typeobj.fulltype, propResourceObj.jsondata
-    SchemaNamespace, SchemaType = rst.getNamespace(SchemaFullType), rst.getType(SchemaFullType)
+    SchemaNamespace, SchemaType = traverseService.getNamespace(SchemaFullType), traverseService.getType(SchemaFullType)
 
     # List all items checked and unchecked
     # current logic does not check inside complex types
@@ -187,7 +223,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         if key not in jsonData:
             my_logger.log(logging.INFO-1,fmt % (key, messages[key][3]))
 
-    results[uriName]['warns'], results[uriName]['errors'] = [], []
+    results[uriName]['warns'], results[uriName]['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
 
     pass_val = len(results[uriName]['errors']) == 0
     for key in counts:
@@ -214,7 +250,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     # error: on fail
     # warn: reference only?
     # debug:
-    traverseLogger = rst.getLogger()
+    traverseLogger = traverseService.getLogger()
 
     # If this is our first called URI
     top = allLinks is None
@@ -239,7 +275,10 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
     validateSuccess, counts, results, links, thisobj = validateSingleURI(
                 URI, uriName, expectedType, expectedSchema, expectedJson, parent)
     if validateSuccess:
-        for linkName in links:
+        # Bring Registries to Front if possible
+        if 'Registries.Registries' in links.keys():
+            logging.debug('Move Registries to front for validation')
+        for linkName in sorted(links.keys(), key=lambda x: x != 'Registries.Registries'):
             if any(x in links[linkName].origin_property for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']):
                 refLinks[linkName] = (links[linkName], thisobj)
                 continue
@@ -307,6 +346,3 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
                 results.update(linkResults)
 
     return validateSuccess, counts, results, refLinks, thisobj
-
-
-validatorconfig = {'payloadmode': 'Default', 'payloadfilepath': None, 'logdir': './logs'}

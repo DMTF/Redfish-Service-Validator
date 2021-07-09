@@ -2,6 +2,7 @@
 # Copyright 2018-2021 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
+import argparse
 import os
 import logging
 from io import BytesIO
@@ -47,3 +48,15 @@ def setup_schema_pack(uri, local_dir):
         my_logger.error("A problem when getting resource has occurred {}".format(uri))
         my_logger.warn("output: ", exc_info=True)
     return True
+
+
+if __name__ == '__main__':
+    argget = argparse.ArgumentParser(description='Acquire schema_pack from DMTF website')
+
+    # config
+    argget.add_argument('--source', type=str, default=live_zip_uri, help='URL of the given schemapack, if unspecified, always grab latest')
+    argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
+
+    args = argget.parse_args()
+
+    setup_schema_pack(args.source, args.schema_directory)
