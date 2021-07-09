@@ -4,9 +4,9 @@
 
 import os
 import time
+import logging
 from collections import Counter, OrderedDict, defaultdict
 import traverseService as rst
-
 
 EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
 EDMX_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edmx"
@@ -70,7 +70,7 @@ class Metadata(object):
         self.uri_to_namespaces = defaultdict(list)
         self.elapsed_secs = 0
         self.metadata_namespaces = set()
-        self.service_namespaces = set()
+        self.service_namespaces = set(['Resource', 'Resource.v1_0_0'])
         self.schema_store = dict()
         self.bad_tags = dict()
         self.bad_tag_ns = dict()

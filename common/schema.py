@@ -14,8 +14,6 @@ from common.redfish import getType, getNamespace, getNamespaceUnversioned, getVe
 import traverseService as rst
 from urllib.parse import urlparse, urlunparse
 
-config = []
-
 
 def storeSchemaToLocal(xml_data, origin):
     """storeSchemaToLocal

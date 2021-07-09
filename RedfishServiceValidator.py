@@ -17,6 +17,9 @@ standard_out = logging.StreamHandler(sys.stdout)
 standard_out.setLevel(logging.INFO)
 my_logger.addHandler(standard_out)
 
+logging.addLevelName(logging.INFO-1, "VERBOSE1")
+logging.addLevelName(logging.INFO-2, "VERBOSE2")
+
 def main(argslist=None):
     """Main command
 
@@ -101,7 +104,7 @@ def main(argslist=None):
 
     import traverseService
     try:
-        traverseService.my_logger.addHandler(file_handler)
+        # traverseService.my_logger.addHandler(file_handler)
         currentService = traverseService.startService(vars(args))
     except Exception as ex:
         my_logger.debug('Exception caught while creating Service', exc_info=1)
@@ -145,8 +148,11 @@ def main(argslist=None):
     currentService.close()
 
     metadata = currentService.metadata
-    my_logger.info('\nMetadata: Namespaces referenced in service: {}'.format(metadata.get_service_namespaces()))
+    my_logger.log(logging.INFO-1, '\nMetadata: Namespaces referenced in service: {}'.format(metadata.get_service_namespaces()))
     my_logger.info('Metadata: Namespaces missing from $metadata: {}'.format(metadata.get_missing_namespaces()))
+
+    if len(metadata.get_missing_namespaces()) > 0:
+        my_logger.error('Metadata is missing Namespaces that are referenced by the service.')
 
     from collections import Counter
     finalCounts = Counter()
@@ -175,15 +181,12 @@ def main(argslist=None):
 
     tohtml.writeHtml(html_str, lastResultsPage)
 
-    finalCounts = {}
     success = success and not (fails > 0)
-    my_logger.info(" ".join(finalCounts.items()))
+    my_logger.info("\n".join('{}: {}   '.format(x, y) for x, y in sorted(finalCounts.items())))
 
     # dump cache info to debug log
     my_logger.debug('getSchemaDetails() -> {}'.format(traverseService.schema.getSchemaDetails.cache_info()))
     my_logger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
-
-    success, fails = True, 0
 
     if not success:
         my_logger.error("Validation has failed: {} problems found".format(fails))

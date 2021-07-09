@@ -608,7 +608,7 @@ class ResourceObj:
 
         self.links = {}
 
-        sample = config.get('sample', 5)
+        sample = config.get('sample', 100)
         linklimits = config.get('linklimit', {})
         self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList, oem, linklimits, sample))
 

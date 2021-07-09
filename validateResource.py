@@ -232,7 +232,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             break
     my_logger.info("\t {}".format('PASS' if pass_val else' FAIL...'))
 
-    my_logger.info('%s, %s', SchemaFullType, counts)
+    my_logger.log(logging.INFO-1,'%s, %s', SchemaFullType, counts)
 
     # Get all links available
 
