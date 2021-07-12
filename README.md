@@ -1,4 +1,4 @@
-Copyright 2017-2019 DMTF. All rights reserved.
+Copyright 2017-2021 DMTF. All rights reserved.
 
 # Redfish Service Validator
 
@@ -29,7 +29,7 @@ There is no dependency based on Windows or Linux OS. The result logs are generat
 
 ## Installation
 
-Place the RedfishServiceValidator.py into the desired tool root directory.  Create the following subdirectories in the tool root directory: "config", "logs", "SchemaFiles".  Place the example config.ini file in the "config" directory.  Place the CSDL Schema files to be used by the tool in the root of the schema directory, or the directory given in config.ini.
+Place the RedfishServiceValidator folder into the desired directory.  Create the following subdirectories in the tool root directory: "config", "logs", "SchemaFiles".  Place the example config.ini file in the "config" directory.  Place the CSDL Schema files to be used by the tool in the root of the schema directory, or the directory given in config.ini.
 
 ## Execution Steps
 

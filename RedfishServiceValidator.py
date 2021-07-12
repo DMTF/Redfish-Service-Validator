@@ -20,7 +20,7 @@ my_logger.addHandler(standard_out)
 logging.addLevelName(logging.INFO-1, "VERBOSE1")
 logging.addLevelName(logging.INFO-2, "VERBOSE2")
 
-def main(argslist=None):
+def main(argslist=None, configfile=None):
     """Main command
 
     Args:
@@ -50,6 +50,9 @@ def main(argslist=None):
 
     args = argget.parse_args(argslist)
 
+    if configfile is None:
+        configfile = args.config
+
     startTick = datetime.now()
 
     # set logging file
@@ -69,10 +72,22 @@ def main(argslist=None):
     my_logger.info("Redfish Service Validator, version {}".format(tool_version))
     my_logger.info("")
 
-    if args.ip is None:
+    if args.ip is None and configfile is None:
         my_logger.error('No IP or Config Specified')
         argget.print_help()
-        return 1, None, 'Config Incomplete'
+        return 1, None, 'Configuration Incomplete'
+
+    if configfile:
+        from common.config import convert_config_to_args
+        convert_config_to_args(args, configfile)
+    else:
+        from common.config import convert_args_to_config
+        my_logger.info('Writing config file to log directory')
+        configfilename = datetime.strftime(startTick, os.path.join(logpath, "ConfigFile_%m_%d_%Y_%H%M%S.ini"))
+        my_config = convert_args_to_config(args)
+        with open(configfilename, 'w') as f:
+            my_config.write(f)
+
     
     from urllib.parse import urlparse, urlunparse
     scheme, netloc, path, params, query, fragment = urlparse(args.ip)
