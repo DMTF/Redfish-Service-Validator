@@ -125,6 +125,15 @@ def main(argslist=None, configfile=None):
         my_logger.debug('Exception caught while creating Service', exc_info=1)
         my_logger.error("Service could not be started: {}".format(ex))
         return 1, None, 'Service Exception'
+    
+    if args.description is None and currentService.service_root:
+        my_version = currentService.service_root.get('RedfishVersion', 'No Version')
+        my_name = currentService.service_root.get('Name', '')
+        my_uuid = currentService.service_root.get('UUID', 'No UUID')
+        setattr(args, 'description', 'My Target System {}, version {}, {}'.format(my_name, my_version, my_uuid))
+
+    
+    my_logger.info('Description of service: {}'.format(args.description))
 
     # Start main
     status_code = 1

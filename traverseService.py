@@ -132,6 +132,8 @@ class rfService():
                 target_version = data['RedfishVersion']
         if target_version in ['1.0.0', 'n/a']:
             traverseLogger.warning('!!Version of target may produce issues!!')
+        
+        self.service_root = data
 
         # with Version, get default and compare to user defined values
         # default_config_target = defaultconfig_by_version.get(target_version, dict())

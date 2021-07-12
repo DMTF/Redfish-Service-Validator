@@ -35,7 +35,9 @@ def convert_args_to_config(args):
 
 def convert_config_to_args(args, config):
     my_config = configparser.ConfigParser()
-    if isinstance(config, str):
+    if isinstance(config, configparser.ConfigParser):
+        my_config = config
+    elif isinstance(config, str):
         with open(config, 'r') as f:
             my_config.read_file(f)
     elif isinstance(config, dict):
@@ -51,4 +53,17 @@ def convert_config_to_args(args, config):
                         setattr(args, option, my_config[section][option].split(' '))
                     else:
                         setattr(args, option, my_config[section][option])
+    my_config_dict = config_parse_to_dict(my_config)
+    import json
+    print(json.dumps(my_config_dict, indent=4))
         
+
+def config_parse_to_dict(config):
+    my_dict = {}
+    for section in config:
+        my_dict[section] = {}
+        for option in [x for x in config[section] if x not in ['version', 'copyright']]:
+            my_dict[section][option] = {}
+            my_dict[section][option]['value'] = config[section][option]
+            my_dict[section][option]['description'] = "TBD"
+    return my_dict
