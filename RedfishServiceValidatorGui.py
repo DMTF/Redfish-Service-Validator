@@ -28,59 +28,59 @@ g_config_defaults = {
     "Tool": {
         "verbose": {
             "value": "",
-            "description": "TBD"
+            "description": "Level of verbosity (0-3)"
         }
     },
     "Host": {
         "ip": {
             "value": "http://localhost:8000",
-            "description": "TBD"
+            "description": "Host of testing system, formatted as https:// ip : port (can use http as well)"
         },
         "username": {
             "value": "MyUser",
-            "description": "TBD"
+            "description": "Username for Basic authentication"
         },
         "password": {
             "value": "MyPass",
-            "description": "TBD"
+            "description": "Username for Basic authentication"
         },
         "description": {
             "value": "MySystem",
-            "description": "TBD"
+            "description": "Description of system being tested (optional)"
         },
         "forceauth": {
             "value": "False",
-            "description": "TBD"
+            "description": "Force authentication even on http servers"
         },
         "authtype": {
             "value": "Basic",
-            "description": "TBD"
+            "description": "Authorization type (Basic | Session | Token | None)"
         },
         "token": {
             "value": "False",
-            "description": "TBD"
+            "description": "Token string for Token authentication"
         }
     },
     "Validator": {
         "payload": {
             "value": "",
-            "description": "TBD"
+            "description": "Option to test a specific payload or resource tree (see README)"
         },
         "logdir": {
             "value": "./logs",
-            "description": "TBD"
+            "description": "Place to save logs and run configs"
         },
         "nooemcheck": {
             "value": "False",
-            "description": "TBD"
+            "description": "Whether to check Oem items on service"
         },
         "debugging": {
             "value": "False",
-            "description": "TBD"
+            "description": "Whether to print debug to log"
         },
         "schema_directory": {
             "value": "./SchemaFiles/metadata",
-            "description": "TBD"
+            "description": "Where schema is located/saved on system"
         }
     }
 }

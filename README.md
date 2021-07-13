@@ -73,6 +73,8 @@ How to test the payload URI given.  Single tests will only give a report on a si
 
 ([Filename], [uri])
 
+URI of the target payload, or filename of a local file.
+
 ## Execution flow
 
 1. `Redfish Service Validator` starts with the Service root Resource Schema by querying the service with the service root URI and getting all the device information, the resources supported and their links. Once the response of the Service root query is verified against its schema, the tool traverses through all the collections and Navigation properties returned by the service.
