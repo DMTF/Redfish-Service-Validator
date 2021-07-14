@@ -115,10 +115,11 @@ def main(argslist=None, configfile=None):
         my_logger.info('Downloading initial schemas from online')
         my_logger.info('The tool will, by default, attempt to download and store XML files to relieve traffic from DMTF/service')
         schema_pack.my_logger.addHandler(file_handler)
-        schema_pack.setup_schema_pack(args.schema_pack, args.schema_directory)
+        schema_pack.setup_schema_pack('latest', args.schema_directory)
 
     import traverseService
     try:
+        
         # traverseService.my_logger.addHandler(file_handler)
         currentService = traverseService.startService(vars(args))
     except Exception as ex:
