@@ -119,7 +119,6 @@ def main(argslist=None, configfile=None):
 
     import traverseService
     try:
-        
         # traverseService.my_logger.addHandler(file_handler)
         currentService = traverseService.startService(vars(args))
     except Exception as ex:

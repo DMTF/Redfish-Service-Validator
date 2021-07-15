@@ -39,31 +39,30 @@ Modify the config\example.ini file to enter the system details under below secti
 
 ### [Tool]
 
-Variable | Type  | Definition
---|--|--
-Version | string | Internal config version (optional)
-Copyright | string | _DMTF_ copyright (optional)
-verbose | int | level of verbosity (0-3) 
-
+Variable   | Type   | Definition
+--         |--      |--
+Version    | string | Internal config version (optional)
+Copyright  | string | _DMTF_ copyright (optional)
+verbose    | int    | level of verbosity (0-3) 
 ### [Host]
-Variable | Type  | Definition
---|--|--
-ip | string | Host of testing system, formatted as https:// ip : port (can use http as well)
-username | string | Username for Basic authentication
-password | string | Password for Basic authentication (removed from logs)
-description | string | Description of system being tested (optional)
-forceauth | boolean | Force authentication even on http servers
-authtype | string | Authorization type (Basic | Session | Token | None)
-token | string | Token string for Token authentication
+Variable   | Type    | Definition
+--         |--       |--
+ip         | string  | Host of testing system, formatted as https:// ip : port (can use http as well)
+username   | string  | Username for Basic authentication
+password   | string  | Password for Basic authentication (removed from logs)
+description| string  | Description of system being tested (optional)
+forceauth  | boolean | Force authentication even on http servers
+authtype   | string  | Authorization type (Basic | Session | Token | None)
+token      | string  | Token string for Token authentication
 
 ### [Validator]
-Variable | Type  | Definition
---|--|--
-payload | string | Option to test a specific payload or resource tree (see below)
-logdir | string | Place to save logs and run configs
-nooemcheck | boolean | Whether to check Oem items on service
-debugging | boolean | Whether to print debug to log
-schema_directory | string | Where schema is located/saved on system
+Variable        | Type    | Definition
+--              |--       |--
+payload         | string  | Option to test a specific payload or resource tree (see below)
+logdir          | string  | Place to save logs and run configs
+nooemcheck      | boolean | Whether to check Oem items on service
+debugging       | boolean | Whether to print debug to log
+schema_directory| string  | Where schema is located/saved on system
 
 ### Payload options
 The payload option takes two parameters as "option uri"

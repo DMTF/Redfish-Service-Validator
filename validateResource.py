@@ -7,7 +7,8 @@ from collections import Counter
 from io import StringIO
 
 import traverseService
-from validateSpecial import loadAttributeRegDict, checkPropertyConformance, displayValue
+import common.schema as schema
+from validateSpecial import loadAttributeRegDict, checkPropertyConformance, displayValue, validateExcerpt
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
@@ -154,11 +155,16 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             if namespace == '#AttributeRegistry' and type_name == 'AttributeRegistry':
                 loadAttributeRegDict(odata_type, propResourceObj.jsondata)
 
+    
     for prop in propResourceObj.getResourceProperties():
+        assert isinstance(prop, schema.PropItem)
         try:
             if not prop.valid and not prop.exists:
                 continue
             propMessages, propCounts = checkPropertyConformance(propResourceObj.schemaObj, prop.name, prop, propResourceObj.jsondata, parentURI=URI)
+
+            new_msgs, new_counts = validateExcerpt(prop, propResourceObj)
+
             if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in propResourceObj.typeobj.fulltype:
                 modified_entry = list(propMessages['@Redfish.Copyright'])
                 modified_entry[-1] = 'FAIL'
