@@ -161,9 +161,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
         try:
             if not prop.valid and not prop.exists:
                 continue
-            propMessages, propCounts = checkPropertyConformance(propResourceObj.schemaObj, prop.name, prop, propResourceObj.jsondata, parentURI=URI)
-
-            new_msgs, new_counts = validateExcerpt(prop, propResourceObj)
+            propMessages, propCounts = checkPropertyConformance(propResourceObj, prop.name, prop, parentURI=URI)
 
             if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in propResourceObj.typeobj.fulltype:
                 modified_entry = list(propMessages['@Redfish.Copyright'])

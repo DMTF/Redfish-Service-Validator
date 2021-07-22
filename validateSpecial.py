@@ -13,21 +13,23 @@ my_logger = traverseService.getLogger()
 
 import logging
 
-def validateExcerpt(prop, propResourceObj):
+def validateExcerpt(prop, val, schemaObj, parentType):
     # check Navprop if it's NEUTRAL or CONTAINS
     assert isinstance(prop, schema.PropItem)
 
     if prop.propDict['realtype'] == 'entity':
+        my_logger.error('{}: Am Entity'.format(prop.name))
+        my_logger.error('{}: and my type'.format(prop.excerptType))
         my_excerpt_type, my_excerpt_tags = prop.excerptType, prop.excerptTags
 
         if prop.propDict['typeprops'] is not None:
             # propEntry['typeprops'] = linkURI, autoExpand, linkType, linkSchema, innerJson
             _, __, linkType, linkSchema, ___ = prop.propDict['typeprops']
-            my_obj = propResourceObj.schemaObj.getSchemaFromReference(linkSchema)
+            my_obj = schemaObj.getSchemaFromReference(linkSchema)
             if my_obj is not None:
-                my_type = my_obj.getHighestType(linkType, propResourceObj.typename)
+                my_type = my_obj.getHighestType(linkType, parentType)
                 my_type_obj = getTypeObject(my_type, my_obj)
-                my_props = my_type_obj.getProperties(prop.val)
+                my_props = my_type_obj.getProperties(val)
             else:
                 my_props = []
         else:
@@ -245,9 +247,9 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
         if prop.propChild == 'Oem' and name == 'Actions':
             continue
 
-        new_msgs, new_counts = validateExcerpt(prop, propComplexObj)
+        propComplexObj.jsondata = val
 
-        propMessages, propCounts = checkPropertyConformance(propComplexObj.schemaObj, prop.name, prop, val, ParentItem=name)
+        propMessages, propCounts = checkPropertyConformance(propComplexObj, prop.name, prop, ParentItem=name)
         if prop.payloadName != prop.propChild:
             propCounts['invalidComplexName'] += 1
             for propMsg in propMessages:
@@ -659,7 +661,7 @@ def loadAttributeRegDict(odata_type, json_data):
         my_logger.debug('{}: "{}" AttributeRegistry dict has zero entries; not adding'.format(fn, reg_id))
 
 
-def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=None, parentURI=""):
+def checkPropertyConformance(parentResourceObj, PropertyName, prop, ParentItem=None, parentURI=""):
     """checkPropertyConformance
 
     Given a dictionary of properties, check the validitiy of each item, and return a
@@ -822,9 +824,14 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
         propValueList = [propValue]
     # note: make sure we don't enter this on null values, some of which are
     # OK!
+    schemaObj = parentResourceObj.schemaObj
+    decoded = parentResourceObj.jsondata
     for cnt, val in enumerate(propValueList):
         appendStr = (('[' + str(cnt) + ']') if isCollection else '')
         sub_item = item + appendStr
+
+        new_msgs, new_counts = validateExcerpt(prop, val, schemaObj, parentResourceObj.typename)
+
         if isinstance(val, str):
             if val == '' and propPermissionsValue == 'OData.Permission/Read':
                 my_logger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))

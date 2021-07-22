@@ -32,7 +32,7 @@ class ValidatorTest(TestCase):
 
         rsc = rst.ResourceObj('test', 'test', example_json, None, None, None, False)
         for prop in rsc.getResourceProperties():
-                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop, rsc.jsondata, parentURI='')
+                propMessages, propCounts = rsv.checkPropertyConformance(rsc, prop.name, prop, rsc, parentURI='')
                 print(propMessages)
                 print(propCounts)
 
@@ -42,7 +42,7 @@ class ValidatorTest(TestCase):
 
         rsc = rst.ResourceObj('test', 'test', example_json, None, None, None, False)
         for prop in rsc.getResourceProperties():
-                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop, rsc.jsondata, parentURI='')
+                propMessages, propCounts = rsv.checkPropertyConformance(rsc, prop.name, prop, rsc, parentURI='')
                 print(propMessages)
                 print(propCounts)
 
@@ -53,6 +53,6 @@ class ValidatorTest(TestCase):
 
         rsc = rst.ResourceObj('test', 'test', example_json, None, None, None, False)
         for prop in rsc.getResourceProperties():
-                propMessages, propCounts = rsv.checkPropertyConformance(rsc.schemaObj, prop.name, prop, rsc.jsondata, parentURI='')
+                propMessages, propCounts = rsv.checkPropertyConformance(rsc, prop.name, prop, rsc, parentURI='')
                 print(propMessages)
                 print(propCounts)

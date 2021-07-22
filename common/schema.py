@@ -916,17 +916,16 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
         elif nameOfTag == 'EntityType':  # If entity, do nothing special (it's a reference link)
             propEntry['realtype'] = 'entity'
             if val is not None:
+                autoExpand = propEntry.get('OData.AutoExpand', None) is not None or\
+                    propEntry.get('OData.AutoExpand'.lower(), None) is not None
                 if propEntry.get('isCollection') is None:
-                    val = [val]
-                val = val if val is not None else []
-                for innerVal in val:
-                    linkURI = innerVal.get('@odata.id')
-                    autoExpand = propEntry.get('OData.AutoExpand', None) is not None or\
-                        propEntry.get('OData.AutoExpand'.lower(), None) is not None
-                    linkType = propertyFullType
-                    linkSchema = propertyFullType
-                    innerJson = innerVal
-                    propEntry['typeprops'] = linkURI, autoExpand, linkType, linkSchema, innerJson
+                    linkURI = val.get('@odata.id')
+                    propEntry['typeprops'] = linkURI, autoExpand, propertyFullType, propertyFullType, val
+                else:
+                    # propEntry['typeprops'] = []
+                    for innerVal in val:
+                        linkURI = innerVal.get('@odata.id')
+                        propEntry['typeprops'] = (linkURI, autoExpand, propertyFullType, propertyFullType, innerVal)
             else:
                 propEntry['typeprops'] = None
             rst.traverseLogger.debug("typeEntityTag found {}".format(propertyTypeTag['Name']))
