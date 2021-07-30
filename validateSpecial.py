@@ -23,7 +23,7 @@ def validateActions(name: str, val: dict, propTypeObj: traverseService.schema.Pr
     :param payloadType:  Payload type of the owner of Actions
     :type payloadType: str
     """
-    actionMessages, actionCounts = {}, Counter()
+    actionMessages, actionCounts = OrderedDict(), Counter()
 
     parentTypeObj = traverseService.schema.PropType(payloadType, propTypeObj.schemaObj)
     actionsDict = {act.name: (val.get(act.name, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
@@ -180,7 +180,7 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
         return False, None, None
 
     # Check inside of complexType, treat it like an Entity
-    complexMessages = {}
+    complexMessages = OrderedDict()
     complexCounts = Counter()
 
     if 'OemObject' in propComplexObj.typeobj.fulltype:
@@ -384,7 +384,7 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
     :return: the messages and counts of the validation results
     """
     fn = 'validateDynamicPropertyPatterns'
-    messages = {}
+    messages = OrderedDict()
     counts = Counter()
     rsvLogger.debug('{}: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
                     .format(fn, name, type(val), propTypeObj.propPattern, payloadType))
@@ -618,7 +618,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     :param parentURI:
     """
 
-    resultList = {}
+    resultList = OrderedDict()
     counts = Counter()
 
     rsvLogger.log(logging.INFO-1, PropertyName)

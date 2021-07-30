@@ -12,7 +12,7 @@ The `Redfish Service Validator` is an open source framework for checking conform
 
 ## Pre-requisites
 
-The _Redfish_ Service Validator is based on Python 3 and the client system is required to have the Python framework installed before the tool can be installed and executed on the system. Additionally, the following packages are required to be installed and accessible from the python environment:
+The `Redfish Service Validator` is based on Python 3 and the client system is required to have the Python framework installed before the tool can be installed and executed on the system. Additionally, the following packages are required to be installed and accessible from the python environment:
 * beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4
 * requests  - https://github.com/kennethreitz/requests (Documentation is available at http://docs.python-requests.org/)
 * lxml - https://pypi.python.org/pypi/lxml
@@ -112,8 +112,8 @@ The test result for each GET operation will be reported as follows:
 
 ## Limitations
 
-_Redfish_ Service Validator covers all the GET execution on the service. Below are certain points which are not in this scope.
-* Patch/Post/Skip/Top/Head is not covered as part of Redfish Service Validator due to dependency on internal factor of the service.
+`Redfish Service Validator` covers all the GET execution on the service. Below are certain points which are not in this scope.
+* Patch/Post/Skip/Top/Head is not covered as part of `Redfish Service Validator` due to dependency on internal factor of the service.
 * `Redfish Service Validator` does not cover testing of multiple service at once. To execute this, we have to re-run the tool by running it separately.
 * Tool doesn't support @odata.context which use complex $entity path
 
@@ -123,7 +123,7 @@ The module pyinstaller is used to package the environment as a standlone executa
 
     pip3 install pyinstaller
 
-From a Windows system, the following command can be used to build a Windows executable file named _Redfish_ServiceValidator.exe, which will be found in dist folder:
+From a Windows system, the following command can be used to build a Windows executable file named `RedfishServiceValidator.exe`, which will be found in dist folder:
 
     pyinstaller -F -w -i redfish.ico -n RedfishServiceValidator.exe RedfishServiceValidatorGui.py
 

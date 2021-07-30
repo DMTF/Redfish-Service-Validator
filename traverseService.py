@@ -57,9 +57,10 @@ def startService(config):
     global currentService
     if currentService is not None:
         currentService.close()
-    currentService = rfService(config)
-    config = currentService.config
-    return currentService
+    newService = rfService(config)
+    currentService = newService
+    config = newService.config
+    return newService
 
 class rfService():
     def __init__(self, my_config):
@@ -109,6 +110,8 @@ class rfService():
             self.currentSession = session(config['username'], config['password'], config['configuri'], None)
             self.currentSession.startSession()
 
+        global currentService # TODO: This is still not ideal programming practice
+        currentService = self
         success, data, status, delay = self.callResourceURI(Metadata.metadata_uri)
         if success:
             soup = schema.BeautifulSoup(data, "xml")
@@ -608,7 +611,7 @@ class ResourceObj:
         self.unknownProperties = [k for k in self.jsondata if k not in propertyList +
                 [prop.payloadName for prop in self.additionalList] and '@odata' not in k]
 
-        self.links = {}
+        self.links = OrderedDict()
 
         sample = config.get('sample', 100)
         linklimits = config.get('linklimit', {})
@@ -628,7 +631,7 @@ class ResourceObj:
         checks for @odata entries and their conformance
         These are not checked in the normal loop
         """
-        messages = dict()
+        messages = OrderedDict()
         decoded = jsondata
         success = True
         for key in [k for k in decoded if '@odata' in k]:
@@ -729,7 +732,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
     :param context: default blank, for AutoExpanded types
     :return: list of links
     """
-    linkList = {}
+    linkList = OrderedDict()
     if linklimits is None:
         linklimits = {}
     # check keys in propertyDictionary

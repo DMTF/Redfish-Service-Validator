@@ -3,7 +3,7 @@
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 import logging
-from collections import Counter
+from collections import Counter, OrderedDict
 from io import StringIO
 
 import traverseService
@@ -51,7 +51,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
     my_logger.info("\n*** %s", URI)
     my_logger.debug("\n*** %s, %s, %s", expectedType, expectedSchema is not None, expectedJson is not None)
     counts = Counter()
-    results, messages = {}, {}
+    results, messages = OrderedDict(), OrderedDict()
 
     ehandler, whandler = create_logging_capture(my_logger)
 
@@ -270,7 +270,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
         traverseLogger.log(logging.INFO-1,'%s, %s', linkName, returnVal[1])
         return returnVal
 
-    refLinks = {}
+    refLinks = OrderedDict()
 
     validateSuccess, counts, results, links, thisobj = validateSingleURI(
                 URI, uriName, expectedType, expectedSchema, expectedJson, parent)

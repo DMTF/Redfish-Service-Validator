@@ -182,8 +182,7 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
         else:
             rst.traverseLogger.warn("Schema file {} not found in {}".format(filestring, SchemaLocation))
             if Alias == '$metadata':
-                rst.traverseLogger.warning(
-                    "If $metadata cannot be found, Annotations may be unverifiable")
+                rst.traverseLogger.warning("If $metadata cannot be found, Annotations may be unverifiable")
     except Exception as ex:
         rst.traverseLogger.error("A problem when getting a local schema has occurred {}".format(SchemaURI))
         rst.traverseLogger.warning("output: ", exc_info=True)
@@ -437,7 +436,7 @@ class PropType:
 
     def getLinksFromType(self, jsondata, context, propList=None, oemCheck=True, linklimits={}, sample=None):
         node = self
-        links = {}
+        links = OrderedDict()
         if propList is not None:
             links.update(rst.getAllLinks(jsondata, propList, node.schemaObj, context=context, linklimits=linklimits, sample_size=sample, oemCheck=oemCheck))
         else:
