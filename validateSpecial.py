@@ -18,14 +18,12 @@ def validateExcerpt(prop, val, schemaObj, parentType):
     assert isinstance(prop, schema.PropItem)
 
     if prop.propDict['realtype'] == 'entity':
-        my_logger.error('{}: Am Entity'.format(prop.name))
-        my_logger.error('{}: and my type'.format(prop.excerptType))
         my_excerpt_type, my_excerpt_tags = prop.excerptType, prop.excerptTags
 
         if prop.propDict['typeprops'] is not None:
             # propEntry['typeprops'] = linkURI, autoExpand, linkType, linkSchema, innerJson
             _, __, linkType, linkSchema, ___ = prop.propDict['typeprops']
-            my_obj = schemaObj.getSchemaFromReference(linkSchema)
+            my_obj = schemaObj.getSchemaFromReference(schema.getNamespace(linkSchema))
             if my_obj is not None:
                 my_type = my_obj.getHighestType(linkType, parentType)
                 my_type_obj = getTypeObject(my_type, my_obj)
@@ -41,22 +39,23 @@ def validateExcerpt(prop, val, schemaObj, parentType):
             valid_tagging = any([x in my_excerpt_tags for x in innerprop.excerptTags]) or innerprop.excerptTags == []
             if my_excerpt_type == ExcerptTypes.NEUTRAL:
                 if innerprop.excerptType == [ExcerptTypes.EXCLUSIVE] and innerprop.exists:
-                    my_logger.error('{}: Exclusive Excerpt should not exist in a Resource/Complex'.format(prop.name))
+                    my_logger.error('{}: Exclusive Excerpt {} should not exist in this Resource/ComplexType'.format(prop.name, innerprop.name))
+                    return False
             if my_excerpt_type == ExcerptTypes.CONTAINS:
                 if innerprop.excerptType in [ExcerptTypes.ALLOWED, ExcerptTypes.EXCLUSIVE, ExcerptTypes.CONTAINS]:
                     if innerprop.exists and not valid_tagging:
                         my_logger.error('{}: Excerpt tags of owner {} do not match property {} {}'.format(innerprop.name, prop.name, my_excerpt_tags, innerprop.excerptTags))
+                        return False
                 elif innerprop.exists:
-                        my_logger.error('{}: Property is not a valid Excerpt'.format(innerprop.name))
-        return [], {}
+                    my_logger.error('{}: Property is not a valid Excerpt'.format(innerprop.name))
+                    return False
 
     # check our prop if it's EXCLUSIVE
     if prop.excerptType == ExcerptTypes.EXCLUSIVE and prop.exists:
         my_logger.error('{}: Exclusive Excerpt should not exist in a Resource/Complex'.format(prop.name))
-        return [], {}
+        return False
 
-    else:
-        return [], {}
+    return True
 
 
 def validateActions(name: str, val: dict, propTypeObj: traverseService.schema.PropType, payloadType: str):
@@ -784,6 +783,7 @@ def checkPropertyConformance(parentResourceObj, PropertyName, prop, ParentItem=N
     # Note: make sure it checks each one
     propCollectionType = PropertyDict.get('isCollection')
     isCollection = propCollectionType is not None
+    excerptPass = True
     if isCollection and propValue is None:
         # illegal for a collection to be null
         if prop.propChild == 'HttpHeaders' and traverseService.getType(prop.propOwner) == 'EventDestination':
@@ -830,7 +830,7 @@ def checkPropertyConformance(parentResourceObj, PropertyName, prop, ParentItem=N
         appendStr = (('[' + str(cnt) + ']') if isCollection else '')
         sub_item = item + appendStr
 
-        new_msgs, new_counts = validateExcerpt(prop, val, schemaObj, parentResourceObj.typename)
+        excerptPass = validateExcerpt(prop, val, schemaObj, parentResourceObj.typename)
 
         if isinstance(val, str):
             if val == '' and propPermissionsValue == 'OData.Permission/Read':
@@ -941,10 +941,13 @@ def checkPropertyConformance(parentResourceObj, PropertyName, prop, ParentItem=N
             result_str = 'WARN'
         else:
             result_str = 'PASS'
+        if not excerptPass:
+            counts['errorExcerpt'] += 1
+            result_str = 'errorExcerpt'
         resultList[sub_item] = (
                 displayValue(val, sub_item if autoExpand else None), displayType(propType, propRealType),
                 'Yes' if propExists else 'No', result_str)
-        if paramPass and propNullablePass and propMandatoryPass:
+        if paramPass and propNullablePass and propMandatoryPass and excerptPass:
             counts['pass'] += 1
             my_logger.log(logging.INFO-1,"\tSuccess")
         else:

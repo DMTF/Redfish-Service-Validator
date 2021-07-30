@@ -76,9 +76,11 @@ def applySuccessColor(num, entry):
     if num < 4:
         return wrapTag(entry, 'td')
     success_col = str(entry)
-    if 'FAIL' in str(success_col).upper():
+    if any(x.upper() in str(success_col).upper() for x in ['FAIL', 'errorExcerpt']):
         entry = '<td class="fail center">' + str(success_col) + '</td>'
     elif str(success_col).upper() in ['DEPRECATED', 'INVALID', 'WARN']:
+        entry = '<td class="warn center">' + str(success_col) + '</td>'
+    elif any(x in str(success_col).upper() for x in ['DEPRECATED', 'INVALID', 'WARN']):
         entry = '<td class="warn center">' + str(success_col) + '</td>'
     elif 'PASS' in str(success_col).upper():
         entry = '<td class="pass center">' + str(success_col) + '</td>'
@@ -88,7 +90,7 @@ def applySuccessColor(num, entry):
 
 
 def applyInfoSuccessColor(num, entry):
-    if 'fail' in entry or 'exception' in entry or 'problem' in entry:
+    if any(x in entry for x in ['fail', 'exception', 'error', 'problem', 'err']):
         style = 'class="fail"'
     elif 'warn' in entry or 'invalid' in entry:
         style = 'class="warn"'

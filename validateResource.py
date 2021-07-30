@@ -8,7 +8,7 @@ from io import StringIO
 
 import traverseService
 import common.schema as schema
-from validateSpecial import loadAttributeRegDict, checkPropertyConformance, displayValue, validateExcerpt
+from validateSpecial import loadAttributeRegDict, checkPropertyConformance, displayValue
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
@@ -283,6 +283,8 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
         if 'Registries.Registries' in links.keys():
             logging.debug('Move Registries to front for validation')
         for linkName in sorted(links.keys(), key=lambda x: x != 'Registries.Registries'):
+            if links[linkName].uri == 'excerpt':
+                continue
             if any(x in links[linkName].origin_property for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']):
                 refLinks[linkName] = (links[linkName], thisobj)
                 continue

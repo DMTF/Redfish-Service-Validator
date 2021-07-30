@@ -332,7 +332,10 @@ class rfSchema:
 
         if limit is not None:
             if getVersion(limit) is None:
-                rst.traverseLogger.warning('Limiting namespace has no version, erasing: {}'.format(limit))
+                if 'Collection' not in limit:
+                    rst.traverseLogger.warning('Limiting namespace has no version, erasing: {}'.format(limit))
+                else:
+                    rst.traverseLogger.info('Limiting namespace has no version, erasing: {}'.format(limit))
                 limit = None
             else:
                 limit = getVersion(limit)
