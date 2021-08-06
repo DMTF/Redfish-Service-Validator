@@ -7,6 +7,7 @@ from collections import Counter, OrderedDict
 from io import StringIO
 
 import traverseService
+import common.schema as schema
 from validateSpecial import loadAttributeRegDict, checkPropertyConformance, displayValue
 
 my_logger = logging.getLogger()
@@ -154,11 +155,14 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedSchema=None, e
             if namespace == '#AttributeRegistry' and type_name == 'AttributeRegistry':
                 loadAttributeRegDict(odata_type, propResourceObj.jsondata)
 
+    
     for prop in propResourceObj.getResourceProperties():
+        assert isinstance(prop, schema.PropItem)
         try:
             if not prop.valid and not prop.exists:
                 continue
-            propMessages, propCounts = checkPropertyConformance(propResourceObj.schemaObj, prop.name, prop, propResourceObj.jsondata, parentURI=URI)
+            propMessages, propCounts = checkPropertyConformance(propResourceObj, prop.name, prop, parentURI=URI)
+
             if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in propResourceObj.typeobj.fulltype:
                 modified_entry = list(propMessages['@Redfish.Copyright'])
                 modified_entry[-1] = 'FAIL'
@@ -279,6 +283,8 @@ def validateURITree(URI, uriName, expectedType=None, expectedSchema=None, expect
         if 'Registries.Registries' in links.keys():
             logging.debug('Move Registries to front for validation')
         for linkName in sorted(links.keys(), key=lambda x: x != 'Registries.Registries'):
+            if links[linkName].uri == 'excerpt':
+                continue
             if any(x in links[linkName].origin_property for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']):
                 refLinks[linkName] = (links[linkName], thisobj)
                 continue

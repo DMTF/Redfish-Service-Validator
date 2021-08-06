@@ -5,7 +5,7 @@
 from collections import namedtuple
 from bs4 import BeautifulSoup
 from functools import lru_cache
-from collections import OrderedDict
+from enum import Enum, auto
 import re
 import difflib
 import os.path
@@ -331,7 +331,10 @@ class rfSchema:
 
         if limit is not None:
             if getVersion(limit) is None:
-                rst.traverseLogger.warning('Limiting namespace has no version, erasing: {}'.format(limit))
+                if 'Collection' not in limit:
+                    rst.traverseLogger.warning('Limiting namespace has no version, erasing: {}'.format(limit))
+                else:
+                    rst.traverseLogger.info('Limiting namespace has no version, erasing: {}'.format(limit))
                 limit = None
             else:
                 limit = getVersion(limit)
@@ -400,6 +403,7 @@ class PropType:
         self.additional = False
         self.expectedURI = None
 
+
         # get all properties and actions in Type chain
         success, currentSchemaObj, baseType = True, self.schemaObj, self.fulltype
         try:
@@ -416,6 +420,7 @@ class PropType:
                     self.additional = self.parent.additional
                 if self.expectedURI is None:
                     self.expectedURI = self.parent.expectedURI
+
         except Exception as ex:
             rst.traverseLogger.debug('Exception caught while creating new PropType', exc_info=1)
             rst.traverseLogger.error(
@@ -505,6 +510,7 @@ def getTypeDetails(schemaObj, SchemaAlias):
     ActionList = list()
     PropertyPattern = None
     additional = False
+
 
     soup, refs = schemaObj.soup, schemaObj.refs
 
@@ -625,7 +631,18 @@ def getTypeObject(typename, schemaObj):
         PropType.robjcache[idtag] = newType
         return newType
 
+class ExcerptTypes(Enum):
+    NEUTRAL = auto()
+    CONTAINS = auto()
+    ALLOWED = auto()
+    EXCLUSIVE = auto()
 
+
+excerpt_info_by_type = {
+    'Redfish.ExcerptCopy': ExcerptTypes.CONTAINS,
+    'Redfish.Excerpt': ExcerptTypes.ALLOWED,
+    'Redfish.ExcerptCopyOnly': ExcerptTypes.EXCLUSIVE
+}
 
 class PropItem:
     def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None, payloadName=None, versionList=None, parent=None, top_of_resource=None):
@@ -652,6 +669,15 @@ class PropItem:
             self.propDict = getPropertyDetails(
                 schemaObj, propOwner, propChild, val, topVersion, customType, parent=parent, top_of_resource=top_of_resource)
             self.attr = self.propDict['attrs']
+
+            self.excerptType = ExcerptTypes.NEUTRAL
+            self.excerptTags = []
+
+            for annotation, val in excerpt_info_by_type.items():
+                if annotation in self.propDict:
+                    self.excerptTags = self.propDict.get(annotation).get('String', '').split(',')
+                    self.excerptTags = [x.strip(' ') for x in self.excerptTags] if self.excerptTags != [''] else []
+                    self.excerptType = val
 
         except Exception as ex:
             rst.traverseLogger.debug('Exception caught while creating new PropItem', exc_info=1)
@@ -892,17 +918,16 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
         elif nameOfTag == 'EntityType':  # If entity, do nothing special (it's a reference link)
             propEntry['realtype'] = 'entity'
             if val is not None:
+                autoExpand = propEntry.get('OData.AutoExpand', None) is not None or\
+                    propEntry.get('OData.AutoExpand'.lower(), None) is not None
                 if propEntry.get('isCollection') is None:
-                    val = [val]
-                val = val if val is not None else []
-                for innerVal in val:
-                    linkURI = innerVal.get('@odata.id')
-                    autoExpand = propEntry.get('OData.AutoExpand', None) is not None or\
-                        propEntry.get('OData.AutoExpand'.lower(), None) is not None
-                    linkType = propertyFullType
-                    linkSchema = propertyFullType
-                    innerJson = innerVal
-                    propEntry['typeprops'] = linkURI, autoExpand, linkType, linkSchema, innerJson
+                    linkURI = val.get('@odata.id')
+                    propEntry['typeprops'] = linkURI, autoExpand, propertyFullType, propertyFullType, val
+                else:
+                    # propEntry['typeprops'] = []
+                    for innerVal in val:
+                        linkURI = innerVal.get('@odata.id')
+                        propEntry['typeprops'] = (linkURI, autoExpand, propertyFullType, propertyFullType, innerVal)
             else:
                 propEntry['typeprops'] = None
             rst.traverseLogger.debug("typeEntityTag found {}".format(propertyTypeTag['Name']))

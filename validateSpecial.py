@@ -1,13 +1,62 @@
 
 from collections import Counter, OrderedDict
 
-import re
+import re, json
 import traverseService
 import common.simpletypes as simpletypes
 
-rsvLogger = traverseService.getLogger()
+schema = traverseService.schema
+ExcerptTypes = schema.ExcerptTypes
+getTypeObject = schema.getTypeObject
+
+my_logger = traverseService.getLogger()
 
 import logging
+
+def validateExcerpt(prop, val, schemaObj, parentType):
+    # check Navprop if it's NEUTRAL or CONTAINS
+    assert isinstance(prop, schema.PropItem)
+
+    if prop.propDict['realtype'] == 'entity':
+        my_excerpt_type, my_excerpt_tags = prop.excerptType, prop.excerptTags
+
+        if prop.propDict['typeprops'] is not None:
+            # propEntry['typeprops'] = linkURI, autoExpand, linkType, linkSchema, innerJson
+            _, __, linkType, linkSchema, ___ = prop.propDict['typeprops']
+            my_obj = schemaObj.getSchemaFromReference(schema.getNamespace(linkSchema))
+            if my_obj is not None:
+                my_type = my_obj.getHighestType(linkType, parentType)
+                my_type_obj = getTypeObject(my_type, my_obj)
+                my_props = my_type_obj.getProperties(val)
+            else:
+                my_props = []
+        else:
+            my_props = []
+
+        for innerprop in my_props:
+            assert isinstance(innerprop, schema.PropItem)
+            # print(innerprop.name, innerprop.excerptType, my_excerpt_type, innerprop.excerptTags, my_excerpt_tags)
+            valid_tagging = any([x in my_excerpt_tags for x in innerprop.excerptTags]) or innerprop.excerptTags == []
+            if my_excerpt_type == ExcerptTypes.NEUTRAL:
+                if innerprop.excerptType == [ExcerptTypes.EXCLUSIVE] and innerprop.exists:
+                    my_logger.error('{}: Exclusive Excerpt {} should not exist in this Resource/ComplexType'.format(prop.name, innerprop.name))
+                    return False
+            if my_excerpt_type == ExcerptTypes.CONTAINS:
+                if innerprop.excerptType in [ExcerptTypes.ALLOWED, ExcerptTypes.EXCLUSIVE, ExcerptTypes.CONTAINS]:
+                    if innerprop.exists and not valid_tagging:
+                        my_logger.error('{}: Excerpt tags of owner {} do not match property {} {}'.format(innerprop.name, prop.name, my_excerpt_tags, innerprop.excerptTags))
+                        return False
+                elif innerprop.exists:
+                    my_logger.error('{}: Property is not a valid Excerpt'.format(innerprop.name))
+                    return False
+
+    # check our prop if it's EXCLUSIVE
+    if prop.excerptType == ExcerptTypes.EXCLUSIVE and prop.exists:
+        my_logger.error('{}: Exclusive Excerpt should not exist in a Resource/Complex'.format(prop.name))
+        return False
+
+    return True
+
 
 def validateActions(name: str, val: dict, propTypeObj: traverseService.schema.PropType, payloadType: str):
     """validateActions
@@ -47,26 +96,26 @@ def validateActions(name: str, val: dict, propTypeObj: traverseService.schema.Pr
             target = actionDecoded.get('target')
             if target is None:
                 actPass = False
-                rsvLogger.error('{}: target for action is missing'.format(name + '.' + k))
+                my_logger.error('{}: target for action is missing'.format(name + '.' + k))
             elif not isinstance(target, str):
                 actPass = False
-                rsvLogger.error('{}: target for action is malformed; expected string, got {}'
+                my_logger.error('{}: target for action is malformed; expected string, got {}'
                                     .format(name + '.' + k, str(type(target)).strip('<>')))
                 # check for unexpected properties
             for prop in actionDecoded:
                 if prop not in ['target', 'title', '@Redfish.ActionInfo',
                                 '@Redfish.OperationApplyTimeSupport'] and '@Redfish.AllowableValues' not in prop:
                     actPass = False
-                    rsvLogger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}", "{}", "{}" and "{}"'
+                    my_logger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}", "{}", "{}" and "{}"'
                             .format(name + '.' + k, prop, 'target', 'title', '@Redfish.ActionInfo', '@Redfish.OperationApplyTimeSupport', '*@Redfish.AllowableValues'))
         else:
             # <Annotation Term="Redfish.Required"/>
             if actDict is not None and actDict.find('annotation', {'term': 'Redfish.Required'}):
                 actPass = False
-                rsvLogger.error('{}: action not found, is mandatory'.format(name + '.' + k))
+                my_logger.error('{}: action not found, is mandatory'.format(name + '.' + k))
             else:
                 actOptional = True
-                rsvLogger.debug('{}: action not found, is not mandatory'.format(name + '.' + k))
+                my_logger.debug('{}: action not found, is not mandatory'.format(name + '.' + k))
         actionMessages[name + '.' + k] = (
                 'Action', '-',
                 'Yes' if actionDecoded != 'n/a' else 'No',
@@ -80,11 +129,11 @@ def validateActions(name: str, val: dict, propTypeObj: traverseService.schema.Pr
     return actionMessages, actionCounts
 
 
-def validateEntity(name: str, val: dict, propType: str, propCollectionType: str, schemaObj, autoExpand, parentURI=""):
+def validateEntity(name: str, val: dict, propType: str, propCollectionType: str, schemaObj, autoExpand, excerptType, parentURI=""):
     """
     Validates an entity based on its uri given
     """
-    rsvLogger.debug('validateEntity: name = {}'.format(name))
+    my_logger.debug('validateEntity: name = {}'.format(name))
 
     # check for required @odata.id
     if '@odata.id' not in val:
@@ -92,9 +141,10 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             default = parentURI + '#/{}'.format(name.replace('[', '/').strip(']'))
         else:
             default = parentURI + '/{}'.format(name)
-        rsvLogger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, default))
-        if parentURI == "":
-            return False
+        if excerptType == ExcerptTypes.NEUTRAL:
+            my_logger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, default))
+            if parentURI == "":
+                return False
         uri = default
     else:
         uri = val['@odata.id']
@@ -105,7 +155,7 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
         success, data, status, delay = traverseService.callResourceURI(uri)
     else:
         success, data, status, delay = True, val, 200, 0
-    rsvLogger.debug('(success, uri, status, delay) = {}, (propType, propCollectionType) = {}, data = {}'
+    my_logger.debug('(success, uri, status, delay) = {}, (propType, propCollectionType) = {}, data = {}'
                     .format((success, uri, status, delay), (propType, propCollectionType), data))
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
     generics = ['Resource.ItemOrCollection', 'Resource.ResourceCollection', 'Resource.Item', 'Resource.Resource']
@@ -131,12 +181,12 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             success = False
 
         if not success:
-            rsvLogger.error("Schema of target {} not referenced in current resource, concluding type {} is not of expected type {}".format(uri, currentType, propType))
-        rsvLogger.debug('success = {}, currentType = {}, baseLink = {}'.format(success, currentType, baseLink))
+            my_logger.error("Schema of target {} not referenced in current resource, concluding type {} is not of expected type {}".format(uri, currentType, propType))
+        my_logger.debug('success = {}, currentType = {}, baseLink = {}'.format(success, currentType, baseLink))
 
         # Recurse through parent types, gather type hierarchy to check against
         if success and currentType is not None and baseObj.getTypeTagInSchema(currentType) is None and success:
-            rsvLogger.error(
+            my_logger.error(
                 '{}: Linked resource reports version {} not in Schema {}'
                 .format(name.split(':')[-1], currentType, baseObj.origin))
 
@@ -146,27 +196,30 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             while currentType not in allTypes and success:
                 allTypes.append(currentType)
                 success, baseObj, currentType = baseObj.getParentType(currentType, 'EntityType')
-                rsvLogger.debug('success = {}, currentType = {}'.format(success, currentType))
+                my_logger.debug('success = {}, currentType = {}'.format(success, currentType))
 
-            rsvLogger.debug('propType = {}, propCollectionType = {}, allTypes = {}'
+            my_logger.debug('propType = {}, propCollectionType = {}, allTypes = {}'
                             .format(propType, propCollectionType, allTypes))
             paramPass = propType in allTypes or propCollectionType in allTypes
             if not paramPass:
                 full_namespace = propCollectionType if propCollectionType is not None else propType
-                rsvLogger.error(
+                my_logger.error(
                     '{}: Linked resource reports schema version (or namespace): {} not found in typechain'
                     .format(name.split(':')[-1], full_namespace))
         else:
-            rsvLogger.error("{}: Could not get schema file for Entity check".format(name))
+            my_logger.error("{}: Could not get schema file for Entity check".format(name))
     else:
-        if "OriginOfCondition" in name:
-            rsvLogger.log(logging.INFO-1, "{}: GET of resource at URI {} returned HTTP {}, but was a temporary resource."
-                            .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
-            return True
+        if excerptType == ExcerptTypes.NEUTRAL:
+            if "OriginOfCondition" in name:
+                my_logger.log(logging.INFO-1, "{}: GET of resource at URI {} returned HTTP {}, but was a temporary resource."
+                                .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
+                return True
 
+            else:
+                my_logger.error("{}: GET of resource at URI {} returned HTTP {}. Check URI."
+                                .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
         else:
-            rsvLogger.error("{}: GET of resource at URI {} returned HTTP {}. Check URI."
-                            .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
+            return True
     return paramPass
 
 
@@ -174,9 +227,9 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     """
     Validate a complex property
     """
-    rsvLogger.log(logging.INFO-1,'\t***going into Complex')
+    my_logger.log(logging.INFO-1,'\t***going into Complex')
     if not isinstance(val, dict):
-        rsvLogger.error(name + ': Complex item not a dictionary')
+        my_logger.error(name + ': Complex item not a dictionary')
         return False, None, None
 
     # Check inside of complexType, treat it like an Entity
@@ -184,7 +237,7 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
     complexCounts = Counter()
 
     if 'OemObject' in propComplexObj.typeobj.fulltype:
-        rsvLogger.error('{}: OemObjects are required to be typecast with @odata.type'.format(str(name)))
+        my_logger.error('{}: OemObjects are required to be typecast with @odata.type'.format(str(name)))
         return False, complexCounts, complexMessages
 
     for prop in propComplexObj.getResourceProperties():
@@ -192,7 +245,10 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
             continue
         if prop.propChild == 'Oem' and name == 'Actions':
             continue
-        propMessages, propCounts = checkPropertyConformance(propComplexObj.schemaObj, prop.name, prop, val, ParentItem=name)
+
+        propComplexObj.jsondata = val
+
+        propMessages, propCounts = checkPropertyConformance(propComplexObj, prop.name, prop, ParentItem=name)
         if prop.payloadName != prop.propChild:
             propCounts['invalidComplexName'] += 1
             for propMsg in propMessages:
@@ -200,7 +256,7 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
                 modified_entry[-1] = 'Invalid'
                 propMessages[propMsg] = tuple(modified_entry)
         if not prop.valid:
-            rsvLogger.error('Verifying complex property that does not belong to this version: {}'.format(prop.name))
+            my_logger.error('Verifying complex property that does not belong to this version: {}'.format(prop.name))
             for propMsg in propMessages:
                 propCounts['invalidComplexEntry'] += 1
                 modified_entry = list(propMessages[propMsg])
@@ -215,9 +271,9 @@ def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
 
     if not successPayload:
         complexCounts['failComplexPayloadError'] += 1
-        rsvLogger.error('{}: complex payload error, @odata property non-conformant'.format(str(name)))
-    rsvLogger.log(logging.INFO-1,'\t***out of Complex')
-    rsvLogger.log(logging.INFO-1,'complex {}'.format(str(complexCounts)))
+        my_logger.error('{}: complex payload error, @odata property non-conformant'.format(str(name)))
+    my_logger.log(logging.INFO-1,'\t***out of Complex')
+    my_logger.log(logging.INFO-1,'complex {}'.format(str(complexCounts)))
 
     propTypeObj = propComplexObj.typeobj
 
@@ -251,14 +307,14 @@ def validateAttributeRegistry(name, key, value, attr_reg):
     """
     fn = 'validateAttributeRegistry'
     if key in attr_reg:
-        rsvLogger.debug('{}: {}: found attribute registry entry for key {}'.format(fn, name, key))
+        my_logger.debug('{}: {}: found attribute registry entry for key {}'.format(fn, name, key))
         attr = attr_reg.get(key)
     else:
-        rsvLogger.debug('{}: {}: did not find attribute registry entry for key {}'.format(fn, name, key))
+        my_logger.debug('{}: {}: did not find attribute registry entry for key {}'.format(fn, name, key))
         return True, None
     type_prop = attr.get('Type')
     if type_prop is None:
-        rsvLogger.debug('{}: {}: no Type property found for key {}'.format(fn, name, key))
+        my_logger.debug('{}: {}: no Type property found for key {}'.format(fn, name, key))
         return True, None
     reg_pass = True
     if value is None:
@@ -271,17 +327,17 @@ def validateAttributeRegistry(name, key, value, attr_reg):
             val_list = [a.get("ValueName") for a in value_prop]
             reg_pass = value in val_list
             if not reg_pass:
-                rsvLogger.error(
+                my_logger.error(
                     '{} has a value of {}. This is not an expected value from the Enumeration: {}'
                     .format(name + '.' + key, value, val_list))
         else:
-            rsvLogger.debug('{}: Expected Value property key {} to be a list, found type {}'
+            my_logger.debug('{}: Expected Value property key {} to be a list, found type {}'
                             .format(fn, name + '.' + key, str(type(value)).strip('<>')))
     elif type_prop == 'String':
         # validate type is string
         reg_pass = isinstance(value, str)
         if not reg_pass:
-            rsvLogger.error(
+            my_logger.error(
                 '{} has a value of {}. The expected type is String but the type found is {}'
                 .format(name + '.' + key, value, str(type(value)).strip('<>')))
         else:
@@ -291,12 +347,12 @@ def validateAttributeRegistry(name, key, value, attr_reg):
                 if isinstance(max_len, int):
                     if len(value) > max_len:
                         reg_pass = False
-                        rsvLogger.error(
+                        my_logger.error(
                             '{} has a length of {}, which is greater than its MaxLength of {}'
                             .format(name + '.' + key, len(value), max_len))
                 else:
                     reg_pass = False
-                    rsvLogger.error('{} should have a MaxLength property that is an integer, but the type found is {}'
+                    my_logger.error('{} should have a MaxLength property that is an integer, but the type found is {}'
                                     .format(name + '.' + key, str(type(max_len)).strip('<>')))
             # validate MinLength
             min_len = attr.get('MinLength')
@@ -304,11 +360,11 @@ def validateAttributeRegistry(name, key, value, attr_reg):
                 if isinstance(min_len, int):
                     if len(value) < min_len:
                         reg_pass = False
-                        rsvLogger.error('{} has a length of {}, which is less than its MinLength of {}'
+                        my_logger.error('{} has a length of {}, which is less than its MinLength of {}'
                                         .format(name + '.' + key, len(value), min_len))
                 else:
                     reg_pass = False
-                    rsvLogger.error('{} should have a MinLength property that is an integer, but the type found is {}'
+                    my_logger.error('{} should have a MinLength property that is an integer, but the type found is {}'
                                     .format(name + '.' + key, str(type(min_len)).strip('<>')))
             # validate ValueExpression
             val_expr = attr.get('ValueExpression')
@@ -317,19 +373,19 @@ def validateAttributeRegistry(name, key, value, attr_reg):
                     regex = re.compile(val_expr)
                     if regex.match(value) is None:
                         reg_pass = False
-                        rsvLogger.error(
+                        my_logger.error(
                             '{} has a value of {} which does not match the ValueExpression regex "{}"'
                             .format(name + '.' + key, value, val_expr))
                 else:
                     reg_pass = False
-                    rsvLogger.error(
+                    my_logger.error(
                         '{} should have a ValueExpression property that is a string, but the type found is {}'
                         .format(name + '.' + key, str(type(val_expr)).strip('<>')))
     elif type_prop == 'Integer':
         # validate type is int
         reg_pass = isinstance(value, int)
         if not reg_pass:
-            rsvLogger.error(
+            my_logger.error(
                 '{} has a value of {}. The expected type is Integer but the type found is {}'
                 .format(name + '.' + key, value, str(type(value)).strip('<>')))
         else:
@@ -338,37 +394,37 @@ def validateAttributeRegistry(name, key, value, attr_reg):
             if isinstance(lower_bound, int):
                 if value < lower_bound:
                     reg_pass = False
-                    rsvLogger.error('{} has a value of {}, which is less than its LowerBound of {}'
+                    my_logger.error('{} has a value of {}, which is less than its LowerBound of {}'
                                     .format(name + '.' + key, value, lower_bound))
             else:
                 reg_pass = False
-                rsvLogger.error('{} should have a LowerBound property that is an integer, but the type found is {}'
+                my_logger.error('{} should have a LowerBound property that is an integer, but the type found is {}'
                                 .format(name + '.' + key, str(type(lower_bound)).strip('<>')))
             # validate UpperBound
             upper_bound = attr.get('UpperBound')
             if isinstance(upper_bound, int):
                 if value > upper_bound:
                     reg_pass = False
-                    rsvLogger.error('{} has a value of {}, which is greater than its UpperBound of {}'
+                    my_logger.error('{} has a value of {}, which is greater than its UpperBound of {}'
                                     .format(name + '.' + key, value, upper_bound))
             else:
                 reg_pass = False
-                rsvLogger.error('{} should have an UpperBound property that is an integer, but the type found is {}'
+                my_logger.error('{} should have an UpperBound property that is an integer, but the type found is {}'
                                 .format(name + '.' + key, str(type(upper_bound)).strip('<>')))
     elif type_prop == 'Boolean':
         reg_pass = isinstance(value, bool)
         if not reg_pass:
-            rsvLogger.error(
+            my_logger.error(
                 '{} has a value of {}. The expected type is Boolean but the type found is {}'
                 .format(name + '.' + key, value, str(type(value)).strip('<>')))
     elif type_prop == 'Password':
         reg_pass = value is None
         if not reg_pass:
-            rsvLogger.error(
+            my_logger.error(
                 '{} is a Password. The value returned from GET must be null, but was of type {}'
                 .format(name + '.' + key, str(type(value)).strip('<>')))
     else:
-        rsvLogger.warning('{} has an unexpected Type property of {}'
+        my_logger.warning('{} has an unexpected Type property of {}'
                           .format(name + '.' + key, type_prop))
     return reg_pass, type_prop
 
@@ -386,41 +442,41 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
     fn = 'validateDynamicPropertyPatterns'
     messages = OrderedDict()
     counts = Counter()
-    rsvLogger.debug('{}: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
+    my_logger.debug('{}: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
                     .format(fn, name, type(val), propTypeObj.propPattern, payloadType))
     prop_pattern = prop_type = None
     if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
         prop_pattern = propTypeObj.propPattern.get('Pattern')
         prop_type = propTypeObj.propPattern.get('Type')
     if prop_pattern is None or prop_type is None:
-        rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern or Type properties missing'
+        my_logger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern or Type properties missing'
                         .format(name))
         return messages, counts
     if not isinstance(prop_pattern, str):
-        rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern property not a string'
+        my_logger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern property not a string'
                         .format(name))
         return messages, counts
     if not isinstance(prop_type, str):
-        rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Type property not a string'
+        my_logger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Type property not a string'
                         .format(name))
         return messages, counts
     if not isinstance(val, dict):
-        rsvLogger.error('{} has Redfish.DynamicPropertyPatterns annotation, but payload value not a dictionary'
+        my_logger.error('{} has Redfish.DynamicPropertyPatterns annotation, but payload value not a dictionary'
                         .format(name))
         return messages, counts
     # get the attribute registry dictionary if applicable
     attr_reg = None
     if attrRegistryId is not None:
         if attrRegistryId in attributeRegistries:
-            rsvLogger.debug('{}: {}: Using attribute registry for {}'.format(fn, name, attrRegistryId))
+            my_logger.debug('{}: {}: Using attribute registry for {}'.format(fn, name, attrRegistryId))
             attr_reg = attributeRegistries.get(attrRegistryId)
         elif 'default' in attributeRegistries:
-            rsvLogger.debug('{}: {}: Using default attribute registry for {}'.format(fn, name, attrRegistryId))
+            my_logger.debug('{}: {}: Using default attribute registry for {}'.format(fn, name, attrRegistryId))
             attr_reg = attributeRegistries.get('default')
         else:
-            rsvLogger.warning('{}: Attribute Registry with ID {} not found'.format(name, attrRegistryId))
+            my_logger.warning('{}: Attribute Registry with ID {} not found'.format(name, attrRegistryId))
     else:
-        rsvLogger.debug('{}: {}: No Attribute Registry ID found'.format(fn, name, attrRegistryId))
+        my_logger.debug('{}: {}: No Attribute Registry ID found'.format(fn, name, attrRegistryId))
     # validate each property
     regex = re.compile(prop_pattern)
     for key, value in val.items():
@@ -433,10 +489,10 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
                     pattern_pass = True
                 else:
                     pattern_pass = False
-                    rsvLogger.error('{} does not match pattern "{}"'.format(name + '.' + key, prop_pattern))
+                    my_logger.error('{} does not match pattern "{}"'.format(name + '.' + key, prop_pattern))
         else:
             pattern_pass = False
-            rsvLogger.error('{} is not a string, so cannot be validated against pattern "{}"'
+            my_logger.error('{} is not a string, so cannot be validated against pattern "{}"'
                             .format(name + '.' + key, prop_pattern))
         if pattern_pass:
             counts['pass'] += 1
@@ -518,7 +574,7 @@ def displayType(propType, propRealType, is_collection=False):
     else:
         disp_type = 'n/a'
 
-    rsvLogger.debug('displayType: ({}, {}) -> {}'.format(propType, propRealType, disp_type))
+    my_logger.debug('displayType: ({}, {}) -> {}'.format(propType, propRealType, disp_type))
     return disp_type
 
 
@@ -540,7 +596,7 @@ def displayValue(val, autoExpandName=None):
     else:
         disp_val = '[JSON Object]'
 
-    rsvLogger.debug('displayValue: {} -> {}'.format(val, disp_val))
+    my_logger.debug('displayValue: {} -> {}'.format(val, disp_val))
     return disp_val
 
 
@@ -553,7 +609,7 @@ def loadAttributeRegDict(odata_type, json_data):
     """
     fn = 'loadAttributeRegDict'
     if not isinstance(json_data, dict):
-        rsvLogger.debug('{}: Expected json_data param to be a dict, found {}'.format(fn, type(json_data)))
+        my_logger.debug('{}: Expected json_data param to be a dict, found {}'.format(fn, type(json_data)))
         return
 
     # get Id property if present; if missing use a key of 'default' to store the dictionary
@@ -561,27 +617,27 @@ def loadAttributeRegDict(odata_type, json_data):
     if reg_id is None:
         reg_id = 'default'
 
-    rsvLogger.debug('{}: @odata.type = {}, Id = {}'.format(fn, odata_type, reg_id))
+    my_logger.debug('{}: @odata.type = {}, Id = {}'.format(fn, odata_type, reg_id))
 
     # do some validations on the format of the attribute registry
     if reg_id in attributeRegistries:
-        rsvLogger.error('{}: An AttributeRegistry with Id "{}" has already been loaded'.format(fn, reg_id))
+        my_logger.error('{}: An AttributeRegistry with Id "{}" has already been loaded'.format(fn, reg_id))
         return
     reg_entries = json_data.get('RegistryEntries')
     if not isinstance(reg_entries, dict):
-        rsvLogger.warning('{}: Expected RegistryEntries property to be a dict, found {}'.format(fn, type(reg_entries)))
+        my_logger.warning('{}: Expected RegistryEntries property to be a dict, found {}'.format(fn, type(reg_entries)))
         return
     attributes = reg_entries.get('Attributes')
     if not isinstance(attributes, list):
-        rsvLogger.warning('{}: Expected Attributes property to be an array, found {}'.format(fn, type(attributes)))
+        my_logger.warning('{}: Expected Attributes property to be an array, found {}'.format(fn, type(attributes)))
         return
     if len(attributes) > 0:
         if not isinstance(attributes[0], dict):
-            rsvLogger.warning('{}: Expected elements of Attributes array to be of type dict, found {}'
+            my_logger.warning('{}: Expected elements of Attributes array to be of type dict, found {}'
                               .format(fn, type(attributes[0])))
             return
     else:
-        rsvLogger.debug('{}: Attributes element was zero length'.format(fn))
+        my_logger.debug('{}: Attributes element was zero length'.format(fn))
         return
 
     # load the attribute registry into a dictionary
@@ -589,22 +645,22 @@ def loadAttributeRegDict(odata_type, json_data):
     for attr in attributes:
         attr_name = attr.get('AttributeName')
         if attr_name is None:
-            rsvLogger.debug('{}: Expected AttributeName property was not found in array element'.format(fn))
+            my_logger.debug('{}: Expected AttributeName property was not found in array element'.format(fn))
             continue
         if attr.get(attr_name) is not None:
-            rsvLogger.warning('{}: AttributeName {} was already seen; previous version will be overwritten'
+            my_logger.warning('{}: AttributeName {} was already seen; previous version will be overwritten'
                             .format(fn, attr_name))
         attr_dict[attr_name] = attr
 
     # store the attribute registry in global dict `attributeRegistries`
     if len(attr_dict) > 0:
-        rsvLogger.debug('{}: Adding "{}" AttributeRegistry dict with {} entries'.format(fn, reg_id, len(attr_dict)))
+        my_logger.debug('{}: Adding "{}" AttributeRegistry dict with {} entries'.format(fn, reg_id, len(attr_dict)))
         attributeRegistries[reg_id] = attr_dict
     else:
-        rsvLogger.debug('{}: "{}" AttributeRegistry dict has zero entries; not adding'.format(fn, reg_id))
+        my_logger.debug('{}: "{}" AttributeRegistry dict has zero entries; not adding'.format(fn, reg_id))
 
 
-def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=None, parentURI=""):
+def checkPropertyConformance(parentResourceObj, PropertyName, prop, ParentItem=None, parentURI=""):
     """checkPropertyConformance
 
     Given a dictionary of properties, check the validitiy of each item, and return a
@@ -621,11 +677,11 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     resultList = OrderedDict()
     counts = Counter()
 
-    rsvLogger.log(logging.INFO-1, PropertyName)
+    my_logger.log(logging.INFO-1, PropertyName)
     item = prop.payloadName
 
     propValue = prop.val
-    rsvLogger.log(logging.INFO-1,"\tvalue: {} {}".format(propValue, type(propValue)))
+    my_logger.log(logging.INFO-1,"\tvalue: {} {}".format(propValue, type(propValue)))
 
     propExists = not (propValue == 'n/a')
 
@@ -636,12 +692,12 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
 
     if PropertyDict is None:
         if not propExists:
-            rsvLogger.log(logging.INFO-1,'{}: Item is skipped, no schema'.format(item))
+            my_logger.log(logging.INFO-1,'{}: Item is skipped, no schema'.format(item))
             counts['skipNoSchema'] += 1
             return {item: ('-', '-',
                                 'Yes' if propExists else 'No', 'NoSchema')}, counts
         else:
-            rsvLogger.error('{}: Item is present, but no schema found'.format(item))
+            my_logger.error('{}: Item is present, but no schema found'.format(item))
             counts['failNoSchema'] += 1
             return {item: ('-', '-',
                                 'Yes' if propExists else 'No', 'FAIL')}, counts
@@ -650,12 +706,12 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
 
     propType = propAttr.get('Type')
     propRealType = PropertyDict.get('realtype')
-    rsvLogger.log(logging.INFO-1,"\thas Type: {} {}".format(propType, propRealType))
+    my_logger.log(logging.INFO-1,"\thas Type: {} {}".format(propType, propRealType))
 
     # why not actually check oem
     # rs-assertion: 7.4.7.2
     if 'Oem' in PropertyName and not traverseService.config.get('oemcheck', False):
-        rsvLogger.log(logging.INFO-1,'\tOem is skipped')
+        my_logger.log(logging.INFO-1,'\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts
 
@@ -665,12 +721,12 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     if 'Redfish.Required' in PropertyDict:
         propMandatory = True
         propMandatoryPass = True if propExists else False
-        rsvLogger.log(logging.INFO-1,"\tMandatory Test: {}".format(
+        my_logger.log(logging.INFO-1,"\tMandatory Test: {}".format(
                        'OK' if propMandatoryPass else 'FAIL'))
     else:
-        rsvLogger.log(logging.INFO-1,"\tis Optional")
+        my_logger.log(logging.INFO-1,"\tis Optional")
         if not propExists:
-            rsvLogger.log(logging.INFO-1,"\tprop Does not exist, skip...")
+            my_logger.log(logging.INFO-1,"\tprop Does not exist, skip...")
             counts['skipOptional'] += 1
             return {item: (
                 '-', displayType(propType, propRealType),
@@ -685,7 +741,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     propPermissionsValue = None
     if propPermissions is not None:
         propPermissionsValue = propPermissions['EnumMember']
-        rsvLogger.debug("\tpermission {}".format(propPermissionsValue))
+        my_logger.debug("\tpermission {}".format(propPermissionsValue))
 
     autoExpand = PropertyDict.get('OData.AutoExpand', None) is not None or\
         PropertyDict.get('OData.AutoExpand'.lower(), None) is not None
@@ -702,7 +758,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     if validDeprecated is not None:
         deprecatedPass = False
         counts['warnDeprecated'] += 1
-        rsvLogger.warning('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String', '')))
+        my_logger.warning('{}: The given property is deprecated: {}'.format(item, validDeprecated.get('String', '')))
 
     validDeprecated = PropertyDict.get('Redfish.Revisions')
     if validDeprecated is not None:
@@ -715,9 +771,9 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
                 deprecatedPass = False
                 counts['warnDeprecated'] += 1
                 if (desc_tag):
-                    rsvLogger.warning('{}: The given property is deprecated by revision: {}'.format(item, desc_tag.attrs.get('String', '')))
+                    my_logger.warning('{}: The given property is deprecated by revision: {}'.format(item, desc_tag.attrs.get('String', '')))
                 else:
-                    rsvLogger.warning('{}: The given property is deprecated by revision'.format(item))
+                    my_logger.warning('{}: The given property is deprecated by revision'.format(item))
 
     validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
         int(validMaxAttr['Int']) if validMaxAttr is not None else None
@@ -727,17 +783,18 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
     # Note: make sure it checks each one
     propCollectionType = PropertyDict.get('isCollection')
     isCollection = propCollectionType is not None
+    excerptPass = True
     if isCollection and propValue is None:
         # illegal for a collection to be null
         if prop.propChild == 'HttpHeaders' and traverseService.getType(prop.propOwner) == 'EventDestination':
-            rsvLogger.info('Value HttpHeaders can be Null')
+            my_logger.info('Value HttpHeaders can be Null')
             propNullable = True
             propValueList = []
             resultList[item] = ('Array (size: null)',
                                 displayType(propType, propRealType, is_collection=True),
                                 'Yes' if propExists else 'No', '...')
         else:
-            rsvLogger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'
+            my_logger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'
                             .format(item))
             counts['failNullCollection'] += 1
             return {item: (
@@ -749,13 +806,13 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
         # rs-assumption: do not assume URIs for collections
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
-        rsvLogger.log(logging.INFO-1,"\tis Collection")
+        my_logger.log(logging.INFO-1,"\tis Collection")
         if propValue == 'n/a':
             propValueList = []
             resultList[item] = ('Array (absent)'.format(len(propValue)),
                                 displayType(propType, propRealType, is_collection=True),
                                 'Yes' if propExists else 'No', 'PASS' if propMandatoryPass else 'FAIL')
-            rsvLogger.error("{}: Mandatory prop does not exist".format(item))
+            my_logger.error("{}: Mandatory prop does not exist".format(item))
             counts['failMandatoryExist'] += 1
         else:
             propValueList = propValue
@@ -767,21 +824,26 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
         propValueList = [propValue]
     # note: make sure we don't enter this on null values, some of which are
     # OK!
+    schemaObj = parentResourceObj.schemaObj
+    decoded = parentResourceObj.jsondata
     for cnt, val in enumerate(propValueList):
         appendStr = (('[' + str(cnt) + ']') if isCollection else '')
         sub_item = item + appendStr
+
+        excerptPass = validateExcerpt(prop, val, schemaObj, parentResourceObj.typename)
+
         if isinstance(val, str):
             if val == '' and propPermissionsValue == 'OData.Permission/Read':
-                rsvLogger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
+                my_logger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
                 nullValid = False
             if val.lower() == 'null':
-                rsvLogger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item))
+                my_logger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item))
                 nullValid = False
         if propRealType is not None and propExists:
             paramPass = propNullablePass = True
             if val is None:
                 if propNullable:
-                    rsvLogger.debug('Property {} is nullable and is null, so Nullable checking passes'
+                    my_logger.debug('Property {} is nullable and is null, so Nullable checking passes'
                                     .format(sub_item))
                 else:
                     propNullablePass = False
@@ -789,7 +851,7 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
             elif propRealType == 'Edm.Boolean':
                 paramPass = isinstance(val, bool)
                 if not paramPass:
-                    rsvLogger.error("{}: Not a boolean".format(sub_item))
+                    my_logger.error("{}: Not a boolean".format(sub_item))
 
             elif propRealType == 'Edm.DateTimeOffset':
                 paramPass = simpletypes.validateDatetime(sub_item, val)
@@ -846,12 +908,12 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
                     allowAdditional = innerPropType.additional
                     for key in innerComplex.unknownProperties:
                         if sub_item + '.' + key not in complexMessages and not allowAdditional:
-                            rsvLogger.error('{} not defined in schema {} (check version, spelling and casing)'
+                            my_logger.error('{} not defined in schema {} (check version, spelling and casing)'
                                             .format(sub_item + '.' + key, innerPropType.snamespace))
                             counts['failComplexAdditional'] += 1
                             resultList[sub_item + '.' + key] = (displayValue(val[key]), '-', '-', 'FAIL')
                         elif sub_item + '.' + key not in complexMessages:
-                            rsvLogger.warn('{} not defined in schema {} (check version, spelling and casing)'
+                            my_logger.warn('{} not defined in schema {} (check version, spelling and casing)'
                                             .format(sub_item + '.' + key, innerPropType.snamespace))
                             counts['unverifiedComplexAdditional'] += 1
                             resultList[sub_item + '.' + key] = (displayValue(val[key]), '-', '-', 'Additional')
@@ -864,9 +926,10 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
                     paramPass = simpletypes.validateDeprecatedEnum(sub_item, val, PropertyDict['typeprops'])
 
                 elif propRealType == 'entity':
-                    paramPass = validateEntity(sub_item, val, propType, propCollectionType, schemaObj, autoExpand, parentURI)
+                    paramPass = validateEntity(sub_item, val, propType, propCollectionType, schemaObj, autoExpand, prop.excerptType, parentURI)
+
                 else:
-                    rsvLogger.error("%s: This type is invalid %s" % (sub_item, propRealType))
+                    my_logger.error("%s: This type is invalid %s" % (sub_item, propRealType))
                     paramPass = False
 
         if not paramPass or not propMandatoryPass or not propNullablePass:
@@ -878,12 +941,15 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
             result_str = 'WARN'
         else:
             result_str = 'PASS'
+        if not excerptPass:
+            counts['errorExcerpt'] += 1
+            result_str = 'errorExcerpt'
         resultList[sub_item] = (
                 displayValue(val, sub_item if autoExpand else None), displayType(propType, propRealType),
                 'Yes' if propExists else 'No', result_str)
-        if paramPass and propNullablePass and propMandatoryPass:
+        if paramPass and propNullablePass and propMandatoryPass and excerptPass:
             counts['pass'] += 1
-            rsvLogger.log(logging.INFO-1,"\tSuccess")
+            my_logger.log(logging.INFO-1,"\tSuccess")
         else:
             counts['err.' + str(propType)] += 1
             if not paramPass:
@@ -892,11 +958,11 @@ def checkPropertyConformance(schemaObj, PropertyName, prop, decoded, ParentItem=
                 else:
                     counts['failProp'] += 1
             elif not propMandatoryPass:
-                rsvLogger.error("{}: Mandatory prop does not exist".format(sub_item))
+                my_logger.error("{}: Mandatory prop does not exist".format(sub_item))
                 counts['failMandatoryExist'] += 1
             elif not propNullablePass:
-                rsvLogger.error('{}: Property is null but is not Nullable'.format(sub_item))
+                my_logger.error('{}: Property is null but is not Nullable'.format(sub_item))
                 counts['failNullable'] += 1
-            rsvLogger.log(logging.INFO-1,"\tFAIL")
+            my_logger.log(logging.INFO-1,"\tFAIL")
 
     return resultList, counts

@@ -757,6 +757,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
             insideItem = prop_item.val if prop_item.exists else None
             autoExpand = propDict.get('OData.AutoExpand', None) is not None or\
                 propDict.get('OData.AutoExpand'.lower(), None) is not None
+            amExcerpt = prop_item.excerptType
             cType = propDict.get('isCollection')
             ownerNS = prop_item.propOwner.split('.')[0]
             ownerType = prop_item.propOwner.split('.')[-1]
@@ -771,7 +772,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                             cSchema = context
                         for cnt, listItem in enumerate_collection(insideItem, cTypeName, linklimits, sample_size):
                             linkList[prefix + str(item) + '.' + cTypeName + '#' + str(cnt)] = \
-                                Link_Obj(listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem, key)
+                                Link_Obj(listItem.get('@odata.id', 'excerpt' if amExcerpt else None), autoExpand, cType, cSchema, listItem, key)
                     else:
                         # else single link
                         cType = propDict['attrs'].get('Type')
@@ -779,7 +780,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                         if cSchema is None:
                             cSchema = context
                         linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = \
-                            Link_Obj(insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem, key)
+                            Link_Obj(insideItem.get('@odata.id', 'excerpt' if amExcerpt else None), autoExpand, cType, cSchema, insideItem, key)
 
             elif item == 'Uri' and ownerNS == 'MessageRegistryFile' and ownerType == 'Location':
                 # special handling for MessageRegistryFile Location Uri
@@ -792,7 +793,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                     traverseLogger.debug('Registry Location Uri: resource = {}, type = {}, schema = {}'
                                          .format(insideItem, cType, cSchema))
                     linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = \
-                        Link_Obj(uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem, key)
+                        Link_Obj(uriItem.get('@odata.id', 'excerpt' if amExcerpt else None), autoExpand, cType, cSchema, uriItem, key)
             elif item == 'Actions':
                 # special handling for @Redfish.ActionInfo payload annotations
                 if isinstance(insideItem, dict):
@@ -806,7 +807,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                             uriItem = {'@odata.id': uri}
                             traverseLogger.debug('{}{}: @Redfish.ActionInfo annotation uri = {}'.format(item, k, uri))
                             linkList[prefix + str(item) + k + '.' + cType] = \
-                                Link_Obj(uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem, key)
+                                Link_Obj(uriItem.get('@odata.id', 'excerpt' if amExcerpt else None), autoExpand, cType, cSchema, uriItem, key)
 
             elif propDict['realtype'] == 'complex':
                 if 'Oem' in item and not oemCheck:
