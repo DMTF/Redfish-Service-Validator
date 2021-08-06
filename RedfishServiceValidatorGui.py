@@ -19,137 +19,68 @@ from tkinter import filedialog as tkFileDialog
 import traceback
 import webbrowser
 
-import RedfishLogo as logo
+import common.RedfishLogo as logo
 import RedfishServiceValidator as rsv
 
-g_config_file_name = "config.ini"
+g_config_file_name = "config/config.ini"
+
 g_config_defaults = {
-    "SystemInformation": {
-        "TargetIP": {
-            "value": "127.0.0.1:8000",
-            "description": "The IPv4 address of the system under test"
-        },
-        "SystemInfo": {
-            "value": "Test Config, place your own description of target system here",
-            "description": "A string to describe the system"
-        },
-        "UserName": {
-            "value": "xuser",
-            "description": "The user ID of the administrator on the system"
-        },
-        "Password": {
-            "value": "xpasswd",
-            "description": "The password of the administrator on the system"
-        },
-        "AuthType": {
-            "value": "Basic",
-            "description": "The type of authorization to use while testing",
-            "options": ( "None", "Basic", "Session", "Token" )
-        },
-        "ForceAuth": {
-            "value": "False",
-            "description": "Force authentication on unsecure connections",
-            "options": ( "True", "False" )
-        },
-        "Token": {
+    "Tool": {
+        "verbose": {
             "value": "",
-            "description": "The token to use when AuthType is set to Token"
-        },
-        "UseSSL": {
-            "value": "True",
-            "description": "If SSL should be used while testing",
-            "options": ( "True", "False" )
-        },
-        "CertificateCheck": {
-            "value": "False",
-            "description": "If validation of the SSL certificate should be performed",
-            "options": ( "True", "False" )
-        },
-        "CertificateBundle": {
-            "value": "",
-            "description": "The location (file or directory) with certificates of trusted CAs"
+            "description": "Level of verbosity (0-3)"
         }
     },
-    "Options": {
-        "MetadataFilePath": {
-            "value": "./SchemaFiles/metadata",
-            "description": "Points to the local location of the DMTF schema files"
+    "Host": {
+        "ip": {
+            "value": "http://localhost:8000",
+            "description": "Host of testing system, formatted as https:// ip : port (can use http as well)"
         },
-        "Schema_Pack": {
-            "value": "",
-            "description": "URL path to a zipped pack of DMTF Schema; for LocalMode only"
+        "username": {
+            "value": "MyUser",
+            "description": "Username for Basic authentication"
         },
-        "OemCheck": {
-            "value": "True",
-            "description": "Enable or disable validation of OEM objects",
-            "options": ( "True", "False" )
+        "password": {
+            "value": "MyPass",
+            "description": "Username for Basic authentication"
         },
-        "UriCheck": {
+        "description": {
+            "value": "MySystem",
+            "description": "Description of system being tested (optional)"
+        },
+        "forceauth": {
             "value": "False",
-            "description": "Enable or disable validation of URIs for resources",
-            "options": ( "True", "False" )
+            "description": "Force authentication even on http servers"
         },
-        "VersionCheck": {
-            "value": "",
-            "description": "The protocol version to test against, toggling protocol specific configuration; leave blank for automatic version"
+        "authtype": {
+            "value": "Basic",
+            "description": "Authorization type (Basic | Session | Token | None)"
         },
-        "CacheMode": {
-            "value": "Off",
-            "description": "Cache options for overriding or falling back to a file",
-            "options": ( "Off", "Prefer", "Fallback" )
-        },
-        "CacheFilePath": {
-            "value": "",
-            "description": "The path to the cache directory"
-        },
-        "SchemaSuffix": {
-            "value": "_v1.xml",
-            "description": "The file suffix to append when searching for schema files"
-        },
-        "Timeout": {
-            "value": "30",
-            "description": "Interval of time before timing out on an HTTP request"
-        },
-        "HttpProxy": {
-            "value": "",
-            "description": "The proxy for HTTP requests to external URLs (not for the system under test)"
-        },
-        "HttpsProxy": {
-            "value": "",
-            "description": "The proxy for HTTPS requests to external URLs (not for the system under test)"
-        },
-        "LocalOnlyMode": {
+        "token": {
             "value": "False",
-            "description": "Only test properties against schema placed in the root of MetadataFilePath",
-            "options": ( "True", "False" )
-        },
-        "ServiceMode": {
-            "value": "False",
-            "description": "Only test properties against resources/schema that exist on the service",
-            "options": ( "True", "False" )
-        },
-        "LinkLimit": {
-            "value": "LogEntry:20",
-            "description": "Limits the amount of links accepted from collections"
-        },
-        "Sample": {
-            "value": "0",
-            "description": "The number of random members from large collections to validate; 0 = validate everything"
+            "description": "Token string for Token authentication"
         }
     },
     "Validator": {
-        "PayloadMode": {
-            "value": "Default",
-            "description": "Controls traversal of the service, or if local files are to be used",
-            "options": ( "Default", "Tree", "Single", "TreeFile", "SingleFile" )
-        },
-        "PayloadFilePath": {
+        "payload": {
             "value": "",
-            "description": "The path to a specific URI or file to validate"
+            "description": "Option to test a specific payload or resource tree (see README)"
         },
-        "LogPath": {
+        "logdir": {
             "value": "./logs",
-            "description": "The folder where to place the output log files"
+            "description": "Place to save logs and run configs"
+        },
+        "nooemcheck": {
+            "value": "False",
+            "description": "Whether to check Oem items on service"
+        },
+        "debugging": {
+            "value": "False",
+            "description": "Whether to print debug to log"
+        },
+        "schema_directory": {
+            "value": "./SchemaFiles/metadata",
+            "description": "Where schema is located/saved on system"
         }
     }
 }
@@ -216,7 +147,7 @@ class RSVGui:
         """
         Updates the System Under Test string
         """
-        self.system_under_test.set( "System Under Test: " + self.config["SystemInformation"]["TargetIP"]["value"] )
+        self.system_under_test.set( "System Under Test: " + self.config["Host"]["ip"]["value"] )
 
     def parse_config( self ):
         """
@@ -347,7 +278,7 @@ class RSVGui:
         run_scroll = tk.Scrollbar( run_text_frame )
         run_scroll.pack( side = tk.RIGHT, fill = tk.Y )
         run_text = tk.Text( run_text_frame, height = 48, width = 128, yscrollcommand = run_scroll.set )
-        rsv.rsvLogger.handlers[0].stream = RunOutput( run_text )
+        rsv.my_logger.handlers[0].stream = RunOutput( run_text )
         run_text.pack( side = tk.TOP )
         run_button_frame = tk.Frame( run_window )
         run_button_frame.pack( side = tk.BOTTOM )
@@ -357,7 +288,7 @@ class RSVGui:
         # Launch the validator
         try:
             rsv_config = self.build_config_parser( False )
-            status_code, last_results_page, exit_string = rsv.main(direct_parser = rsv_config )
+            status_code, last_results_page, exit_string = rsv.main(configfile = rsv_config )
             if last_results_page != None:
                 webbrowser.open_new( last_results_page )
             else:

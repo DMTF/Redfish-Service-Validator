@@ -5,16 +5,14 @@
 from collections import namedtuple
 from bs4 import BeautifulSoup
 from functools import lru_cache
-from collections import OrderedDict
+from enum import Enum, auto
 import re
 import difflib
 import os.path
 
-from commonRedfish import getType, getNamespace, getNamespaceUnversioned, getVersion, compareMinVersion, splitVersionString
+from common.redfish import getType, getNamespace, getNamespaceUnversioned, getVersion, compareMinVersion, splitVersionString
 import traverseService as rst
 from urllib.parse import urlparse, urlunparse
-
-config = []
 
 
 def storeSchemaToLocal(xml_data, origin):
@@ -29,20 +27,17 @@ def storeSchemaToLocal(xml_data, origin):
     """
     config = rst.config
     SchemaLocation = config['metadatafilepath']
-    if not config['preferonline']:
-        if not os.path.isdir(SchemaLocation):
-            os.makedirs(SchemaLocation)
-        if 'localFile' not in origin and '$metadata' not in origin:
-            __, xml_name = origin.rsplit('/', 1)
-            new_file = os.path.join(SchemaLocation, xml_name)
-            if not os.path.isfile(new_file):
-                with open(new_file, "w") as filehandle:
-                    filehandle.write(xml_data)
-                    rst.traverseLogger.info('Writing online XML to file: {}'.format(xml_name))
-            else:
-                rst.traverseLogger.info('NOT writing online XML to file: {}'.format(xml_name))
-    else:
-        pass
+    if not os.path.isdir(SchemaLocation):
+        os.makedirs(SchemaLocation)
+    if 'localFile' not in origin and '$metadata' not in origin:
+        __, xml_name = origin.rsplit('/', 1)
+        new_file = os.path.join(SchemaLocation, xml_name)
+        if not os.path.isfile(new_file):
+            with open(new_file, "w") as filehandle:
+                filehandle.write(xml_data)
+                rst.traverseLogger.info('Writing online XML to file: {}'.format(xml_name))
+        else:
+            rst.traverseLogger.info('NOT writing online XML to file: {}'.format(xml_name))
 
 @lru_cache(maxsize=64)
 def getSchemaDetails(SchemaType, SchemaURI):
@@ -67,20 +62,19 @@ def getSchemaDetails(SchemaType, SchemaURI):
         if result is not None:
             return True, result.soup, result.origin
 
-    if not currentService.config['preferonline'] and '$metadata' not in SchemaURI:
-        success, soup, origin = getSchemaDetailsLocal(SchemaType, SchemaURI)
-        if success:
-            return success, soup, origin
+    success, soup, origin = getSchemaDetailsLocal(SchemaType, SchemaURI)
+    if success:
+        return success, soup, origin
 
-    xml_suffix = currentService.config['schemasuffix']
+    xml_suffix = '_v1.xml'
 
     config = rst.currentService.config
-    LocalOnly, SchemaLocation, ServiceOnly = config['localonlymode'], config['metadatafilepath'], config['servicemode']
+    SchemaLocation = config['metadatafilepath']
 
     scheme, netloc, path, params, query, fragment = urlparse(SchemaURI)
     inService = scheme is None and netloc is None
 
-    if (SchemaURI is not None and not LocalOnly) or (SchemaURI is not None and '/redfish/v1/$metadata' in SchemaURI):
+    if (SchemaURI is not None) or (SchemaURI is not None and '/redfish/v1/$metadata' in SchemaURI):
         # Get our expected Schema file here
         # if success, generate Soup, then check for frags to parse
         #   start by parsing references, then check for the refLink
@@ -116,16 +110,16 @@ def getSchemaDetails(SchemaType, SchemaURI):
             else:
                 storeSchemaToLocal(data, base_schema_uri)
                 return True, soup, base_schema_uri
-        if not inService and ServiceOnly:
-            rst.traverseLogger.debug("Nonservice URI skipped: {}".format(base_schema_uri))
+        # if not inService and ServiceOnly:
+        #     rst.traverseLogger.debug("Nonservice URI skipped: {}".format(base_schema_uri))
         else:
             rst.traverseLogger.debug("SchemaURI called unsuccessfully: {}".format(base_schema_uri))
-    if LocalOnly:
-        rst.traverseLogger.debug("This program is currently LOCAL ONLY")
-    if ServiceOnly:
-        rst.traverseLogger.debug("This program is currently SERVICE ONLY")
-    if not LocalOnly and not ServiceOnly or (not inService and config['preferonline']):
-        rst.traverseLogger.warning("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
+    # if LocalOnly:
+    #     rst.traverseLogger.debug("This program is currently LOCAL ONLY")
+    # if ServiceOnly:
+    #     rst.traverseLogger.debug("This program is currently SERVICE ONLY")
+    # if not LocalOnly and not ServiceOnly or (not inService and config['schema_origin'].lower() == 'online'):
+    #     rst.traverseLogger.warning("SchemaURI {} was unable to be called, defaulting to local storage in {}".format(SchemaURI, SchemaLocation))
     return getSchemaDetailsLocal(SchemaType, SchemaURI)
 
 
@@ -139,14 +133,14 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
     """
     Alias = getNamespaceUnversioned(SchemaType)
     config = rst.config
-    SchemaLocation, SchemaSuffix = config['metadatafilepath'], config['schemasuffix']
+    SchemaLocation, SchemaSuffix = config['metadatafilepath'], '_v1.xml'
     if SchemaURI is not None:
         uriparse = SchemaURI.split('/')[-1].split('#')
         xml = uriparse[0]
     else:
         rst.traverseLogger.warning("SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
         return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix)
-    rst.traverseLogger.debug((SchemaType, SchemaURI, SchemaLocation + '/' + xml))
+    rst.traverseLogger.debug(('local', SchemaType, SchemaURI, SchemaLocation + '/' + xml))
     filestring = Alias + SchemaSuffix if xml is None else xml
     try:
         # get file
@@ -183,15 +177,12 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI):
     except FileNotFoundError:
         # if we're looking for $metadata locally... ditch looking for it, go straight to file
         if '/redfish/v1/$metadata' in SchemaURI and Alias != '$metadata':
-            rst.traverseLogger.warning("Unable to find a harddrive stored $metadata at {}, defaulting to {}".format(SchemaLocation, Alias + SchemaSuffix))
+            rst.traverseLogger.debug("Unable to find a xml of {} at {}, defaulting to {}".format(SchemaURI, SchemaLocation, Alias + SchemaSuffix))
             return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix)
         else:
-            rst.traverseLogger.warn
-            (
-                "Schema file {} not found in {}".format(filestring, SchemaLocation))
+            rst.traverseLogger.warn("Schema file {} not found in {}".format(filestring, SchemaLocation))
             if Alias == '$metadata':
-                rst.traverseLogger.warning(
-                    "If $metadata cannot be found, Annotations may be unverifiable")
+                rst.traverseLogger.warning("If $metadata cannot be found, Annotations may be unverifiable")
     except Exception as ex:
         rst.traverseLogger.error("A problem when getting a local schema has occurred {}".format(SchemaURI))
         rst.traverseLogger.warning("output: ", exc_info=True)
@@ -340,7 +331,10 @@ class rfSchema:
 
         if limit is not None:
             if getVersion(limit) is None:
-                rst.traverseLogger.warning('Limiting namespace has no version, erasing: {}'.format(limit))
+                if 'Collection' not in limit:
+                    rst.traverseLogger.warning('Limiting namespace has no version, erasing: {}'.format(limit))
+                else:
+                    rst.traverseLogger.info('Limiting namespace has no version, erasing: {}'.format(limit))
                 limit = None
             else:
                 limit = getVersion(limit)
@@ -409,6 +403,7 @@ class PropType:
         self.additional = False
         self.expectedURI = None
 
+
         # get all properties and actions in Type chain
         success, currentSchemaObj, baseType = True, self.schemaObj, self.fulltype
         try:
@@ -425,6 +420,7 @@ class PropType:
                     self.additional = self.parent.additional
                 if self.expectedURI is None:
                     self.expectedURI = self.parent.expectedURI
+
         except Exception as ex:
             rst.traverseLogger.debug('Exception caught while creating new PropType', exc_info=1)
             rst.traverseLogger.error(
@@ -514,6 +510,7 @@ def getTypeDetails(schemaObj, SchemaAlias):
     ActionList = list()
     PropertyPattern = None
     additional = False
+
 
     soup, refs = schemaObj.soup, schemaObj.refs
 
@@ -634,7 +631,18 @@ def getTypeObject(typename, schemaObj):
         PropType.robjcache[idtag] = newType
         return newType
 
+class ExcerptTypes(Enum):
+    NEUTRAL = auto()
+    CONTAINS = auto()
+    ALLOWED = auto()
+    EXCLUSIVE = auto()
 
+
+excerpt_info_by_type = {
+    'Redfish.ExcerptCopy': ExcerptTypes.CONTAINS,
+    'Redfish.Excerpt': ExcerptTypes.ALLOWED,
+    'Redfish.ExcerptCopyOnly': ExcerptTypes.EXCLUSIVE
+}
 
 class PropItem:
     def __init__(self, schemaObj, propOwner, propChild, val, topVersion=None, customType=None, payloadName=None, versionList=None, parent=None, top_of_resource=None):
@@ -661,6 +669,15 @@ class PropItem:
             self.propDict = getPropertyDetails(
                 schemaObj, propOwner, propChild, val, topVersion, customType, parent=parent, top_of_resource=top_of_resource)
             self.attr = self.propDict['attrs']
+
+            self.excerptType = ExcerptTypes.NEUTRAL
+            self.excerptTags = []
+
+            for annotation, val in excerpt_info_by_type.items():
+                if annotation in self.propDict:
+                    self.excerptTags = self.propDict.get(annotation).get('String', '').split(',')
+                    self.excerptTags = [x.strip(' ') for x in self.excerptTags] if self.excerptTags != [''] else []
+                    self.excerptType = val
 
         except Exception as ex:
             rst.traverseLogger.debug('Exception caught while creating new PropItem', exc_info=1)
@@ -901,17 +918,16 @@ def getPropertyDetails(schemaObj, propertyOwner, propertyName, val, topVersion=N
         elif nameOfTag == 'EntityType':  # If entity, do nothing special (it's a reference link)
             propEntry['realtype'] = 'entity'
             if val is not None:
+                autoExpand = propEntry.get('OData.AutoExpand', None) is not None or\
+                    propEntry.get('OData.AutoExpand'.lower(), None) is not None
                 if propEntry.get('isCollection') is None:
-                    val = [val]
-                val = val if val is not None else []
-                for innerVal in val:
-                    linkURI = innerVal.get('@odata.id')
-                    autoExpand = propEntry.get('OData.AutoExpand', None) is not None or\
-                        propEntry.get('OData.AutoExpand'.lower(), None) is not None
-                    linkType = propertyFullType
-                    linkSchema = propertyFullType
-                    innerJson = innerVal
-                    propEntry['typeprops'] = linkURI, autoExpand, linkType, linkSchema, innerJson
+                    linkURI = val.get('@odata.id')
+                    propEntry['typeprops'] = linkURI, autoExpand, propertyFullType, propertyFullType, val
+                else:
+                    # propEntry['typeprops'] = []
+                    for innerVal in val:
+                        linkURI = innerVal.get('@odata.id')
+                        propEntry['typeprops'] = (linkURI, autoExpand, propertyFullType, propertyFullType, innerVal)
             else:
                 propEntry['typeprops'] = None
             rst.traverseLogger.debug("typeEntityTag found {}".format(propertyTypeTag['Name']))

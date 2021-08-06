@@ -11,30 +11,25 @@ import random
 from collections import OrderedDict, namedtuple
 from functools import lru_cache
 import logging
-from rfSession import rfSession
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
-from http.client import responses
-import configparser
 from urllib.parse import urlparse, urlunparse
+from http.client import responses
 
-import metadata as md
-from commonRedfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
-import rfSchema
+from common.redfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
+import common.session as session
+import common.schema as schema
+from common.metadata import Metadata
 
 traverseLogger = logging.getLogger(__name__)
-traverseLogger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.INFO)
-traverseLogger.addHandler(ch)
+my_logger = traverseLogger
+currentService = None
+config = {}
 
 commonHeader = {'OData-Version': '4.0'}
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # dictionary to hold sampling notation strings for URIs
 uri_sample_map = dict()
-
-currentService = None
-
 
 class AuthenticationError(Exception):
     """Exception used for failed basic auth or token auth"""
@@ -49,66 +44,7 @@ def getLogger():
     return traverseLogger
 
 
-# default config
-argparse2configparser = {
-        'user': 'username', 'nochkcert': '!certificatecheck', 'ca_bundle': 'certificatebundle', 'schemamode': 'schemamode',
-        'suffix': 'schemasuffix', 'schemadir': 'metadatafilepath', 'nossl': '!usessl', 'timeout': 'timeout', 'service': 'servicemode',
-        'http_proxy': 'httpproxy', 'localonly': 'localonlymode', 'https_proxy': 'httpsproxy', 'passwd': 'password',
-        'ip': 'targetip', 'logdir': 'logpath', 'desc': 'systeminfo', 'authtype': 'authtype',
-        'payload': 'payloadmode+payloadfilepath', 'cache': 'cachemode+cachefilepath', 'token': 'token',
-        'linklimit': 'linklimit', 'sample': 'sample', 'nooemcheck': '!oemcheck', 'preferonline': 'preferonline',
-        'uri_check': 'uricheck', 'version_check': 'versioncheck'
-        }
-
-configset = {
-        "targetip": str, "username": str, "password": str, "authtype": str, "usessl": bool, "certificatecheck": bool, "certificatebundle": str,
-        "metadatafilepath": str, "cachemode": (bool, str), "cachefilepath": str, "schemasuffix": str, "timeout": int, "httpproxy": str, "httpsproxy": str,
-        "systeminfo": str, "localonlymode": bool, "servicemode": bool, "token": str, 'linklimit': dict, 'sample': int, 'extrajsonheaders': str, 'extraxmlheaders': str, "schema_pack": str,
-        "forceauth": bool, "oemcheck": bool, 'preferonline': bool, 'uricheck': bool, 'versioncheck': str
-        }
-
-defaultconfig = {
-        'authtype': 'Basic',
-        'username': "",
-        'password': "",
-        'token': "",
-        'oemcheck': True,
-        'certificatecheck': True,
-        'certificatebundle': "",
-        'metadatafilepath': './SchemaFiles/metadata',
-        'cachemode': 'Off',
-        'cachefilepath': './cache',
-        'schemasuffix': '_v1.xml',
-        'httpproxy': "",
-        'httpsproxy': "",
-        'localonlymode': False,
-        'servicemode': False,
-        'preferonline': False,
-        'linklimit': {'LogEntry': 20},
-        'sample': 0,
-        'usessl': True,
-        'timeout': 30,
-        'schema_pack': None,
-        'forceauth': False,
-        'uricheck': False,
-        'versioncheck': '',
-        }
-
-defaultconfig_by_version = {
-        '1.0.0': {'schemasuffix': '.xml'},
-        '1.0.6': {'uricheck': True}
-        }
-
-customval = {
-        'linklimit': lambda v: re.findall('[A-Za-z_]+:[0-9]+', v)
-        }
-
-configSet = False
-
-config = dict(defaultconfig)
-
-
-def startService(config, defaulted=[]):
+def startService(config):
     """startService
 
     Begin service to use, sets as global
@@ -121,190 +57,94 @@ def startService(config, defaulted=[]):
     global currentService
     if currentService is not None:
         currentService.close()
-    currentService = rfService(config, defaulted)
-    return currentService
-
-
-def convertConfigParserToDict(configpsr):
-    """convertConfigParserToDict
-
-    Takes a raw config parser and strips out its options
-    Used to circumvent normal config parser calls
-
-    Notes: make function independent of tool
-
-    :param configpsr: config parser
-    """
-    cdict = {}
-    for category in configpsr:
-        for option in configpsr[category]:
-            val = configpsr[category][option]
-            if option not in configset.keys() and category not in ['Information', 'Validator']:
-                traverseLogger.error('Config option {} in {} unsupported!'.format(option, category))
-            if val in ['', None]:
-                continue
-            if val.isdigit():
-                val = int(val)
-            elif option in customval:
-                val = customval[option](val)
-            elif str(val).lower() in ['on', 'true', 'yes']:
-                val = True
-            elif str(val).lower() in ['off', 'false', 'no']:
-                val = False
-            cdict[option] = val
-    return cdict
-
-
-def setByArgparse(args):
-    """setByArgparse
-
-    Set config via args namespace parsed by argsparse
-
-    :param args: arg namespace
-    """
-    if args.config is not None:
-        configpsr = configparser.ConfigParser()
-        configpsr.read(args.config)
-        cdict = convertConfigParserToDict(configpsr)
-    else:
-        cdict = {}
-    for param in args.__dict__:
-        if args.__dict__[param] is not None:
-            if param in argparse2configparser:
-                if isinstance(args.__dict__[param], list):
-                    for cnt, item in enumerate(argparse2configparser[param].split('+')):
-                        cdict[item] = args.__dict__[param][cnt]
-                elif '+' not in argparse2configparser[param]:
-                    if '!' in argparse2configparser[param]:
-                        cdict[argparse2configparser[param].replace('!', '')] = not args.__dict__[param]
-                    else:
-                        cdict[argparse2configparser[param]] = args.__dict__[param]
-            else:
-                cdict[param] = args.__dict__[param]
-    return setConfig(cdict)
-
-
-def setConfig(cdict):
-    """
-    Set config based on configurable dictionary
-    """
-    # Send config only with keys supported by program
-    linklimitdict = {}
-    if cdict.get('linklimit') is not None:
-        for item in cdict.get('linklimit'):
-            if re.match('[A-Za-z_]+:[0-9]+', item) is not None:
-                typename, count = tuple(item.split(':')[:2])
-                if typename not in linklimitdict:
-                    linklimitdict[typename] = int(count)
-                else:
-                    traverseLogger.error('Limit already exists for {}'.format(typename))
-    cdict['linklimit'] = linklimitdict
-
-    for item in cdict:
-        if item not in configset:
-            traverseLogger.debug('Unsupported {}'.format(item))
-        elif cdict[item] is None and configset[item] is str:
-            cdict[item] = ''
-        elif not isinstance(cdict[item], configset[item]):
-            traverseLogger.error('Unsupported {}, expected type {}'.format(item, configset[item]))
-
-    global config
-    config = dict()
-
-    # set linklimit
-    defaultlinklimit = defaultconfig['linklimit']
-
-    config.update(cdict)
-
-    config['certificatecheck'] = config.get('certificatecheck', True) and config.get('usessl', True)
-
-    if 'extrajsonheaders' in config:
-        config['extrajsonheaders'] = json.loads(config['extrajsonheaders'])
-    if 'extraxmlheaders' in config:
-        config['extraxmlheaders'] = json.loads(config['extraxmlheaders'])
-
-    defaultlinklimit.update(config['linklimit'])
-    config['linklimit'] = defaultlinklimit
-
-    if 'cachemode' in config and config['cachemode'] not in ['Off', 'Fallback', 'Prefer']:
-        if config['cachemode'] is not False:
-            traverseLogger.error('CacheMode or path invalid, defaulting to Off')
-        config['cachemode'] = 'Off'
-
-    if 'authtype' in config and config['authtype'] not in ['None', 'Basic', 'Session', 'Token']:
-        config['authtype'] = 'Basic'
-        traverseLogger.error('AuthType invalid, defaulting to Basic')
-
-    # report keys not explicitly set in config
-    defaultkeys = [key for key in defaultconfig if key not in config]
-    config.update({key: defaultconfig[key] for key in defaultkeys})
-
-    return config, defaultkeys
-
+    newService = rfService(config)
+    currentService = newService
+    config = newService.config
+    return newService
 
 class rfService():
-    def __init__(self, config, default_entries=[]):
+    def __init__(self, my_config):
         traverseLogger.info('Setting up service...')
-        global currentService
-        currentService = self
-        self.config = config
-        self.proxies = dict()
+        global config
+        config = my_config
+        self.config = my_config
+        # self.proxies = dict()
         self.active = False
-
         # Create a Session to optimize connection times
         self.session = requests.Session()
 
-        config['configuri'] = ('https' if config.get('usessl', True) else 'http') + '://' + config['targetip']
-        httpprox = config['httpproxy']
-        httpsprox = config['httpsproxy']
-        self.proxies['http'] = httpprox if httpprox != "" else None
-        self.proxies['https'] = httpsprox if httpsprox != "" else None
+        # setup URI
+        self.config['configuri'] = self.config['ip']
+        self.config['metadatafilepath'] = self.config['schema_directory']
+        self.config['usessl'] = urlparse(self.config['configuri']).scheme in ['https']
+        self.config['certificatecheck'] = False
+        self.config['certificatebundle'] = None
+        self.config['timeout'] = 10
+
+        # httpprox = config['httpproxy']
+        # httpsprox = config['httpsproxy']
+        # self.proxies['http'] = httpprox if httpprox != "" else None
+        # self.proxies['https'] = httpsprox if httpsprox != "" else None
 
         # Convert list of strings to dict
-        self.chkcertbundle = config['certificatebundle']
-        chkcertbundle = self.chkcertbundle
-        if chkcertbundle not in [None, ""] and config['certificatecheck']:
-            if not os.path.isfile(chkcertbundle) and not os.path.isdir(chkcertbundle):
-                self.chkcertbundle = None
-                traverseLogger.error('ChkCertBundle is not found, defaulting to None')
-        else:
-            config['certificatebundle'] = None
+        # self.chkcertbundle = config['certificatebundle']
+        # chkcertbundle = self.chkcertbundle
+        # if chkcertbundle not in [None, ""] and config['certificatecheck']:
+        #     if not os.path.isfile(chkcertbundle) and not os.path.isdir(chkcertbundle):
+        #         self.chkcertbundle = None
+        #         traverseLogger.error('ChkCertBundle is not found, defaulting to None')
+        # else:
+        #     config['certificatebundle'] = None
 
-        ChkCert = config['certificatecheck']
-        AuthType = config['authtype']
 
         self.currentSession = None
-        if not config.get('usessl', True) and not config['forceauth']:
+        if not self.config['usessl'] and not self.config['forceauth']:
             if config['username'] not in ['', None] or config['password'] not in ['', None]:
                 traverseLogger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
                 config['username'] = ''
                 config['password'] = ''
-        if AuthType == 'Session':
-            certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
+        if config['authtype'].lower() == 'session':
+            # certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
-            self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
+            # self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
+            self.currentSession = session(config['username'], config['password'], config['configuri'], None)
             self.currentSession.startSession()
-        self.metadata = md.Metadata(traverseLogger)
 
-        target_version = self.config.get('versioncheck')
+        global currentService # TODO: This is still not ideal programming practice
+        currentService = self
+        success, data, status, delay = self.callResourceURI(Metadata.metadata_uri)
+        if success:
+            soup = schema.BeautifulSoup(data, "xml")
+            schema_obj = schema.rfSchema(soup, '$metadata', 'service')
+            self.metadata = Metadata(schema_obj, my_logger)
+        else:
+            pass
+            self.metadata = Metadata(None, my_logger)
+
+        target_version = 'n/a'
 
         # get Version
         success, data, status, delay = self.callResourceURI('/redfish/v1')
         if not success:
             traverseLogger.warn('Could not get ServiceRoot')
-        elif target_version in [None, '']:
+        else:
             if 'RedfishVersion' not in data:
                 traverseLogger.warn('Could not get RedfishVersion from ServiceRoot')
             else:
                 traverseLogger.info('Redfish Version of Service: {}'.format(data['RedfishVersion']))
                 target_version = data['RedfishVersion']
+        if target_version in ['1.0.0', 'n/a']:
+            traverseLogger.warning('!!Version of target may produce issues!!')
+        
+        self.service_root = data
 
         # with Version, get default and compare to user defined values
-        default_config_target = defaultconfig_by_version.get(target_version, dict())
-        override_with = {k: default_config_target[k] for k in default_config_target if k in default_entries}
-        if len(override_with) > 0:
-            traverseLogger.info('CONFIG: RedfishVersion {} has augmented these tool defaults {}'.format(target_version, override_with))
-        self.config.update(override_with)
+        # default_config_target = defaultconfig_by_version.get(target_version, dict())
+        # override_with = {k: default_config_target[k] for k in default_config_target if k in default_entries}
+        # if len(override_with) > 0:
+        #     traverseLogger.info('CONFIG: RedfishVersion {} has augmented these tool defaults {}'.format(target_version, override_with))
+        # self.config.update(override_with)
+
 
         self.active = True
 
@@ -343,22 +183,24 @@ class rfService():
             traverseLogger.warn("This URI is empty!")
             return False, None, -1, 0
 
-        config = currentService.config
-        proxies = currentService.proxies
-        ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['targetip'], config['usessl'], config['authtype'], \
+        config = self.config
+        # proxies = self.proxies
+        ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['configuri'], config['usessl'], config['authtype'], \
                 config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
-        CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
+        # CacheMode, CacheDir = config['cachemode'], config['cachefilepath']
 
         scheme, netloc, path, params, query, fragment = urlparse(URILink)
         inService = scheme == '' and netloc == ''
-        scheme = ('https' if UseSSL else 'http') if scheme == '' else scheme
-        netloc = ConfigIP if netloc == '' else netloc
-        URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
+        if inService:
+            scheme, netloc, _path, __params, ___query, ____fragment = urlparse(ConfigIP)
+            URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
+        else:
+            URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
 
         payload, statusCode, elapsed, auth, noauthchk = None, '', 0, None, True
 
         isXML = False
-        if "$metadata" in URILink or ".xml" in URILink[:-5]:
+        if "$metadata" in path or ".xml" in path[:-5]:
             isXML = True
             traverseLogger.debug('Should be XML')
 
@@ -373,15 +215,15 @@ class rfService():
             noauthchk =  URILink in ['/redfish', '/redfish/v1', '/redfish/v1/odata'] or\
                 '/redfish/v1/$metadata' in URILink
 
-            auth = None if noauthchk else (config['username'], config['password'])
+            auth = None if noauthchk else (config.get('username'), config.get('password'))
             traverseLogger.debug('dont chkauth' if noauthchk else 'chkauth')
 
-            if CacheMode in ["Fallback", "Prefer"]:
-                payload = rfService.getFromCache(URILink, CacheDir)
+            # if CacheMode in ["Fallback", "Prefer"]:
+            #     payload = rfService.getFromCache(URILink, CacheDir)
 
-        if not inService and config['servicemode']:
-            traverseLogger.debug('Disallowed out of service URI ' + URILink)
-            return False, None, -1, 0
+        # if not inService and config['schema_origin'].lower() == 'service':
+        #     traverseLogger.debug('Disallowed out of service URI ' + URILink)
+        #     return False, None, -1, 0
 
         # rs-assertion: do not send auth over http
         # remove UseSSL if necessary if you require unsecure auth
@@ -409,16 +251,13 @@ class rfService():
             'out of service ' if not inService else '', AuthType, UseSSL, URILink, headers))
         response = None
         try:
-            if payload is not None and CacheMode == 'Prefer':
+            if payload is not None: # and CacheMode == 'Prefer':
                 return True, payload, -1, 0
-            response = self.session.get(URLDest,
-                                    headers=headers, auth=auth, verify=certVal, timeout=timeout,
-                                    proxies=proxies if not inService else None)  # only proxy non-service
+            response = self.session.get(URLDest, headers=headers, auth=auth, verify=certVal, timeout=timeout)  # only proxy non-service
             expCode = [200]
             elapsed = response.elapsed.total_seconds()
             statusCode = response.status_code
-            traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode,
-                                 expCode, response.headers, elapsed))
+            traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode, expCode, response.headers, elapsed))
             if statusCode in expCode:
                 contenttype = response.headers.get('content-type')
                 if contenttype is None:
@@ -485,7 +324,7 @@ class rfService():
             if response and response.text:
                 traverseLogger.debug("payload: {}".format(response.text))
 
-        if payload is not None and CacheMode == 'Fallback':
+        if payload is not None:
             return True, payload, -1, 0
         return False, None, statusCode, elapsed
 
@@ -542,7 +381,7 @@ def createResourceObject(name, uri, jsondata=None, typename=None, context=None, 
             context = createContext(acquiredtype)
 
     # Get Schema object
-    schemaObj = rfSchema.getSchemaObject(acquiredtype, createContext(acquiredtype))
+    schemaObj = schema.getSchemaObject(acquiredtype, createContext(acquiredtype))
     if schemaObj is None:
         traverseLogger.error("ResourceObject creation: No schema XML for {} {}".format(acquiredtype, context))
         return None
@@ -704,7 +543,7 @@ class ResourceObj:
         self.context = context
 
         # Get Schema object
-        self.schemaObj = rfSchema.getSchemaObject(acquiredtype, createContext(acquiredtype))
+        self.schemaObj = schema.getSchemaObject(acquiredtype, createContext(acquiredtype))
 
         if self.schemaObj is None:
             traverseLogger.error("ResourceObject creation: No schema XML for {} {} {}".format(typename, acquiredtype, self.context))
@@ -726,7 +565,7 @@ class ResourceObj:
         # get our metadata
         metadata = currentService.metadata if currentService else None
 
-        self.typeobj = rfSchema.getTypeObject(typename, self.schemaObj)
+        self.typeobj = schema.getTypeObject(typename, self.schemaObj)
 
         self.propertyList = self.typeobj.getProperties(self.jsondata, topVersion=getNamespace(typename), top_of_resource=self if top_of_resource is None else top_of_resource)
         propertyList = [prop.payloadName for prop in self.propertyList]
@@ -741,27 +580,27 @@ class ResourceObj:
             regex = re.compile(prop_pattern)
             for key in [k for k in self.jsondata if k not in propertyList and regex.fullmatch(k)]:
                 val = self.jsondata.get(key)
-                value_obj = rfSchema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type, topVersion=parent_type)
+                value_obj = schema.PropItem(propTypeObj.schemaObj, propTypeObj.fulltype, key, val, customType=prop_type, topVersion=parent_type)
                 self.additionalList.append(value_obj)
 
-        if config['uricheck'] and self.typeobj.expectedURI is not None:
-            my_id = self.jsondata.get('Id')
-            self.errorIndex['bad_uri_schema_uri'] = not self.typeobj.compareURI(uri, my_id)
-            self.errorIndex['bad_uri_schema_odata'] = not self.typeobj.compareURI(odata_id, my_id)
+        # if config['uricheck'] and self.typeobj.expectedURI is not None:
+        #     my_id = self.jsondata.get('Id')
+        #     self.errorIndex['bad_uri_schema_uri'] = not self.typeobj.compareURI(uri, my_id)
+        #     self.errorIndex['bad_uri_schema_odata'] = not self.typeobj.compareURI(odata_id, my_id)
 
-            if self.errorIndex['bad_uri_schema_uri']:
-                traverseLogger.error('{}: URI not in Redfish.Uris: {}'.format(uri, self.typename))
-                if my_id != uri.rsplit('/', 1)[-1]:
-                    traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
-            else:
-                traverseLogger.debug('{} in Redfish.Uris: {}'.format(uri, self.typename))
+        #     if self.errorIndex['bad_uri_schema_uri']:
+        #         traverseLogger.error('{}: URI not in Redfish.Uris: {}'.format(uri, self.typename))
+        #         if my_id != uri.rsplit('/', 1)[-1]:
+        #             traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
+        #     else:
+        #         traverseLogger.debug('{} in Redfish.Uris: {}'.format(uri, self.typename))
 
-            if self.errorIndex['bad_uri_schema_odata']:
-                traverseLogger.error('{}: odata_id not in Redfish.Uris: {}'.format(odata_id, self.typename))
-                if my_id != uri.rsplit('/', 1)[-1]:
-                    traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
-            else:
-                traverseLogger.debug('{} in Redfish.Uris: {}'.format(odata_id, self.typename))
+        #     if self.errorIndex['bad_uri_schema_odata']:
+        #         traverseLogger.error('{}: odata_id not in Redfish.Uris: {}'.format(odata_id, self.typename))
+        #         if my_id != uri.rsplit('/', 1)[-1]:
+        #             traverseLogger.error('Id {} in payload doesn\'t seem to match URI'.format(my_id))
+        #     else:
+        #         traverseLogger.debug('{} in Redfish.Uris: {}'.format(odata_id, self.typename))
 
         # get annotation
         successService, annotationProps = getAnnotations(metadata, self.jsondata)
@@ -774,7 +613,7 @@ class ResourceObj:
 
         self.links = OrderedDict()
 
-        sample = config.get('sample')
+        sample = config.get('sample', 100)
         linklimits = config.get('linklimit', {})
         self.links.update(self.typeobj.getLinksFromType(self.jsondata, self.context, self.propertyList, oem, linklimits, sample))
 
@@ -792,7 +631,7 @@ class ResourceObj:
         checks for @odata entries and their conformance
         These are not checked in the normal loop
         """
-        messages = dict()
+        messages = OrderedDict()
         decoded = jsondata
         success = True
         for key in [k for k in decoded if '@odata' in k]:
@@ -918,6 +757,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
             insideItem = prop_item.val if prop_item.exists else None
             autoExpand = propDict.get('OData.AutoExpand', None) is not None or\
                 propDict.get('OData.AutoExpand'.lower(), None) is not None
+            amExcerpt = prop_item.excerptType
             cType = propDict.get('isCollection')
             ownerNS = prop_item.propOwner.split('.')[0]
             ownerType = prop_item.propOwner.split('.')[-1]
@@ -932,7 +772,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                             cSchema = context
                         for cnt, listItem in enumerate_collection(insideItem, cTypeName, linklimits, sample_size):
                             linkList[prefix + str(item) + '.' + cTypeName + '#' + str(cnt)] = \
-                                Link_Obj(listItem.get('@odata.id'), autoExpand, cType, cSchema, listItem, key)
+                                Link_Obj(listItem.get('@odata.id', 'excerpt' if amExcerpt else None), autoExpand, cType, cSchema, listItem, key)
                     else:
                         # else single link
                         cType = propDict['attrs'].get('Type')
@@ -940,7 +780,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                         if cSchema is None:
                             cSchema = context
                         linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = \
-                            Link_Obj(insideItem.get('@odata.id'), autoExpand, cType, cSchema, insideItem, key)
+                            Link_Obj(insideItem.get('@odata.id', 'excerpt' if amExcerpt else None), autoExpand, cType, cSchema, insideItem, key)
 
             elif item == 'Uri' and ownerNS == 'MessageRegistryFile' and ownerType == 'Location':
                 # special handling for MessageRegistryFile Location Uri
@@ -953,7 +793,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                     traverseLogger.debug('Registry Location Uri: resource = {}, type = {}, schema = {}'
                                          .format(insideItem, cType, cSchema))
                     linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = \
-                        Link_Obj(uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem, key)
+                        Link_Obj(uriItem.get('@odata.id', 'excerpt' if amExcerpt else None), autoExpand, cType, cSchema, uriItem, key)
             elif item == 'Actions':
                 # special handling for @Redfish.ActionInfo payload annotations
                 if isinstance(insideItem, dict):
@@ -967,7 +807,7 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
                             uriItem = {'@odata.id': uri}
                             traverseLogger.debug('{}{}: @Redfish.ActionInfo annotation uri = {}'.format(item, k, uri))
                             linkList[prefix + str(item) + k + '.' + cType] = \
-                                Link_Obj(uriItem.get('@odata.id'), autoExpand, cType, cSchema, uriItem, key)
+                                Link_Obj(uriItem.get('@odata.id', 'excerpt' if amExcerpt else None), autoExpand, cType, cSchema, uriItem, key)
 
             elif propDict['realtype'] == 'complex':
                 if 'Oem' in item and not oemCheck:
@@ -986,10 +826,6 @@ def getAllLinks(jsonData, propList, schemaObj, prefix='', context='', linklimits
     except Exception as e:
         traverseLogger.debug('Exception caught while getting all links', exc_info=1)
         traverseLogger.error('Unexpected error while extracting links from payload: {}'.format(repr(e)))
-    # contents of Registries may be needed to validate other resources (like Bios), so move to front of linkList
-    if 'Registries.Registries' in linkList:
-        linkList.move_to_end('Registries.Registries', last=False)
-        traverseLogger.debug('getAllLinks: Moved Registries.Registries to front of list')
     return linkList
 
 
@@ -1023,6 +859,6 @@ def getAnnotations(metadata, decoded, prefix=''):
             realType = annotationSchemaObj.name
             realItem = realType + '.' + fullItem.split('.', 1)[1]
             additionalProps.append(
-                rfSchema.PropItem(annotationSchemaObj, realItem, key, decoded[key]))
+                schema.PropItem(annotationSchemaObj, realItem, key, decoded[key]))
     traverseLogger.debug("Annotations generated: {} out of {}".format(len(additionalProps), annotationsFound))
     return True, additionalProps

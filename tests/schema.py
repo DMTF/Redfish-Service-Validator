@@ -13,8 +13,8 @@ import os
 
 sys.path.append('../')
 
-import traverseService as rst
-import rfSchema
+import traverseService
+import common.schema as schema
 from bs4 import BeautifulSoup
 
 rsvLogger = rst.getLogger()
@@ -31,7 +31,7 @@ class SchemaTest(TestCase):
         with open('tests/testdata/schemas/Example_v1.xml') as f:
             example_soup = BeautifulSoup(f, "xml")
 
-        genrefs = rfSchema.getReferenceDetails(example_soup)
+        genrefs = schema.getReferenceDetails(example_soup)
 
         maintag = example_soup.find("edmx:Edmx", recursive=False)
         reftags = maintag.find_all('edmx:Reference', recursive=False)
@@ -41,11 +41,11 @@ class SchemaTest(TestCase):
 
     def test_schema_object(self):
         # todo: consider no schema, consider service
-        rfo = rfSchema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
+        rfo = schema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
         self.assertTrue(rfo is not None, 'SchemaObject not created')
 
     def test_highest_type(self):
-        rfo = rfSchema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
+        rfo = schema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
         assert rfo
 
         self.assertTrue(rfo.getHighestType('Example.Example') == 'Example.v1_7_0.Example')
@@ -57,7 +57,7 @@ class SchemaTest(TestCase):
 
     def test_get_from_reference(self):
         # todo: consider no schema, consider service
-        rfo = rfSchema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
+        rfo = schema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
         assert rfo
 
         self.assertTrue(rfo.getSchemaFromReference('ExampleResource') is not None)
@@ -66,7 +66,7 @@ class SchemaTest(TestCase):
         self.assertFalse(rfo.getSchemaFromReference('Resource.v1_0_1') is not None)
 
     def test_get_type_tag(self):
-        rfo = rfSchema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
+        rfo = schema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
         assert rfo
 
         self.assertTrue(rfo.getTypeTagInSchema('Example.v1_0_0.Example') is not None)
@@ -78,7 +78,7 @@ class SchemaTest(TestCase):
 
     def test_get_parent_type(self):
         # todo: consider unusual parent situations (?)
-        rfo = rfSchema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
+        rfo = schema.getSchemaObject('Example.Example', '/redfish/v1/$metadata#Example.Example')
         assert rfo
 
         self.assertTrue(rfo.getParentType('Example.v1_0_0.Example'))

@@ -4,12 +4,9 @@
 
 import os
 import time
+import logging
 from collections import Counter, OrderedDict, defaultdict
 import traverseService as rst
-
-from io import BytesIO
-import requests
-import zipfile
 
 EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
 EDMX_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edmx"
@@ -17,43 +14,6 @@ EDM_TAGS = ['Action', 'Annotation', 'Collection', 'ComplexType', 'EntityContaine
             'Member', 'NavigationProperty', 'Parameter', 'Property', 'PropertyRef', 'PropertyValue', 'Record',
             'Schema', 'Singleton', 'Term', 'TypeDefinition']
 EDMX_TAGS = ['DataServices', 'Edmx', 'Include', 'Reference']
-
-
-live_zip_uri = 'http://redfish.dmtf.org/schemas/DSP8010_2019.4.zip'
-
-
-def setup_schema_pack(uri, local_dir, proxies, timeout):
-    if uri == 'latest':
-        uri = live_zip_uri
-    rst.traverseLogger.info('Unpacking schema pack... {}'.format(uri))
-    try:
-        if not os.path.isdir(local_dir):
-            os.makedirs(local_dir)
-        response = requests.get(uri, timeout=timeout, proxies=proxies)
-        expCode = [200]
-        elapsed = response.elapsed.total_seconds()
-        statusCode = response.status_code
-        rst.traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode,
-                                                                        expCode, response.headers, elapsed))
-        if statusCode in expCode:
-            if not zipfile.is_zipfile(BytesIO(response.content)):
-                pass
-            else:
-                zf = zipfile.ZipFile(BytesIO(response.content))
-                for name in zf.namelist():
-                    if '.xml' in name:
-                        cpath = '{}/{}'.format(local_dir, name.split('/')[-1])
-                        rst.traverseLogger.debug((name, cpath))
-                        item = zf.open(name)
-                        with open(cpath, 'wb') as f:
-                            f.write(item.read())
-                        item.close()
-                zf.close()
-    except Exception as ex:
-        rst.traverseLogger.error("A problem when getting resource has occurred {}".format(uri))
-        rst.traverseLogger.warn("output: ", exc_info=True)
-    return True
-
 
 def bad_edm_tags(tag):
     return tag.namespace == EDM_NAMESPACE and tag.name not in EDM_TAGS
@@ -104,13 +64,13 @@ class Metadata(object):
     metadata_uri = '/redfish/v1/$metadata'
     schema_type = '$metadata'
 
-    def __init__(self, logger):
+    def __init__(self, schema_object, logger):
         logger.info('Constructing metadata...')
         self.success_get = False
         self.uri_to_namespaces = defaultdict(list)
         self.elapsed_secs = 0
         self.metadata_namespaces = set()
-        self.service_namespaces = set()
+        self.service_namespaces = set(['Resource', 'Resource.v1_0_0'])
         self.schema_store = dict()
         self.bad_tags = dict()
         self.bad_tag_ns = dict()
@@ -123,9 +83,9 @@ class Metadata(object):
         self.redfish_extensions_alias_ok = False
 
         start = time.time()
-        self.schema_obj = rst.rfSchema.getSchemaObject(Metadata.schema_type, Metadata.metadata_uri)
         self.md_soup = None
         self.service_refs = None
+        self.schema_obj = schema_object
         uri = Metadata.metadata_uri
 
         self.elapsed_secs = time.time() - start
@@ -158,7 +118,7 @@ class Metadata(object):
             logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
             for schema in self.service_refs:
                 name, uri = self.service_refs[schema]
-                self.schema_store[name] = rst.rfSchema.getSchemaObject(name, uri)
+                self.schema_store[name] = rst.schema.getSchemaObject(name, uri)
                 if self.schema_store[name] is not None:
                     for ref in self.schema_store[name].refs:
                         pass
@@ -228,7 +188,7 @@ class Metadata(object):
             if '#' in schema_uri:
                 schema_uri, frag = k.split('#', 1)
             schema_type = os.path.basename(os.path.normpath(k)).strip('.xml').strip('_v1')
-            success, soup, _ = rst.rfSchema.getSchemaDetails(schema_type, schema_uri)
+            success, soup, _ = rst.schema.getSchemaDetails(schema_type, schema_uri)
             if success:
                 for namespace in self.uri_to_namespaces[k]:
                     if soup.find('Schema', attrs={'Namespace': namespace}) is None:

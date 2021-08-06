@@ -4,12 +4,12 @@
 
 if __name__ != '__main__':
     import traverseService as rst
-    from commonRedfish import getNamespace, getType
+    from common.redfish import getNamespace, getType
 else:
     import argparse
     from bs4 import BeautifulSoup
     import os, csv
-import RedfishLogo as logo
+import common.RedfishLogo as logo
 from types import SimpleNamespace
 from collections import Counter, OrderedDict
 import html
@@ -76,9 +76,11 @@ def applySuccessColor(num, entry):
     if num < 4:
         return wrapTag(entry, 'td')
     success_col = str(entry)
-    if 'FAIL' in str(success_col).upper():
+    if any(x.upper() in str(success_col).upper() for x in ['FAIL', 'errorExcerpt']):
         entry = '<td class="fail center">' + str(success_col) + '</td>'
     elif str(success_col).upper() in ['DEPRECATED', 'INVALID', 'WARN']:
+        entry = '<td class="warn center">' + str(success_col) + '</td>'
+    elif any(x in str(success_col).upper() for x in ['DEPRECATED', 'INVALID', 'WARN']):
         entry = '<td class="warn center">' + str(success_col) + '</td>'
     elif 'PASS' in str(success_col).upper():
         entry = '<td class="pass center">' + str(success_col) + '</td>'
@@ -88,7 +90,7 @@ def applySuccessColor(num, entry):
 
 
 def applyInfoSuccessColor(num, entry):
-    if 'fail' in entry or 'exception' in entry or 'problem' in entry:
+    if any(x in entry for x in ['fail', 'exception', 'error', 'problem', 'err']):
         style = 'class="fail"'
     elif 'warn' in entry or 'invalid' in entry:
         style = 'class="warn"'
@@ -97,13 +99,13 @@ def applyInfoSuccessColor(num, entry):
     return tag.div(entry, attr=style)
 
 
-def renderHtml(results, tool_version, startTick, nowTick, service, printCSV):
+def renderHtml(results, tool_version, startTick, nowTick, service):
     # Render html
     config = service.config
-    config_str = ', '.join(sorted(list(config.keys() - set(['systeminfo', 'targetip', 'password', 'description']))))
-    sysDescription, ConfigURI = (config['systeminfo'], config['targetip'])
+    config_str = ', '.join(sorted(list(config.keys() - set(['desc', 'targetip', 'password', 'description']))))
+    sysDescription, ConfigURI = (config['description'], config['ip'])
     rsvLogger = rst.getLogger()
-    logpath = config['logpath']
+    logpath = config['logdir']
     error_lines, finalCounts = count_errors(results)
     if service.metadata is not None:
         finalCounts.update(service.metadata.get_counter())
@@ -153,7 +155,7 @@ def renderHtml(results, tool_version, startTick, nowTick, service, printCSV):
 
     htmlStrBodyHeader += tag.tr(tag.th(infoBlock(infos)))
 
-    infos = {x: config[x] for x in config if x not in ['systeminfo', 'targetip', 'password', 'description']}
+    infos = {x: config[x] for x in config if x not in ['systeminfo', 'ip', 'password', 'description']}
     infos_left, infos_right = dict(), dict()
     for key in sorted(infos.keys()):
         if len(infos_left) <= len(infos_right):
@@ -258,12 +260,12 @@ def renderHtml(results, tool_version, startTick, nowTick, service, printCSV):
         infos_a = [str(val.get(x)) for x in ['uri'] if val.get(x) not in ['',None]]
         infos_a.append(rtime)
 
-        if(printCSV):
-            rsvLogger.info(','.join(infos_a))
-            rsvLogger.info(','.join(infos))
-            rsvLogger.info(','.join(titles))
-            rsvLogger.info('\n'.join([','.join(x) for x in rows]))
-            rsvLogger.info(',')
+        # if(printCSV):
+        #     rsvLogger.info(','.join(infos_a))
+        #     rsvLogger.info(','.join(infos))
+        #     rsvLogger.info(','.join(titles))
+        #     rsvLogger.info('\n'.join([','.join(x) for x in rows]))
+        #     rsvLogger.info(',')
 
         # warns and errors
         errors = val['errors']
