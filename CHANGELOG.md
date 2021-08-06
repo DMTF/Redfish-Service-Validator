@@ -1,5 +1,9 @@
 # Change Log
 
+## [2.0.0] - 2021-08-06
+- Significant changes to the CLI arguments with the tool to reduce complexity for users
+- Added support for validating excerpts
+
 ## [1.4.1] - 2021-06-18
 - Modified calls to requests package to reuse HTTP sessions for better performance
 
