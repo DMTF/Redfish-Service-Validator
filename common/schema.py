@@ -2,7 +2,7 @@
 # Copyright 2016-2020 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from bs4 import BeautifulSoup
 from functools import lru_cache
 from enum import Enum, auto
