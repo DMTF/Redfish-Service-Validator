@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.0.1] - 2021-08-09
+- Various fixes from previous changes to refactor the arguments with the tool
+
 ## [2.0.0] - 2021-08-06
 - Significant changes to the CLI arguments with the tool to reduce complexity for users
 - Added support for validating excerpts
