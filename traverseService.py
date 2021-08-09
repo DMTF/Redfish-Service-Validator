@@ -16,7 +16,7 @@ from urllib.parse import urlparse, urlunparse
 from http.client import responses
 
 from common.redfish import createContext, getNamespace, getNamespaceUnversioned, getType, navigateJsonFragment
-import common.session as session
+from common.session import rfSession
 import common.schema as schema
 from common.metadata import Metadata
 
@@ -107,7 +107,7 @@ class rfService():
             # certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
             # no proxy for system under test
             # self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
-            self.currentSession = session(config['username'], config['password'], config['configuri'], None)
+            self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None)
             self.currentSession.startSession()
 
         global currentService # TODO: This is still not ideal programming practice
