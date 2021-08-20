@@ -70,7 +70,7 @@ class Metadata(object):
         self.uri_to_namespaces = defaultdict(list)
         self.elapsed_secs = 0
         self.metadata_namespaces = set()
-        self.service_namespaces = set(['Resource', 'Resource.v1_0_0'])
+        self.service_namespaces = set()
         self.schema_store = dict()
         self.bad_tags = dict()
         self.bad_tag_ns = dict()
