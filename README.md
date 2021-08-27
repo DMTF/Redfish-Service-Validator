@@ -60,7 +60,7 @@ Variable        | Type    | Definition
 --              |--       |--
 payload         | string  | Option to test a specific payload or resource tree (see below)
 logdir          | string  | Place to save logs and run configs
-nooemcheck      | boolean | Whether to check Oem items on service
+oemcheck        | boolean | Whether to check Oem items on service
 debugging       | boolean | Whether to print debug to log
 schema_directory| string  | Where schema is located/saved on system
 

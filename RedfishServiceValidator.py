@@ -44,7 +44,7 @@ def main(argslist=None, configfile=None):
     # validator options
     argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
     argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
-    argget.add_argument('--nooemcheck', action='store_const', const=True, default=None, help='Don\'t check OEM items')
+    argget.add_argument('--nooemcheck', action='store_false', dest='oemcheck', help='Don\'t check OEM items')
     argget.add_argument('--debugging', action="store_true", help='Output debug statements to text log, otherwise it only uses INFO')
     argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
 

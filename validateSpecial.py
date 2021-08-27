@@ -710,7 +710,7 @@ def checkPropertyConformance(parentResourceObj, PropertyName, prop, ParentItem=N
 
     # why not actually check oem
     # rs-assertion: 7.4.7.2
-    if 'Oem' in PropertyName and not traverseService.config.get('oemcheck', False):
+    if 'Oem' in PropertyName and not traverseService.config.get('oemcheck', True):
         my_logger.log(logging.INFO-1,'\tOem is skipped')
         counts['skipOem'] += 1
         return {item: ('-', '-', 'Yes' if propExists else 'No', 'OEM')}, counts
