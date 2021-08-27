@@ -3,7 +3,6 @@
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 import requests
-import sys
 import re
 import os
 import json

@@ -12,7 +12,6 @@ else:
 import common.RedfishLogo as logo
 from types import SimpleNamespace
 from collections import Counter, OrderedDict
-import html
 import json
 
 

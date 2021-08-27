@@ -70,8 +70,8 @@ g_config_defaults = {
             "value": "./logs",
             "description": "Place to save logs and run configs"
         },
-        "nooemcheck": {
-            "value": "False",
+        "oemcheck": {
+            "value": "True",
             "description": "Whether to check Oem items on service"
         },
         "debugging": {
