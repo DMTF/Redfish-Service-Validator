@@ -82,11 +82,9 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
 
     # Attempt to get a list of properties
     if URI is None:
-        if parent is not None:
-            parentURI = parent.uri
-        else:
-            parentURI = 'MissingParent'
-        URI = parentURI + '/Missing URI Link'
+        URI = '/Missing URI Link'
+        if parent:
+            URI = str(parent.payload.get('@odata.id')) + URI
         my_logger.warning('Tool appears to be missing vital URI information, replacing URI w/: {}'.format(URI))
     # Generate dictionary of property info
     try:
@@ -107,11 +105,20 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
                 msg = create_entry(*m)
                 messages[msg.name] = msg
 
-        type_string = str(expectedType) if expectedType else me['payload'].get('@odata.type')
-        me['fulltype'] = type_string
-        redfish_schema = my_catalog.getSchemaDocByClass(type_string)
-        redfish_type = redfish_schema.getTypeInSchema(type_string)
-        redfish_obj = redfish_type.createObject().populate(me['payload'], parent)
+        my_type = expectedType if expectedType else me['payload'].get('@odata.type')
+        me['fulltype'] = str(my_type)
+        if isinstance(my_type, catalog.RedfishType) or my_type == None:
+            redfish_type = my_type
+        else:
+            redfish_schema = my_catalog.getSchemaDocByClass(my_type)
+            redfish_type = redfish_schema.getTypeInSchema(my_type)
+
+        if redfish_type:
+            redfish_obj = redfish_type.createObject().populate(me['payload'], parent)
+        else:
+            my_logger.warn('No Link with valid Type found')
+            me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
+            return False, counts, results, None, None
 
         if not redfish_obj:
             counts['problemResource'] += 1
@@ -132,7 +139,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
     odata_id = me['payload'].get('@odata.id', '')
     if '#' in odata_id:
         if parent is not None:
-            payload_resolve = traverseService.navigateJsonFragment(parent.jsondata, URI)
+            payload_resolve = traverseService.navigateJsonFragment(parent.payload, URI)
             if payload_resolve is None:
                 my_logger.error('@odata.id of ReferenceableMember does not contain a valid JSON pointer for this payload: {}'.format(odata_id))
                 counts['badOdataIdResolution'] += 1
@@ -154,7 +161,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
     results[uriName]['samplemapped'] = (str(sample_string))
     # results[uriName]['rtime'] = propResourceObj.rtime
     # results[uriName]['rcode'] = propResourceObj.status
-    # results[uriName]['payload'] = propResourceObj.jsondata
+    # results[uriName]['payload'] = parent.payload
     # results[uriName]['context'] = propResourceObj.context
     # results[uriName]['origin'] = propResourceObj.schemaObj.origin
     # results[uriName]['fulltype'] = propResourceObj.typename
@@ -271,6 +278,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedJson=None, parent=N
     # warn: reference only?
     # debug:
     traverseLogger = traverseService.getLogger()
+    my_logger.info((URI, uriName, expectedType, expectedJson, parent))
 
     # If this is our first called URI
     top = allLinks is None
@@ -314,6 +322,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedJson=None, parent=N
             linkURI = link.Value.get('@odata.id') if link.Value else ''
             linkName = link.Name
 
+            my_logger.info((link, link.Type.getTypeTree(), link.Type.AutoExpand))
             if link.Type is not None and link.Type.AutoExpand:
                 returnVal = validateURITree(linkURI, uriName + ' -> ' + linkName, link.Type, link.Value, thisobj, allLinks)
             else:

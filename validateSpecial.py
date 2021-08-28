@@ -549,19 +549,19 @@ def displayType(propType, is_collection=False):
         if propCollection:
             member_type = propType.replace('Collection(', '').replace(')', '')
             if is_collection:
-                disp_type = 'array of: {}'.format(member_type.rsplit('.', 1)[-1])
+                disp_type = 'array of: {}'.format(member_type)
             else:
-                disp_type = member_type.rsplit('.', 1)[-1]
+                disp_type = member_type
         else:
-            disp_type = 'link to: {}'.format(propType.rsplit('.', 1)[-1])
+            disp_type = 'link to: {}'.format(propType)
     # Complex types
     elif propRealType == 'complex':
         if propCollection:
             member_type = propType.replace('Collection(', '').replace(')', '')
             if is_collection:
-                disp_type = 'array of: {}'.format(member_type.rsplit('.', 1)[-1])
+                disp_type = 'array of: {}'.format(member_type)
             else:
-                disp_type = member_type.rsplit('.', 1)[-1]
+                disp_type = member_type
         else:
             disp_type = propType
     # Fallback cases

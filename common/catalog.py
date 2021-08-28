@@ -117,60 +117,6 @@ class SchemaCatalog:
             "Could not find any Schema with these parameters {}".format(typename)
         )
 
-    # def getSchemaSoup(self, SchemaType, SchemaURI=None):
-    #     """
-    #     Find Schema file as soup for given Namespace, from local directory
-
-    #     param SchemaType: Schema Namespace, such as ServiceRoot
-    #     param SchemaURI: uri to grab schema (generate information from it)
-    #     return: (success boolean, a Soup object, origin)
-    #     """
-    #     Alias = getNamespaceUnversioned(SchemaType)
-
-    #     if SchemaURI is not None:
-    #         uriparse = SchemaURI.split('/')[-1].split('#')
-    #         xml = uriparse[0]
-    #     else:
-    #         self.logger.warning("SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
-    #         return self.getSchemaSoup(SchemaType, Alias + "_v1.xml")
-
-    #     if xml in self.catalog:
-    #         return self.catalog[xml].soup
-
-    #     raise MissingSchemaError('Could not find any Schema with these parameters {} {}'.format(SchemaType, SchemaURI))
-
-    # if '/redfish/v1/$metadata' in SchemaURI:
-    #     if len(uriparse) > 1:
-    #         frag = getNamespace(SchemaType)
-    #         frag = frag.split('.', 1)[0]
-    #         refType, refLink = getReferenceDetails(
-    #             soup, name=SchemaLocation + '/' + filestring).get(frag, (None, None))
-    #         if refLink is not None:
-    #             self.logger.debug('Entering {} inside {}, pulled from $metadata'.format(refType, refLink))
-    #             return self.getSchemaDoc(refType, refLink)
-    #         else:
-    #             self.logger.error('Could not find item in $metadata {}'.format(frag))
-    #             return False, None, None
-    #     else:
-    #         return True, soup, "localFile:" + SchemaLocation + '/' + filestring
-
-    # except FileNotFoundError:
-    #     # if we're looking for $metadata locally... ditch looking for it, go straight to file
-    #     if '/redfish/v1/$metadata' in SchemaURI and Alias != '$metadata':
-    #         self.logger.warning("Unable to find a harddrive stored $metadata at {}, defaulting to {}".format(SchemaLocation, Alias + "_v1.xml"))
-    #         return self.getSchemaFile(SchemaType, Alias + "_v1.xml")
-    #     else:
-    #         self.logger.warn
-    #         (
-    #             "Schema file {} not found in {}".format(filestring, SchemaLocation))
-    #         if Alias == '$metadata':
-    #             self.logger.warning(
-    #                 "If $metadata cannot be found, Annotations may be unverifiable")
-    # except Exception as ex:
-    #     self.logger.error("A problem when getting a local schema has occurred {}".format(SchemaURI))
-    #     self.logger.warning("output: ", exc_info=True)
-
-
 REDFISH_ABSENT = "n/a"
 
 
@@ -346,7 +292,12 @@ class RedfishType:
             else soup.get("BaseType", soup.get("Type", None))
         )
 
-        self.fulltype = ".".join([self.owner.class_name, str(self.parent_type)])
+        if self.tag_type in ['NavigationProperty', 'Property']:
+            self.fulltype = self.owner.class_name + ':' + soup['Name']
+            self.Namespace, self.Type = getNamespace(self.fulltype), getType(self.fulltype)
+        else:
+            self.fulltype = self.owner.class_name + '.' + soup['Name']
+            self.Namespace, self.Type = getNamespace(self.fulltype), getType(self.fulltype)
 
         self.tags = {}
         for tag in self.type_soup.find_all(recursive=False):
@@ -361,10 +312,6 @@ class RedfishType:
         additionalElement = self.type_soup.find("Annotation", attrs={"Term": "OData.AdditionalProperties"})
         uriElement = self.type_soup.find("Annotation", attrs={"Term": "Redfish.Uris"})
         propPermissions = self.tags.get('OData.Permissions')
-
-        # if re.match('Collection\(.*\)', propertyFullType) is not None:
-
-        self.Namespace, self.Type = self.owner.class_name, getType(self.fulltype)
 
         self.IsMandatory = self.tags.get('Redfish.Required') is not None
         self.IsNullable = self.type_soup.get("Nullable", "false") in ["false", False, "False"]
@@ -412,6 +359,24 @@ class RedfishType:
             prop_name = innerelement["Name"]
             self.unique_properties[prop_name] = RedfishType(innerelement, self.owner, self.logger)
         
+    def getTypeTree(self, tree=None):
+        if not tree: tree = [self.fulltype]
+        if self.parent_type:
+            if re.match('Collection\(.*\)', self.parent_type) is not None:
+                my_real_type = self.parent_type.replace('Collection(', "").replace(')', "")
+                if 'Edm.' not in self.parent_type:
+                    type_obj = self.owner.parent_doc.catalog.getSchemaDocByClass(my_real_type).getTypeInSchema(my_real_type)
+                    return tree + [type_obj]
+                else:
+                    return tree + [self.parent_type]
+            if 'Edm.' in self.parent_type:
+                return tree + [self.parent_type]
+            if self.tag_type in ["Property", "NavigationProperty"]:
+                my_real_type = self.parent_type
+                type_obj = self.owner.parent_doc.catalog.getSchemaDocByClass(my_real_type).getTypeInSchema(my_real_type)
+                return tree + [type_obj]
+        return tree
+
     def getBaseType(self, is_collection=False):
         if self.parent_type:
             if re.match('Collection\(.*\)', self.parent_type) is not None:
@@ -501,6 +466,9 @@ class RedfishType:
                 raise ValueError("Entity value is not Dict or Str")
         return True
     
+    def as_json(self):
+        return self.createObj().as_json()
+    
     def createObject(self):
         return RedfishObject(self)
 
@@ -539,6 +507,7 @@ class RedfishObject:
     def populate(self, payload, parent=None):
         eval_obj = copy.copy(self)
         eval_obj.parent = parent
+        eval_obj.payload = payload
         eval_obj.Populated = True
         eval_obj.properties = {x:y.populate(payload.get(x, REDFISH_ABSENT)) for x, y in eval_obj.properties.items()}
         if eval_obj.Type.HasAdditional:
@@ -589,6 +558,7 @@ class RedfishObject:
                         my_complex = item.Type.createObject().populate(sub)
                         links.extend(my_complex.getLinks())
         return(links)
+
 
                 
 class RedfishProperty:
