@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from collections import Counter, OrderedDict
 import json
 
+LOG_ENTRY = ('name', 'value', 'type', 'exists', 'result')
 
 # hack in tagnames into module namespace
 tag = SimpleNamespace(**{tagName: lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)\
@@ -248,7 +249,7 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
         entry.append(rhead)
 
         # actual table
-        rows = [[str(m)] + list([str(x) for x in val['messages'][m]]) for m in val['messages']]
+        rows = [list([str(vars(m)[x]) for x in LOG_ENTRY]) for m in val['messages'].values()]
         titles = ['Property Name', 'Value', 'Type', 'Exists', 'Result']
         widths = ['15', '30', '30', '10', '15']
         tableHeader = tableBlock(rows, titles, widths, ffunc=applySuccessColor)

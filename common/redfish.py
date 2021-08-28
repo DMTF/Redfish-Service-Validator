@@ -130,3 +130,53 @@ def createContext(typestring: str):
     type_name = getType(typestring)
     context = '/redfish/v1/$metadata' + '#' + ns_name + '.' + type_name
     return context
+
+
+def checkPayloadConformance(jsondata, uri):
+    """
+    checks for @odata entries and their conformance
+    These are not checked in the normal loop
+    """
+    info = []
+    decoded = jsondata
+    success = True
+    for key in [k for k in decoded if '@odata' in k]:
+        paramPass = False
+
+        if key == '@odata.id':
+            paramPass = isinstance(decoded[key], str)
+            paramPass = re.match(
+                '(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
+            if not paramPass:
+                my_logger.error("{} {}: Expected format is /path/to/uri, but received: {}".format(uri, key, decoded[key]))
+            else:
+                if decoded[key] != uri:
+                    my_logger.warn("{} {}: Expected @odata.id to match URI link {}".format(uri, key, decoded[key]))
+        elif key == '@odata.count':
+            paramPass = isinstance(decoded[key], int)
+            if not paramPass:
+                my_logger.error("{} {}: Expected an integer, but received: {}".format(uri, key, decoded[key]))
+        elif key == '@odata.context':
+            paramPass = isinstance(decoded[key], str)
+            paramPass = re.match(
+                '/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
+            if not paramPass:
+                my_logger.warn("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
+                messages[key] = (decoded[key], 'odata',
+                                'Exists',
+                                'WARN')
+                continue
+        elif key == '@odata.type':
+            paramPass = isinstance(decoded[key], str)
+            paramPass = re.match(
+                '#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+            if not paramPass:
+                my_logger.error("{} {}: Expected format is #Namespace.Type, but received: {}".format(uri, key, decoded[key]))
+        else:
+            paramPass = True
+
+        success = success and paramPass
+
+        info.append((key, decoded[key], 'odata', 'Exists', 'PASS' if paramPass else 'FAIL'))
+        
+    return success, info
