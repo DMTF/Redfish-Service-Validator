@@ -1,213 +1,144 @@
 
 from collections import Counter, OrderedDict
+from common.catalog import REDFISH_ABSENT, MissingSchemaError, RedfishType
 
-import re, json
+import re
 import traverseService
-import common.simpletypes as simpletypes
-
-schema = traverseService.schema
-ExcerptTypes = schema.ExcerptTypes
-getTypeObject = schema.getTypeObject
+from common.redfish import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance
+from common.catalog import ExcerptTypes
+from tohtml import create_entry
 
 my_logger = traverseService.getLogger()
 
 import logging
 
-def validateExcerpt(prop, val, schemaObj, parentType):
+def validateExcerpt(prop, val):
     # check Navprop if it's NEUTRAL or CONTAINS
-    assert isinstance(prop, schema.PropItem)
+    base, _ = prop.Type.getBaseType()
 
-    if prop.propDict['realtype'] == 'entity':
-        my_excerpt_type, my_excerpt_tags = prop.excerptType, prop.excerptTags
+    if base == 'entity':
+        my_excerpt_type, my_excerpt_tags = prop.Type.excerptType, prop.Type.excerptTags
 
-        if prop.propDict['typeprops'] is not None:
-            # propEntry['typeprops'] = linkURI, autoExpand, linkType, linkSchema, innerJson
-            _, __, linkType, linkSchema, ___ = prop.propDict['typeprops']
-            my_obj = schemaObj.getSchemaFromReference(schema.getNamespace(linkSchema))
-            if my_obj is not None:
-                my_type = my_obj.getHighestType(linkType, parentType)
-                my_type_obj = getTypeObject(my_type, my_obj)
-                my_props = my_type_obj.getProperties(val)
-            else:
-                my_props = []
-        else:
-            my_props = []
+        my_props = prop.Type.createObject().populate(val).properties
 
-        for innerprop in my_props:
-            assert isinstance(innerprop, schema.PropItem)
-            # print(innerprop.name, innerprop.excerptType, my_excerpt_type, innerprop.excerptTags, my_excerpt_tags)
-            valid_tagging = any([x in my_excerpt_tags for x in innerprop.excerptTags]) or innerprop.excerptTags == []
+        for name, innerprop in my_props.items():
+            valid_tagging = any([x in my_excerpt_tags for x in innerprop.Type.excerptTags]) or innerprop.Type.excerptTags == []
             if my_excerpt_type == ExcerptTypes.NEUTRAL:
-                if innerprop.excerptType == [ExcerptTypes.EXCLUSIVE] and innerprop.exists:
+                if innerprop.Type.excerptType == [ExcerptTypes.EXCLUSIVE] and innerprop.Exists:
                     my_logger.error('{}: Exclusive Excerpt {} should not exist in this Resource/ComplexType'.format(prop.name, innerprop.name))
                     return False
             if my_excerpt_type == ExcerptTypes.CONTAINS:
-                if innerprop.excerptType in [ExcerptTypes.ALLOWED, ExcerptTypes.EXCLUSIVE, ExcerptTypes.CONTAINS]:
-                    if innerprop.exists and not valid_tagging:
-                        my_logger.error('{}: Excerpt tags of owner {} do not match property {} {}'.format(innerprop.name, prop.name, my_excerpt_tags, innerprop.excerptTags))
+                if innerprop.Type.excerptType in [ExcerptTypes.ALLOWED, ExcerptTypes.EXCLUSIVE, ExcerptTypes.CONTAINS]:
+                    if innerprop.Exists and not valid_tagging:
+                        my_logger.error('{}: Excerpt tags of owner {} do not match property {} {}'.format(innerprop.name, prop.name, my_excerpt_tags, innerprop.Type.excerptTags))
                         return False
-                elif innerprop.exists:
+                elif innerprop.Exists:
                     my_logger.error('{}: Property is not a valid Excerpt'.format(innerprop.name))
                     return False
 
     # check our prop if it's EXCLUSIVE
-    if prop.excerptType == ExcerptTypes.EXCLUSIVE and prop.exists:
+    if prop.Type.excerptType == ExcerptTypes.EXCLUSIVE and prop.Exists:
         my_logger.error('{}: Exclusive Excerpt should not exist in a Resource/Complex'.format(prop.name))
         return False
 
     return True
 
 
-def validateActions(name: str, val: dict, propTypeObj: traverseService.schema.PropType, payloadType: str):
-    """validateActions
-
-    Validates actions dict
-
-    :param name:  Identity of the property
-    :type name: str
-    :param val:  Dictionary of the Actions
-    :type val: dict
-    :param propTypeObj:  TypeObject of the Actions
-    :type propTypeObj: traverseService.PropType
-    :param payloadType:  Payload type of the owner of Actions
-    :type payloadType: str
-    """
+def validateAction(act_name, actionDecoded, all_actions):
     actionMessages, actionCounts = OrderedDict(), Counter()
-
-    parentTypeObj = traverseService.schema.PropType(payloadType, propTypeObj.schemaObj)
-    actionsDict = {act.name: (val.get(act.name, 'n/a'), act.actTag) for act in parentTypeObj.getActions()}
-
-    if 'Oem' in val:
-        if traverseService.currentService.config.get('oemcheck'):
-            for newAct in val['Oem']:
-                actionsDict['Oem.' + newAct] = (val['Oem'][newAct], None)
-        else:
-            actionCounts['oemActionSkip'] += 1
-
-    # For each action found, check action dictionary for existence and conformance
-    # No action is required unless specified, target is not required unless specified
-    # (should check for viable parameters)
-    for k in actionsDict:
-        actionDecoded, actDict = actionsDict[k]
-        actPass = True
-        actOptional = False
-        if actionDecoded != 'n/a':
+    act_name, act_type = getNamespace(act_name.strip('#')), getType(act_name)
+    actPass = False
+    if act_type not in all_actions:
+        actionCounts['errorActionBadName'] += 1
+    else:
+        my_act = all_actions[act_type]
+        actOptional = my_act.find('annotation', {'term': 'Redfish.Required'}) is not None
+        if actionDecoded == REDFISH_ABSENT:
+            if actOptional:
+                actPass = True
+            else:
+                my_logger.error('{}: Mandatory action missing'.format(act_name))
+                actionCounts['failMandatoryAction'] += 1
+        if actionDecoded != REDFISH_ABSENT:
             # validate target
             target = actionDecoded.get('target')
             if target is None:
-                actPass = False
-                my_logger.error('{}: target for action is missing'.format(name + '.' + k))
+                my_logger.error('{}: target for action is missing'.format(act_name))
             elif not isinstance(target, str):
-                actPass = False
-                my_logger.error('{}: target for action is malformed; expected string, got {}'
-                                    .format(name + '.' + k, str(type(target)).strip('<>')))
+                my_logger.error('{}: target for action is malformed'.format(act_name))
                 # check for unexpected properties
-            for prop in actionDecoded:
-                if prop not in ['target', 'title', '@Redfish.ActionInfo',
-                                '@Redfish.OperationApplyTimeSupport'] and '@Redfish.AllowableValues' not in prop:
-                    actPass = False
-                    my_logger.error('{}: Property "{}" is not allowed in actions property. Allowed properties are "{}", "{}", "{}", "{}" and "{}"'
-                            .format(name + '.' + k, prop, 'target', 'title', '@Redfish.ActionInfo', '@Redfish.OperationApplyTimeSupport', '*@Redfish.AllowableValues'))
-        else:
-            # <Annotation Term="Redfish.Required"/>
-            if actDict is not None and actDict.find('annotation', {'term': 'Redfish.Required'}):
-                actPass = False
-                my_logger.error('{}: action not found, is mandatory'.format(name + '.' + k))
-            else:
-                actOptional = True
-                my_logger.debug('{}: action not found, is not mandatory'.format(name + '.' + k))
-        actionMessages[name + '.' + k] = (
-                'Action', '-',
-                'Yes' if actionDecoded != 'n/a' else 'No',
-                'Optional' if actOptional else 'PASS' if actPass else 'FAIL')
-        if actOptional:
+            for ap_name in actionDecoded:
+                expected = ['target', 'title', '@Redfish.ActionInfo', '@Redfish.OperationApplyTimeSupport']
+                if ap_name not in expected and '@Redfish.AllowableValues' not in ap_name:
+                    my_logger.error('{}: Property "{}" is not allowed in actions property. \
+                        Allowed properties are "{}", "{}", "{}", "{}" and "{}"'.format(act_name, ap_name, *expected, '*@Redfish.AllowableValues'))
+            actPass = True
+        if actOptional and actPass:
             actionCounts['optionalAction'] += 1
         elif actPass:
             actionCounts['passAction'] += 1
         else:
             actionCounts['failAction'] += 1
+            
+        actionMessages[act_name] = (
+                'Action', '-',
+                'Yes' if actionDecoded != 'n/a' else 'No',
+                'Optional' if actOptional else 'PASS' if actPass else 'FAIL')
     return actionMessages, actionCounts
 
 
-def validateEntity(name: str, val: dict, propType: str, propCollectionType: str, schemaObj, autoExpand, excerptType, parentURI=""):
+def validateEntity(prop, val, parentURI=""):
     """
     Validates an entity based on its uri given
     """
+    name, val, autoExpand = prop.Name, val, prop.Type.AutoExpand
+    excerptType = prop.Type.excerptType if prop.Type.Excerpt else ExcerptTypes.NEUTRAL
     my_logger.debug('validateEntity: name = {}'.format(name))
 
     # check for required @odata.id
+    uri = val.get('@odata.id')
     if '@odata.id' not in val:
-        if autoExpand:
-            default = parentURI + '#/{}'.format(name.replace('[', '/').strip(']'))
-        else:
-            default = parentURI + '/{}'.format(name)
+        if autoExpand: uri = parentURI + '#/{}'.format(name.replace('[', '/').strip(']'))
+        else: uri = parentURI + '/{}'.format(name)
         if excerptType == ExcerptTypes.NEUTRAL:
-            my_logger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, default))
+            my_logger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, uri))
             if parentURI == "":
                 return False
-        uri = default
-    else:
-        uri = val['@odata.id']
+
     # check if the entity is truly what it's supposed to be
-    paramPass = False
     # if not autoexpand, we must grab the resource
     if not autoExpand:
         success, data, status, delay = traverseService.callResourceURI(uri)
     else:
         success, data, status, delay = True, val, 200, 0
-    my_logger.debug('(success, uri, status, delay) = {}, (propType, propCollectionType) = {}, data = {}'
-                    .format((success, uri, status, delay), (propType, propCollectionType), data))
+
+    my_target_type = data.get('@odata.type', 'Resource.Item').strip('#')
+    
     # if the reference is a Resource, save us some trouble as most/all basetypes are Resource
     generics = ['Resource.ItemOrCollection', 'Resource.ResourceCollection', 'Resource.Item', 'Resource.Resource']
-    if (propCollectionType in generics or propType in generics) and success:
+    my_type = prop.Type.parent_type[0] if prop.Type.IsPropertyType else prop.Type.fulltype
+    if success and my_type in generics:
         return True
     elif success:
         # Attempt to grab an appropriate type to test against and its schema
         # Default lineup: payload type, collection type, property type
-        currentType = data.get('@odata.type', propCollectionType)
-        if currentType is None:
-            currentType = propType
-        soup, refs = schemaObj.soup, schemaObj.refs
-        baseLink = refs.get(traverseService.getNamespace(propCollectionType if propCollectionType is not None else propType))
-        # if schema in current schema, then use it
-        #   elif namespace in References, use that
-        #   else we have no lead
-        if soup.find('Schema', attrs={'Namespace': traverseService.getNamespace(currentType)}) is not None:
-            success, baseObj = True, schemaObj
-        elif baseLink is not None:
-            baseObj = schemaObj.getSchemaFromReference(traverseService.getNamespaceUnversioned(currentType))
-            success = baseObj is not None
-        else:
-            success = False
+        my_type_chain = [str(x) for x in prop.Type.getTypeTree()]
 
-        if not success:
-            my_logger.error("Schema of target {} not referenced in current resource, concluding type {} is not of expected type {}".format(uri, currentType, propType))
-        my_logger.debug('success = {}, currentType = {}, baseLink = {}'.format(success, currentType, baseLink))
-
-        # Recurse through parent types, gather type hierarchy to check against
-        if success and currentType is not None and baseObj.getTypeTagInSchema(currentType) is None and success:
-            my_logger.error(
-                '{}: Linked resource reports version {} not in Schema {}'
-                .format(name.split(':')[-1], currentType, baseObj.origin))
-
-        elif success and currentType is not None :
-            currentType = currentType.replace('#', '')
-            allTypes = []
-            while currentType not in allTypes and success:
-                allTypes.append(currentType)
-                success, baseObj, currentType = baseObj.getParentType(currentType, 'EntityType')
-                my_logger.debug('success = {}, currentType = {}'.format(success, currentType))
-
-            my_logger.debug('propType = {}, propCollectionType = {}, allTypes = {}'
-                            .format(propType, propCollectionType, allTypes))
-            paramPass = propType in allTypes or propCollectionType in allTypes
-            if not paramPass:
-                full_namespace = propCollectionType if propCollectionType is not None else propType
-                my_logger.error(
-                    '{}: Linked resource reports schema version (or namespace): {} not found in typechain'
-                    .format(name.split(':')[-1], full_namespace))
-        else:
+        try:
+            my_target_schema = prop.Type.catalog.getSchemaDocByClass(getNamespaceUnversioned(my_target_type))
+        except MissingSchemaError:
             my_logger.error("{}: Could not get schema file for Entity check".format(name))
+
+        if getNamespace(my_target_type) not in my_target_schema.classes:
+            my_logger.error('{}: Linked resource reports version {} not in Schema'.format(name.split(':')[-1], my_target_type))
+        else:
+            my_target_type = my_target_schema.getTypeInSchemaDoc(my_target_type)
+            all_target_types = [str(x) for x in my_target_type.getTypeTree()]
+            if any(x in my_type_chain for x in all_target_types):
+                return True
+            else:
+                my_logger.error('{}: Linked resource reports version {} not in Typechain' .format(name.split(':')[-1], my_target_type))
+                return False
     else:
         if excerptType == ExcerptTypes.NEUTRAL:
             if "OriginOfCondition" in name:
@@ -218,83 +149,72 @@ def validateEntity(name: str, val: dict, propType: str, propCollectionType: str,
             else:
                 my_logger.error("{}: GET of resource at URI {} returned HTTP {}. Check URI."
                                 .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
+                return False
         else:
             return True
-    return paramPass
+    return False
 
 
-def validateComplex(name, val, propComplexObj, payloadType, attrRegistryId):
-    """
-    Validate a complex property
-    """
-    my_logger.log(logging.INFO-1,'\t***going into Complex')
-    if not isinstance(val, dict):
-        my_logger.error(name + ': Complex prop_name not a dictionary')
-        return False, None, None
+def validateComplex(sub_obj, prop_name):
+    subMsgs, subCounts = OrderedDict(), Counter()
+    for sub_name, sub_prop in sub_obj.properties.items():
+        new_msgs, new_counts = checkPropertyConformance(sub_obj, sub_name, sub_prop)
+        subMsgs.update(new_msgs)
+        subCounts.update(new_counts)
 
-    # Check inside of complexType, treat it like an Entity
-    complexMessages = OrderedDict()
-    complexCounts = Counter()
+    jsonData = sub_obj.Value
+    allowAdditional = sub_obj.Type.HasAdditional
+    if prop_name != 'Actions':
+        for key in [k for k in jsonData if k not in subMsgs and k not in sub_obj.properties and '@' not in k]:
+            # note: extra subMsgs for "unchecked" properties
+            item = jsonData.get(key)
+            if not allowAdditional:
+                my_logger.error('{} not defined in Complex {} (check version, spelling and casing)'
+                                .format(key, prop_name))
+                subCounts['failAdditional.complex'] += 1
+                subMsgs[key] = (displayValue(item), '-', '-', 'FAIL')
+            else:
+                my_logger.warn('{} not defined in schema Complex {} (check version, spelling and casing)'
+                                .format(key, prop_name))
+                subCounts['unverifiedAdditional.complex'] += 1
+                subMsgs[key] = (displayValue(item), '-', '-', 'Additional')
 
-    if 'OemObject' in propComplexObj.typeobj.fulltype:
-        my_logger.error('{}: OemObjects are required to be typecast with @odata.type'.format(str(name)))
-        return False, complexCounts, complexMessages
-
-    for prop in propComplexObj.getResourceProperties():
-        if not prop.valid and not prop.exists:
-            continue
-        if prop.propChild == 'Oem' and name == 'Actions':
-            continue
-
-        propComplexObj.jsondata = val
-
-        propMessages, propCounts = checkPropertyConformance(propComplexObj, prop.name, prop, ParentItem=name)
-        if prop.payloadName != prop.propChild:
-            propCounts['invalidComplexName'] += 1
-            for propMsg in propMessages:
-                modified_entry = list(propMessages[propMsg])
-                modified_entry[-1] = 'Invalid'
-                propMessages[propMsg] = tuple(modified_entry)
-        if not prop.valid:
-            my_logger.error('Verifying complex property that does not belong to this version: {}'.format(prop.name))
-            for propMsg in propMessages:
-                propCounts['invalidComplexEntry'] += 1
-                modified_entry = list(propMessages[propMsg])
-                modified_entry[-1] = 'Invalid'
-                propMessages[propMsg] = tuple(modified_entry)
-
-        complexMessages.update(propMessages)
-        complexCounts.update(propCounts)
-
-    successPayload, odataMessages = traverseService.ResourceObj.checkPayloadConformance(propComplexObj.jsondata, propComplexObj.uri)
-    complexMessages.update(odataMessages)
-
+    successPayload, odataMessages = checkPayloadConformance(sub_obj.Value, '')
     if not successPayload:
-        complexCounts['failComplexPayloadError'] += 1
-        my_logger.error('{}: complex payload error, @odata property non-conformant'.format(str(name)))
-    my_logger.log(logging.INFO-1,'\t***out of Complex')
-    my_logger.log(logging.INFO-1,'complex {}'.format(str(complexCounts)))
+        odataMessages['failPayloadError.complex'] += 1
+        my_logger.error('{}: complex payload error, @odata property non-conformant'.format(str(sub_obj.Name)))
+    subMsgs.update(odataMessages)
 
-    propTypeObj = propComplexObj.typeobj
+    if prop_name == 'Actions':
+        actionMessages, actionCounts = OrderedDict(), Counter()
 
-    if name == 'Actions':
-        aMsgs, aCounts = validateActions(name, val, propTypeObj, payloadType)
-        complexMessages.update(aMsgs)
-        complexCounts.update(aCounts)
+        my_actions = [(x.strip('#'), y) for x, y in sub_obj.Value.items() if x != 'Oem']
+        if 'Oem' in sub_obj.Value.items():
+            if traverseService.currentService.config.get('oemcheck'):
+                my_actions.extend([(x, y) for x, y in sub_obj.Value['Oem'].items()])
+            else:
+                actionCounts['oemActionSkip'] += len(sub_obj.Value['Oem'])
 
-    # validate the Redfish.DynamicPropertyPatterns if present
-    # current issue, missing refs where they are appropriate, may cause issues
-    if propTypeObj.propPattern:
-        patternMessages, patternCounts = validateDynamicPropertyPatterns(name, val, propTypeObj,
-                                                                         payloadType, attrRegistryId, ParentItem=name)
-        complexMessages.update(patternMessages)
-        complexCounts.update(patternCounts)
+        # get ALL actions (but we don't need to test for them...)
+        # ...
+        # for new_act in sub_class.actions:
+        #     new_act_name = '#{}.{}'.format(base_type, new_act)
+        #     if new_act_name not in my_actions:
+        #         my_actions.append((new_act_name, REDFISH_ABSENT))
+        for act_name, actionDecoded in my_actions:
+            act_schema = sub_obj.Type.catalog.getSchemaDocByClass(getNamespace(act_name))
+            act_class = act_schema.classes.get(getNamespace(act_name))
 
-    return True, complexCounts, complexMessages
+            a, c = validateAction(act_name, actionDecoded, act_class.actions)
+
+            actionMessages.update(a)
+            actionCounts.update(c)
+        subMsgs.update(actionMessages)
+        subCounts.update(actionCounts)
+    return subMsgs, subCounts
 
 
 attributeRegistries = dict()
-
 
 def validateAttributeRegistry(name, key, value, attr_reg):
     """
@@ -429,7 +349,15 @@ def validateAttributeRegistry(name, key, value, attr_reg):
     return reg_pass, type_prop
 
 
-def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrRegistryId, ParentItem=None):
+# unusued
+# validate the Redfish.DynamicPropertyPatterns if present
+# current issue, missing refs where they are appropriate, may cause issues
+# if sub_obj.Type.property_pattern:
+#     patternMessages, patternCounts = validateDynamicPropertyPatterns(prop_name, val, propTypeObj, payloadType, attrRegistryId, ParentItem=name)
+#     complexMessages.update(patternMessages)
+#     complexCounts.update(patternCounts)
+
+def validateDynamicPropertyPatterns(name, val, pattern_obj, attrRegistryId):
     """
     Checks the value type and key pattern of the properties specified via Redfish.DynamicPropertyPatterns annotation
     :param name: the name of the dictionary of properties being validated
@@ -437,33 +365,29 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
     :param propTypeObj: the PropType instance
     :param payloadType: the type of the payload being validated
     :param attrRegistryId: teh AttributeRegistry ID (if applicable) for this dictionary of properties
-    :return: the messages and counts of the validation results
+    :return: the subMsgs and counts of the validation results
     """
     fn = 'validateDynamicPropertyPatterns'
-    messages = OrderedDict()
+    subMsgs = OrderedDict()
     counts = Counter()
-    my_logger.debug('{}: name = {}, type(val) = {}, pattern = {}, payloadType = {}'
-                    .format(fn, name, type(val), propTypeObj.propPattern, payloadType))
-    prop_pattern = prop.Type = None
-    if propTypeObj.propPattern is not None and len(propTypeObj.propPattern) > 0:
-        prop_pattern = propTypeObj.propPattern.get('Pattern')
-        prop.Type = propTypeObj.propPattern.get('Type')
-    if prop_pattern is None or prop.Type is None:
+    prop_pattern = pattern_obj.get('Pattern')
+    prop_type = pattern_obj.get('Type')
+    if prop_pattern is None or prop_type is None:
         my_logger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern or Type properties missing'
                         .format(name))
-        return messages, counts
+        return subMsgs, counts
     if not isinstance(prop_pattern, str):
         my_logger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Pattern property not a string'
                         .format(name))
-        return messages, counts
-    if not isinstance(prop.Type, str):
+        return subMsgs, counts
+    if not isinstance(prop_type, str):
         my_logger.error('{} has Redfish.DynamicPropertyPatterns annotation, but Type property not a string'
                         .format(name))
-        return messages, counts
+        return subMsgs, counts
     if not isinstance(val, dict):
         my_logger.error('{} has Redfish.DynamicPropertyPatterns annotation, but payload value not a dictionary'
                         .format(name))
-        return messages, counts
+        return subMsgs, counts
     # get the attribute registry dictionary if applicable
     attr_reg = None
     if attrRegistryId is not None:
@@ -495,7 +419,7 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
             my_logger.error('{} is not a string, so cannot be validated against pattern "{}"'
                             .format(name + '.' + key, prop_pattern))
         if pattern_pass:
-            counts['pass'] += 1
+            counts['passPattern'] += 1
         else:
             counts['failDynamicPropertyPatterns'] += 1
         # validate the value type against the Type
@@ -504,14 +428,14 @@ def validateDynamicPropertyPatterns(name, val, propTypeObj, payloadType, attrReg
         if attr_reg is not None:
             reg_pass, attr_reg_type = validateAttributeRegistry(name, key, value, attr_reg)
             if reg_pass:
-                counts['pass'] += 1
+                counts['passReg'] += 1
             else:
                 counts['failAttributeRegistry'] += 1
 
-    return messages, counts
+    return subMsgs, counts
 
 
-def displayType(propType, is_collection=False):
+def displayType(propTypeObject, is_collection=False):
     """
     Convert inputs propType and propRealType to a simple, human readable type
     :param propType: the 'Type' attribute from the PropItem.propDict
@@ -519,9 +443,8 @@ def displayType(propType, is_collection=False):
     :param is_collection: For collections: True if these types are for the collection; False if for a member
     :return: the simplified type to display
     """
-    propRealType, propCollection = propType.getBaseType()
-    propType = str(propType)
-
+    propRealType, propCollection = propTypeObject.getBaseType()
+    propType = propTypeObject.parent_type[0] if propTypeObject.IsPropertyType else propTypeObject.fulltype
     # Edm.* and other explicit types
     if propRealType == 'Edm.Boolean' or propRealType == 'Boolean':
         disp_type = 'boolean'
@@ -553,7 +476,7 @@ def displayType(propType, is_collection=False):
             else:
                 disp_type = member_type
         else:
-            disp_type = 'link to: {}'.format(propType)
+            disp_type = 'link to: {}'.format(propTypeObject)
     # Complex types
     elif propRealType == 'complex':
         if propCollection:
@@ -686,21 +609,20 @@ def checkPropertyConformance(parent_obj, prop_name, prop, parent_name=None, pare
         if not prop.Exists:
             my_logger.log(logging.INFO-1,'{}: Item is skipped, no schema'.format(prop_name))
             counts['skipNoSchema'] += 1
-            return {prop_name: ('-', '-',
-                                'Yes' if prop.Exists else 'No', 'NoSchema')}, counts
+            return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'NoSchema')}, counts
         else:
             my_logger.error('{}: Item is present, but no schema found'.format(prop_name))
             counts['failNoSchema'] += 1
-            return {prop_name: ('-', '-',
-                                'Yes' if prop.Exists else 'No', 'FAIL')}, counts
+            return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'FAIL')}, counts
 
-    # why not actually check oem
+    # check oem
     # rs-assertion: 7.4.7.2
     if 'Oem' in prop_name and not traverseService.config.get('oemcheck', True):
         my_logger.log(logging.INFO-1,'\tOem is skipped')
         counts['skipOem'] += 1
         return {prop_name: (prop_name, '-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}, counts
 
+    # Parameter Passes
     paramPass = propMandatoryPass = propNullablePass = deprecatedPass = nullValid = True
 
     if prop.Type.IsMandatory:
@@ -721,9 +643,7 @@ def checkPropertyConformance(parent_obj, prop_name, prop, parent_name=None, pare
 
     if prop.Type.Revisions is not None:
         for tag_item in prop.Type.Revisions:
-            revision_tag = tag_item.find('PropertyValue', attrs={
-                'EnumMember': 'Redfish.RevisionKind/Deprecated',
-                'Property': 'Kind'})
+            revision_tag = tag_item.find('PropertyValue', attrs={ 'EnumMember': 'Redfish.RevisionKind/Deprecated', 'Property': 'Kind'})
             if (revision_tag):
                 desc_tag = tag_item.find('PropertyValue', attrs={'Property': 'Description'})
                 deprecatedPass = False
@@ -736,27 +656,20 @@ def checkPropertyConformance(parent_obj, prop_name, prop, parent_name=None, pare
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
     # propCollectionType = PropertyDict.get('isCollection')
-    _, isCollection = prop.Type.getBaseType()
+    propRealType, isCollection = prop.Type.getBaseType()
 
     excerptPass = True
     if isCollection and prop.Value is None:
         # illegal for a collection to be null
-        if prop.propChild == 'HttpHeaders' and traverseService.getType(prop.propOwner) == 'EventDestination':
+        if 'HttpHeaders' in str(prop.Type.fulltype) and getType(str(prop.Type.fulltype)) == 'EventDestination':
             my_logger.info('Value HttpHeaders can be Null')
             propNullable = True
             propValueList = []
-            resultList[prop_name] = ('Array (size: null)',
-                                displayType(prop.Type, is_collection=True),
-                                'Yes' if prop.Exists else 'No', '...')
+            resultList[prop_name] = ('Array (size: null)', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', '...')
         else:
-            my_logger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'
-                            .format(prop_name))
+            my_logger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'.format(prop_name))
             counts['failNullCollection'] += 1
-            return {prop_name: (
-                '-',
-                displayType(prop.Type, is_collection=True),
-                'Yes' if prop.Exists else 'No',
-                'FAIL')}, counts
+            return {prop_name: ( '-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')}, counts
     elif isCollection and prop.Value is not None:
         # note: handle collections correctly, this needs a nicer printout
         # rs-assumption: do not assume URIs for collections
@@ -778,15 +691,33 @@ def checkPropertyConformance(parent_obj, prop_name, prop, parent_name=None, pare
     else:
         # not a collection
         propValueList = [prop.Value]
-    # note: make sure we don't enter this on null values, some of which are
-    # OK!
-    # schemaObj = parentResourceObj.schemaObj
-    # decoded = parentResourceObj.jsondata
+
+    if propRealType == 'complex':
+        resultList[prop_name] = (
+                        '[JSON Object]', displayType(prop.Type),
+                        'Yes' if prop.Exists else 'No',
+                        'complex')
+        for n, sub_obj in enumerate(prop.Collection):
+            try:
+                subMsgs, subCounts = validateComplex(sub_obj, prop_name)
+                if len(prop.Collection) == 1:
+                    subMsgs = {'{}.{}'.format(prop_name,x):y for x,y in subMsgs.items()}
+                else:
+                    subMsgs = {'{}.{}#{}'.format(prop_name,x,n):y for x,y in subMsgs.items()}
+                resultList.update(subMsgs)
+                counts.update(subCounts)
+            except Exception as ex:
+                my_logger.error('Exception caught while validating Complex', exc_info=1)
+                my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
+                counts['exceptionPropCheck'] += 1
+        return resultList, counts
+    
+    # all other types...
     for cnt, val in enumerate(propValueList):
         appendStr = (('[' + str(cnt) + ']') if isCollection else '')
         sub_item = prop_name + appendStr
 
-        # excerptPass = validateExcerpt(prop, val, prop, parentResourceObj.typename)
+        excerptPass = validateExcerpt(prop, val)
 
         if isinstance(val, str):
             if val == '' and prop.Type.Permissions == 'OData.Permission/Read':
@@ -795,103 +726,24 @@ def checkPropertyConformance(parent_obj, prop_name, prop, parent_name=None, pare
             if val.lower() == 'null':
                 my_logger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item))
                 nullValid = False
-        # if propRealType is not None and prop.Exists:
+
         if prop.Exists:
             paramPass = propNullablePass = True
             if val is None:
                 if propNullable:
-                    my_logger.debug('Property {} is nullable and is null, so Nullable checking passes'
-                                    .format(sub_item))
+                    my_logger.debug('Property {} is nullable and is null, so Nullable checking passes'.format(sub_item))
                 else:
                     propNullablePass = False
             
             paramPass = prop.IsValid
         
-            paramPass = prop.populate(prop.Value, True)
+            paramPass = prop.populate(val, True)
 
-            # elif propRealType == 'Edm.Boolean':
-            #     paramPass = isinstance(val, bool)
-            #     if not paramPass:
-            #         my_logger.error("{}: Not a boolean".format(sub_item))
+            if propRealType == 'entity':
+                paramPass = validateEntity(prop, val)
 
-            # elif propRealType == 'Edm.DateTimeOffset':
-            #     paramPass = simpletypes.validateDatetime(sub_item, val)
 
-            # elif propRealType == 'Edm.Duration':
-            #     paramPass = simpletypes.validateDayTimeDuration(sub_item, val)
-
-            # elif propRealType == 'Edm.Int16' or propRealType == 'Edm.Int32' or\
-            #         propRealType == 'Edm.Int64' or propRealType == 'Edm.Int':
-            #     paramPass = simpletypes.validateInt(sub_item, val, validMin, validMax)
-
-            # elif propRealType == 'Edm.Decimal' or propRealType == 'Edm.Double':
-            #     paramPass = simpletypes.validateNumber(sub_item, val, validMin, validMax)
-
-            # elif propRealType == 'Edm.Guid':
-            #     paramPass = simpletypes.validateGuid(sub_item, val)
-
-            # elif propRealType == 'Edm.String':
-            #     paramPass = simpletypes.validateString(sub_item, val, validPattern)
-
-            # elif propRealType == 'Edm.Primitive' or propRealType == 'Edm.PrimitiveType':
-            #     paramPass = simpletypes.validatePrimitive(sub_item, val)
-
-            # else:
-            #     if propRealType == 'complex':
-            #         if PropertyDict['typeprops'] is not None:
-            #             if isCollection:
-            #                 innerComplex = PropertyDict['typeprops'][cnt]
-            #                 innerPropType = PropertyDict['typeprops'][cnt].typeobj
-            #             else:
-            #                 innerComplex = PropertyDict['typeprops']
-            #                 innerPropType = PropertyDict['typeprops'].typeobj
-
-            #             success, complexCounts, complexMessages = validateComplex(sub_item, val, innerComplex,
-            #                                                                       decoded.get('@odata.type'),
-            #                                                                       decoded.get('AttributeRegistry'))
-            #         else:
-            #             success = False
-
-            #         if not success:
-            #             counts['failComplex'] += 1
-            #             resultList[sub_item] = (
-            #                         '[JSON Object]', displayType(propType, propRealType),
-            #                         'Yes' if prop.Exists else 'No',
-            #                         'FAIL')
-            #             continue
-            #         resultList[sub_item] = (
-            #                         '[JSON Object]', displayType(propType, propRealType),
-            #                         'Yes' if prop.Exists else 'No',
-            #                         'complex')
-
-            #         counts.update(complexCounts)
-            #         resultList.update(complexMessages)
-            #         allowAdditional = innerPropType.additional
-            #         for key in innerComplex.unknownProperties:
-            #             if sub_item + '.' + key not in complexMessages and not allowAdditional:
-            #                 my_logger.error('{} not defined in schema {} (check version, spelling and casing)'
-            #                                 .format(sub_item + '.' + key, innerPropType.snamespace))
-            #                 counts['failComplexAdditional'] += 1
-            #                 resultList[sub_item + '.' + key] = (displayValue(val[key]), '-', '-', 'FAIL')
-            #             elif sub_item + '.' + key not in complexMessages:
-            #                 my_logger.warn('{} not defined in schema {} (check version, spelling and casing)'
-            #                                 .format(sub_item + '.' + key, innerPropType.snamespace))
-            #                 counts['unverifiedComplexAdditional'] += 1
-            #                 resultList[sub_item + '.' + key] = (displayValue(val[key]), '-', '-', 'Additional')
-            #         continue
-
-            #     elif propRealType == 'enum':
-            #         paramPass = simpletypes.validateEnum(sub_item, val, PropertyDict['typeprops'])
-
-            #     elif propRealType == 'deprecatedEnum':
-            #         paramPass = simpletypes.validateDeprecatedEnum(sub_item, val, PropertyDict['typeprops'])
-
-            #     elif propRealType == 'entity':
-            #         paramPass = validateEntity(sub_item, val, propType, propCollectionType, schemaObj, autoExpand, prop.excerptType, parentURI)
-
-            #     else:
-            #         my_logger.error("%s: This type is invalid %s" % (sub_item, propRealType))
-            #         paramPass = False
+        my_type = prop.Type.parent_type[0] if prop.Type.IsPropertyType else prop.Type.fulltype
 
         if not paramPass or not propMandatoryPass or not propNullablePass:
             result_str = 'FAIL'
@@ -912,7 +764,7 @@ def checkPropertyConformance(parent_obj, prop_name, prop, parent_name=None, pare
             counts['pass'] += 1
             my_logger.log(logging.INFO-1,"\tSuccess")
         else:
-            counts['err.' + str(prop.Type)] += 1
+            counts['err.' + str(my_type)] += 1
             if not paramPass:
                 if prop.Type.IsMandatory:
                     counts['failMandatoryProp'] += 1

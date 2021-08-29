@@ -11,10 +11,19 @@ else:
     import os, csv
 import common.RedfishLogo as logo
 from types import SimpleNamespace
-from collections import Counter, OrderedDict
+from collections import Counter
 import json
 
 LOG_ENTRY = ('name', 'value', 'type', 'exists', 'result')
+
+def create_entry(name, value, type, exists, result):
+    return SimpleNamespace(**{
+        "name": name,
+        "value": value,
+        "type": type,
+        "exists": exists,
+        "result": result
+    })
 
 # hack in tagnames into module namespace
 tag = SimpleNamespace(**{tagName: lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)\
@@ -102,10 +111,7 @@ def applyInfoSuccessColor(num, entry):
 def renderHtml(results, tool_version, startTick, nowTick, service):
     # Render html
     config = service.config
-    config_str = ', '.join(sorted(list(config.keys() - set(['desc', 'targetip', 'password', 'description']))))
     sysDescription, ConfigURI = (config['description'], config['ip'])
-    rsvLogger = rst.getLogger()
-    logpath = config['logdir']
     error_lines, finalCounts = count_errors(results)
     if service.metadata is not None:
         finalCounts.update(service.metadata.get_counter())
@@ -211,7 +217,6 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
         # uri block
         prop_type = val['fulltype']
         if prop_type is not None:
-            namespace = getNamespace(prop_type)
             type_name = getType(prop_type)
 
         infos = [str(val.get(x)) for x in ['uri', 'samplemapped'] if val.get(x) not in ['',None]]
@@ -249,7 +254,11 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
         entry.append(rhead)
 
         # actual table
-        rows = [list([str(vars(m)[x]) for x in LOG_ENTRY]) for m in val['messages'].values()]
+
+        try:
+            rows = [list([str(vars(m)[x]) for x in LOG_ENTRY]) for m in val['messages'].values()]
+        except:
+            import pdb; pdb.set_trace()
         titles = ['Property Name', 'Value', 'Type', 'Exists', 'Result']
         widths = ['15', '30', '30', '10', '15']
         tableHeader = tableBlock(rows, titles, widths, ffunc=applySuccessColor)
@@ -259,13 +268,6 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
 
         infos_a = [str(val.get(x)) for x in ['uri'] if val.get(x) not in ['',None]]
         infos_a.append(rtime)
-
-        # if(printCSV):
-        #     rsvLogger.info(','.join(infos_a))
-        #     rsvLogger.info(','.join(infos))
-        #     rsvLogger.info(','.join(titles))
-        #     rsvLogger.info('\n'.join([','.join(x) for x in rows]))
-        #     rsvLogger.info(',')
 
         # warns and errors
         errors = val['errors']
@@ -290,8 +292,6 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
 
         entry.append(tableHeader)
 
-
-
         # append
         htmlPage += ''.join([tag.tr(x) for x in entry])
 
@@ -303,9 +303,9 @@ def writeHtml(string, path):
         f.write(string)
 
 
-def htmlLogScraper(htmlReport):
-    outputLogName = os.path.split(htmlReport)[-1]
-    output = open('./logs/{}.csv'.format(outputLogName),'w',newline='')
+def htmlLogScraper(htmlReport, output_name=None):
+    outputLogName = os.path.split(htmlReport)[-1] if not output_name else output_name
+    output = open('./{}.csv'.format(outputLogName),'w',newline='')
     csv_output = csv.writer(output)
     csv_output.writerow(['URI','Status','Response Time','Context','File Origin','Resource Type','Property Name','Value','Expected','Actual','Result'])
     htmlLog = open(htmlReport,'r')
@@ -356,6 +356,7 @@ def htmlLogScraper(htmlReport):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Get an excel sheet of details shown in the HTML reports for the Redfish Service Validator')
     parser.add_argument('htmllog' ,type=str, help = 'Path of the HTML log to be converted to csv format' )
+    parser.add_argument('--dest' ,type=str, help = 'Name of output' )
     args = parser.parse_args()
 
-    htmlLogScraper(args.htmllog) 
+    htmlLogScraper(args.htmllog, args.dest) 
