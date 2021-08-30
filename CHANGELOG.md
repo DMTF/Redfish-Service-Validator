@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.0.2] - 2021-08-30
+- Corrected usage of the 'oemcheck' flag to not skip over OEM object validation when enabled
+
 ## [2.0.1] - 2021-08-09
 - Various fixes from previous changes to refactor the arguments with the tool
 
