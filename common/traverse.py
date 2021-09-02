@@ -2,32 +2,22 @@
 # Copyright 2016-2020 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
-import json, requests
-from collections import OrderedDict
+import json
+from datetime import datetime
 from functools import lru_cache
 from urllib.parse import urlparse, urlunparse
 from http.client import responses
 
-from common.redfish import navigateJsonFragment
-from common.session import rfSession
-import common.schema as schema
+import redfish as rf
+import common.catalog as catalog
+from common.helper import navigateJsonFragment
 from common.metadata import Metadata
-
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 import logging
 my_logger = logging.getLogger(__name__)
 traverseLogger = my_logger
 
 # dictionary to hold sampling notation strings for URIs
-commonHeader = {'OData-Version': '4.0'}
-
-uri_sample_map = dict()
-currentService = None
-config = {}
-
-
 class AuthenticationError(Exception):
     """Exception used for failed basic auth or token auth"""
     def __init__(self, msg=None):
@@ -49,26 +39,15 @@ def startService(config):
     :param config: configuration of service
     :param defaulted: config options not specified by the user
     """
-    global currentService
-    if currentService is not None:
-        currentService.close()
     newService = rfService(config)
-    currentService = newService
-    config = newService.config
     return newService
 
 class rfService():
-    def __init__(self, my_config):
+    def __init__(self, config):
         traverseLogger.info('Setting up service...')
-        global config
-        config = my_config
-        self.config = my_config
-        # self.proxies = dict()
-        self.active = False
-        # Create a Session to optimize connection times
-        self.session = requests.Session()
+        self.active, self.config = False, config
+        self.logger = getLogger()
 
-        # setup URI
         self.config['configuri'] = self.config['ip']
         self.config['metadatafilepath'] = self.config['schema_directory']
         self.config['usessl'] = urlparse(self.config['configuri']).scheme in ['https']
@@ -76,29 +55,17 @@ class rfService():
         self.config['certificatebundle'] = None
         self.config['timeout'] = 10
 
-        self.currentSession = None
-        if not self.config['usessl'] and not self.config['forceauth']:
-            if config['username'] not in ['', None] or config['password'] not in ['', None]:
-                traverseLogger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
-                config['username'] = ''
-                config['password'] = ''
-        if config['authtype'].lower() == 'session':
-            # certVal = chkcertbundle if ChkCert and chkcertbundle is not None else ChkCert
-            # no proxy for system under test
-            # self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None, certVal, self.proxies)
-            self.currentSession = rfSession(config['username'], config['password'], config['configuri'], None)
-            self.currentSession.startSession()
+        self.catalog = catalog.SchemaCatalog('./SchemaFiles/metadata/')
 
-        global currentService # TODO: This is still not ideal programming practice
-        currentService = self
-        success, data, status, delay = self.callResourceURI(Metadata.metadata_uri)
-        if success:
-            soup = schema.BeautifulSoup(data, "xml")
-            schema_obj = schema.rfSchema(soup, '$metadata', 'service')
-            self.metadata = Metadata(schema_obj, my_logger)
-        else:
-            pass
-            self.metadata = Metadata(None, my_logger)
+        if not self.config['usessl'] and not self.config['forceauth']:
+            if self.config['username'] not in ['', None] or self.config['password'] not in ['', None]:
+                traverseLogger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
+                self.config['username'] = ''
+                self.config['password'] = ''
+
+        rhost, user, passwd = self.config['configuri'], self.config['username'], self.config['password']
+        self.context = rf.redfish_client( base_url = rhost, username = user, password = passwd )
+        self.context.login( auth = self.config['authtype'].lower() )
 
         target_version = 'n/a'
 
@@ -116,11 +83,17 @@ class rfService():
             traverseLogger.warning('!!Version of target may produce issues!!')
         
         self.service_root = data
+        success, data, status, delay = self.callResourceURI(Metadata.metadata_uri)
+
+        if success and data is not None and status in range(200,210):
+            self.metadata = Metadata(data, self, my_logger)
+        else:
+            self.metadata = Metadata(None, self, my_logger)
+
         self.active = True
 
+
     def close(self):
-        if self.currentSession is not None and self.currentSession.started:
-            self.currentSession.killSession()
         self.active = False
 
     @lru_cache(maxsize=128)
@@ -147,8 +120,7 @@ class rfService():
         scheme, netloc, path, params, query, fragment = urlparse(URILink)
         inService = scheme == '' and netloc == ''
         if inService:
-            scheme, netloc, _path, __params, ___query, ____fragment = urlparse(ConfigIP)
-            URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
+            URLDest = URILink
         else:
             URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
 
@@ -159,12 +131,6 @@ class rfService():
             isXML = True
             traverseLogger.debug('Should be XML')
 
-        ExtraHeaders = None
-        if 'extrajsonheaders' in config and not isXML:
-            ExtraHeaders = config['extrajsonheaders']
-        elif 'extraxmlheaders' in config and isXML:
-            ExtraHeaders = config['extraxmlheaders']
-
         # determine if we need to Auth...
         if inService:
             noauthchk =  URILink in ['/redfish', '/redfish/v1', '/redfish/v1/odata'] or\
@@ -173,7 +139,6 @@ class rfService():
             auth = None if noauthchk else (config.get('username'), config.get('password'))
             traverseLogger.debug('dont chkauth' if noauthchk else 'chkauth')
 
-
         # rs-assertion: do not send auth over http
         # remove UseSSL if necessary if you require unsecure auth
         if (not UseSSL and not config['forceauth']) or not inService or AuthType != 'Basic':
@@ -181,17 +146,6 @@ class rfService():
 
         # only send token when we're required to chkauth, during a Session, and on Service and Secure
         headers = {}
-        headers.update(commonHeader)
-        if not noauthchk and inService and UseSSL:
-            traverseLogger.debug('successauthchk')
-            if AuthType == 'Session':
-                currentSession = currentService.currentSession
-                headers.update({"X-Auth-Token": currentSession.getSessionKey()})
-            elif AuthType == 'Token':
-                headers.update({"Authorization": "Bearer " + Token})
-
-        if ExtraHeaders is not None:
-            headers.update(ExtraHeaders)
 
         certVal = ChkCertBundle if ChkCert and ChkCertBundle not in [None, ""] else ChkCert
 
@@ -202,19 +156,21 @@ class rfService():
         try:
             if payload is not None: # and CacheMode == 'Prefer':
                 return True, payload, -1, 0
-            response = self.session.get(URLDest, headers=headers, auth=auth, verify=certVal, timeout=timeout)  # only proxy non-service
-            expCode = [200]
-            elapsed = response.elapsed.total_seconds()
-            statusCode = response.status_code
-            traverseLogger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode, expCode, response.headers, elapsed))
-            if statusCode in expCode:
-                contenttype = response.headers.get('content-type')
+            startTick = datetime.now()
+            response = self.context.get(URLDest)  # only proxy non-service
+            elapsed = datetime.now() - startTick
+            statusCode = response.status
+
+            traverseLogger.debug('{}, {},\nTIME ELAPSED: {}'.format(statusCode, response.getheaders(), elapsed))
+            if statusCode in [200]:
+                contenttype = response.getheader('content-type')
                 if contenttype is None:
                     traverseLogger.error("Content-type not found in header: {}".format(URILink))
                     contenttype = ''
                 if 'application/json' in contenttype:
                     traverseLogger.debug("This is a JSON response")
-                    decoded = response.json(object_pairs_hook=OrderedDict)
+                    decoded = response.dict
+                            
                     # navigate fragment
                     decoded = navigateJsonFragment(decoded, URILink)
                     if decoded is None:
@@ -239,7 +195,7 @@ class rfService():
                         try:
                             json.loads(response.text)
                             traverseLogger.info('Attempting to interpret as JSON')
-                            decoded = response.json(object_pairs_hook=OrderedDict)
+                            decoded = response.dict
                         except ValueError:
                             pass
 
@@ -253,18 +209,18 @@ class rfService():
                     raise AuthenticationError('Error accessing URI {}. Status code "{} {}". Check {} supplied for "{}" authentication.'
                                               .format(URILink, statusCode, responses[statusCode], cred_type, AuthType))
 
-        except requests.exceptions.SSLError as e:
-            traverseLogger.error("SSLError on {}: {}".format(URILink, repr(e)))
-            traverseLogger.debug("output: ", exc_info=True)
-        except requests.exceptions.ConnectionError as e:
-            traverseLogger.error("ConnectionError on {}: {}".format(URILink, repr(e)))
-            traverseLogger.debug("output: ", exc_info=True)
-        except requests.exceptions.Timeout as e:
-            traverseLogger.error("Request has timed out ({}s) on resource {}".format(timeout, URILink))
-            traverseLogger.debug("output: ", exc_info=True)
-        except requests.exceptions.RequestException as e:
-            traverseLogger.error("Request has encounted a problem when getting resource {}: {}".format(URILink, repr(e)))
-            traverseLogger.debug("output: ", exc_info=True)
+        # except requests.exceptions.SSLError as e:
+        #     traverseLogger.error("SSLError on {}: {}".format(URILink, repr(e)))
+        #     traverseLogger.debug("output: ", exc_info=True)
+        # except requests.exceptions.ConnectionError as e:
+        #     traverseLogger.error("ConnectionError on {}: {}".format(URILink, repr(e)))
+        #     traverseLogger.debug("output: ", exc_info=True)
+        # except requests.exceptions.Timeout as e:
+        #     traverseLogger.error("Request has timed out ({}s) on resource {}".format(timeout, URILink))
+        #     traverseLogger.debug("output: ", exc_info=True)
+        # except requests.exceptions.RequestException as e:
+        #     traverseLogger.error("Request has encounted a problem when getting resource {}: {}".format(URILink, repr(e)))
+        #     traverseLogger.debug("output: ", exc_info=True)
         except AuthenticationError as e:
             raise e  # re-raise exception
         except Exception as e:
@@ -276,13 +232,3 @@ class rfService():
         if payload is not None:
             return True, payload, -1, 0
         return False, None, statusCode, elapsed
-
-
-def callResourceURI(URILink):
-    traverseLogger = my_logger
-    if currentService is None:
-        traverseLogger.warn("The current service is not setup!  Program must configure the service before contacting URIs")
-        raise RuntimeError
-    else:
-        return currentService.callResourceURI(URILink)
-

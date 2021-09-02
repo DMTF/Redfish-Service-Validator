@@ -3,27 +3,16 @@
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 if __name__ != '__main__':
-    import traverseService as rst
-    from common.redfish import getNamespace, getType
+    from common.helper import getType
 else:
     import argparse
     from bs4 import BeautifulSoup
     import os, csv
 import common.RedfishLogo as logo
+from common.helper import LOG_ENTRY
 from types import SimpleNamespace
 from collections import Counter
 import json
-
-LOG_ENTRY = ('name', 'value', 'type', 'exists', 'result')
-
-def create_entry(name, value, type, exists, result):
-    return SimpleNamespace(**{
-        "name": name,
-        "value": value,
-        "type": type,
-        "exists": exists,
-        "result": result
-    })
 
 # hack in tagnames into module namespace
 tag = SimpleNamespace(**{tagName: lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)\
@@ -255,10 +244,7 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
 
         # actual table
 
-        try:
-            rows = [list([str(vars(m)[x]) for x in LOG_ENTRY]) for m in val['messages'].values()]
-        except:
-            import pdb; pdb.set_trace()
+        rows = [list([str(vars(m)[x]) for x in LOG_ENTRY]) for m in val['messages'].values()]
         titles = ['Property Name', 'Value', 'Type', 'Exists', 'Result']
         widths = ['15', '30', '30', '10', '15']
         tableHeader = tableBlock(rows, titles, widths, ffunc=applySuccessColor)

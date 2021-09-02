@@ -14,6 +14,7 @@ import common.catalog as catalog
 
 class TestCatalog(unittest.TestCase):
     def test_fuzzy(self):
+        print('\n')
         val = catalog.get_fuzzy_property('PropertyA', {'Name': 'Payload', 'PropertyB': False})
         self.assertEqual(val, 'PropertyB')
         val = catalog.get_fuzzy_property('PropertyA', {'Name': 'Payload', 'PropertyB': False, 'PropertyA': False})
@@ -24,6 +25,7 @@ class TestCatalog(unittest.TestCase):
         self.assertEqual(val, 'PropertyA')
 
     def test_catalog(self):
+        print('\n')
         my_catalog = catalog.SchemaCatalog('./tests/testdata/schemas/')
 
         my_schema_doc = my_catalog.getSchemaDocByClass('Example')
@@ -31,12 +33,13 @@ class TestCatalog(unittest.TestCase):
         self.assertRaises(catalog.MissingSchemaError, my_catalog.getSchemaDocByClass, 'NotExample')
 
         my_schema = my_catalog.getSchemaInCatalog('Example.v1_0_0')
-        my_schema = my_catalog.getSchemaInCatalog('Example.v1_0_0')
 
         my_type = my_catalog.getTypeInCatalog('Example.v1_7_0.Example')
+
         my_type = my_catalog.getTypeInCatalog('Example.v1_2_0.Links')
     
     def test_schema_doc(self):
+        print('\n')
         my_catalog = catalog.SchemaCatalog('./tests/testdata/schemas/')
         with open('./tests/testdata/schemas/Example_v1.xml') as f:
             my_doc = catalog.SchemaDoc(f.read(), my_catalog, 'Example_v1.xml')
@@ -56,19 +59,24 @@ class TestCatalog(unittest.TestCase):
         self.assertRaises(catalog.MissingSchemaError, my_doc.getTypeInSchemaDoc, 'NoExample.v1_0_0.NoExample')
 
     def test_schema_class(self):
+        print('\n')
         my_catalog = catalog.SchemaCatalog('./tests/testdata/schemas/')
         my_doc = my_catalog.getSchemaDocByClass('Example.v1_0_0')
         my_schema = my_catalog.getSchemaInCatalog('Example.v1_0_0')
     
     def test_basic_properties(self):
+        print('\n')
         prop = catalog.RedfishProperty("Edm.Int").populate(1)
+        print(prop.as_json())
         prop = catalog.RedfishProperty("Edm.Decimal").populate(1.1)
+        print(prop.as_json())
         prop = catalog.RedfishProperty("Edm.Guid").populate("123")
+        print(prop.as_json())
         prop = catalog.RedfishProperty("Edm.Guid").populate(catalog.REDFISH_ABSENT)
-        obj = prop.as_json()
-        obj = prop.getLinks()
+        print(prop.as_json())
 
     def test_basic_properties_check(self):
+        print('\n')
         prop = catalog.RedfishProperty("Edm.Int").populate(1, check=True)
         prop = catalog.RedfishProperty("Edm.Int").populate(1.1, check=True)
         prop = catalog.RedfishProperty("Edm.Int").populate("1", check=True)
@@ -80,13 +88,16 @@ class TestCatalog(unittest.TestCase):
         prop = catalog.RedfishProperty("Edm.Guid").populate(catalog.REDFISH_ABSENT, check=True)
     
     def test_object(self):
+        print('\n')
         my_catalog = catalog.SchemaCatalog('./tests/testdata/schemas/')
         my_schema_doc = my_catalog.getSchemaDocByClass("ExampleResource.v1_0_0.ExampleResource")
         my_type = my_schema_doc.getTypeInSchemaDoc("ExampleResource.v1_0_0.ExampleResource")
         object = catalog.RedfishObject( my_type )
+        print(object.as_json())
         dct = object.as_json()
         dct = object.getLinks()
         object = catalog.RedfishObject( my_type ).populate({"Id": None, "Description": None})
+        print(object.as_json())
         dct = object.as_json()
         dct = object.getLinks()
 

@@ -7,7 +7,7 @@ from os import path
 
 from bs4 import BeautifulSoup
 
-from common.redfish import (
+from common.helper import (
     compareMinVersion,
     getNamespace,
     getNamespaceUnversioned,
@@ -267,7 +267,7 @@ class SchemaClass:
 
         self.terms = {}
         for x in self.class_soup.find_all(["Term"], recursive=False):
-            self.actions[x["Name"]] = x
+            self.terms[x["Name"]] = RedfishType(x, self)
 
         self.my_types = {**self.entity_types, **self.complex_types, **self.enum_types, **self.def_types}
 
@@ -335,7 +335,7 @@ class RedfishType:
     def __repr__(self):
         return self.fulltype
     
-    def __init__(self, soup: str, owner: SchemaClass):
+    def __init__(self, soup, owner: SchemaClass):
 
         self.owner = owner
         self.catalog = owner.catalog
@@ -427,6 +427,8 @@ class RedfishType:
         my_parents = self.getTypeTree()
         for my_type in my_parents:
             if not isinstance(my_type, RedfishType): continue
+            if 'Bios' in str(my_type) and 'Attributes' in str(my_type):
+                return True
             additionalElement = my_type.type_soup.find("Annotation", attrs={"Term": "OData.AdditionalProperties"})
             HasAdditional = ( False if additionalElement is None else (
                     True if additionalElement.get("Bool", False) in ["True", "true", True]
@@ -734,14 +736,21 @@ class RedfishObject(RedfishProperty):
             # Cast types if they're below their parent or are OemObjects
             my_odata_type = load.get('@odata.type')
 
+            # we can only cast if we have an odata type and valid schema
             if 'Resource.OemObject' in sub_obj.Type.getTypeTree() and not casted:
                 my_logger.log(logging.INFO-1,('Morphing OemObject', my_odata_type, sub_obj.Type))
                 if my_odata_type:
                     my_odata_type = my_odata_type.strip('#')
-                    type_obj = sub_obj.Type.catalog.getSchemaDocByClass(my_odata_type).getTypeInSchemaDoc(my_odata_type)
-                    sub_obj = RedfishObject(type_obj, sub_obj.Name, sub_obj.parent).populate(load, check=check, casted=True)
+                    try:
+                        type_obj = sub_obj.Type.catalog.getSchemaDocByClass(my_odata_type).getTypeInSchemaDoc(my_odata_type)
+                        sub_obj = RedfishObject(type_obj, sub_obj.Name, sub_obj.parent).populate(load, check=check, casted=True)
+                    except MissingSchemaError:
+                        my_logger.warn("Couldn't get schema for object, skipping OemObject {}".format(sub_obj.Name))
+                    except Exception as e:
+                        my_logger.warn("Couldn't get schema for object (?), skipping OemObject {} : {}".format(sub_obj.Name, e))
                     evals.append(sub_obj)
                     continue
+            # or if we're a Resource or unversioned or v1_0_0 type
             elif not casted:
                 my_ns = getNamespace(sub_obj.Type.parent_type[0]) if sub_obj.Type.IsPropertyType else sub_obj.Type.Namespace
                 sub_base = getNamespaceUnversioned(my_ns)
@@ -749,13 +758,21 @@ class RedfishObject(RedfishProperty):
                     my_limit = 'v9_9_9'
                     if my_odata_type:
                         my_limit = getNamespace(my_odata_type).strip('#')
-                    if sub_obj.parent:
+                    if sub_obj.parent and sub_base not in 'Resource': # we always cast Resource objects
                         my_limit = sub_obj.parent.Type.Namespace
                     my_type = getType(sub_obj.Type.parent_type[0]) if sub_obj.Type.IsPropertyType else sub_obj.Type.Type
+                    # get type order from bottom up of schema, check if my_type in that schema
+                    top_ns = None
                     for new_ns, schema in reversed(sub_obj.Type.catalog.getSchemaDocByClass(my_ns).classes.items()):
-                        if my_type in schema.my_types and not compareMinVersion(new_ns, my_limit):
-                            my_ns = new_ns
-                            break
+                        if my_type in schema.my_types: 
+                            if top_ns is None:
+                                top_ns = new_ns
+                            if not compareMinVersion(new_ns, my_limit):
+                                my_ns = new_ns
+                                break
+                    # ISSUE: We can't cast under v1_0_0, get the next best Type
+                    if my_ns == sub_base:
+                        my_ns = top_ns
                     if my_ns not in sub_obj.Type.Namespace:
                         my_logger.log(logging.INFO-1, ('Morphing Complex', my_ns, my_type, my_limit))
                         new_type_obj = sub_obj.Type.catalog.getSchemaDocByClass(my_ns).getTypeInSchemaDoc('.'.join([my_ns, my_type]))
@@ -765,8 +782,14 @@ class RedfishObject(RedfishProperty):
 
             sub_obj.IsValid = isinstance(load, dict)
 
+            if 'Resource.OemObject' in sub_obj.Type.getTypeTree():
+                evals.append(sub_obj)
+                continue
             # populate properties
-            sub_obj.properties = {x:y.populate(load.get(x, REDFISH_ABSENT)) for x, y in sub_obj.properties.items()}
+            if sub_obj.Name == 'Actions':
+                sub_obj.properties = {x:y.populate(load.get(x, REDFISH_ABSENT)) for x, y in sub_obj.properties.items() if x != 'Oem'}
+            else:
+                sub_obj.properties = {x:y.populate(load.get(x, REDFISH_ABSENT)) for x, y in sub_obj.properties.items()}
 
             # additional_props
             if sub_obj.Type.HasAdditional and sub_obj.Name != 'Actions':
@@ -777,14 +800,20 @@ class RedfishObject(RedfishProperty):
                     my_odata_type = 'Resource.OemObject'
                     prop_pattern = '.*'
 
-                type_obj = sub_obj.Type.catalog.getSchemaDocByClass(my_odata_type).getTypeInSchemaDoc(my_odata_type)
                 my_property_names = [x for x in load if x not in sub_obj.properties if re.match(prop_pattern, x) and '@' not in x]
-                if type_obj.getBaseType()[0] == 'complex':
-                    object = RedfishObject(type_obj, parent=self)
-                else:
-                    object = RedfishProperty(type_obj, parent=self)
-                my_logger.debug('Populated {} with {}'.format(my_property_names, object.as_json()))
-                sub_obj.properties.update({x: object.populate(load.get(x, REDFISH_ABSENT)) for x in my_property_names})
+                for add_name in my_property_names:
+                    if 'Edm.' in my_odata_type:
+                        my_new_term = '<Term Name="{}" Type="{}"> </Term>'.format(add_name, my_odata_type)
+                        new_soup = BeautifulSoup(my_new_term, "xml").find('Term')
+                        type_obj = RedfishType(new_soup, sub_obj.Type.owner)
+                    else:
+                        type_obj = sub_obj.Type.catalog.getSchemaDocByClass(my_odata_type).getTypeInSchemaDoc(my_odata_type)
+                    if type_obj.getBaseType()[0] == 'complex':
+                        object = RedfishObject(type_obj, name=add_name, parent=self)
+                    else:
+                        object = RedfishProperty(type_obj, name=add_name, parent=self)
+                    my_logger.debug('Populated {} with {}'.format(my_property_names, object.as_json()))
+                    sub_obj.properties[add_name] = object.populate(load.get(add_name, REDFISH_ABSENT))
 
             my_annotations = [x for x in load if x not in sub_obj.properties if '@' in x and '@odata' not in x]
             for key in my_annotations:
@@ -793,8 +822,12 @@ class RedfishObject(RedfishProperty):
                 if getNamespace(fullItem) not in allowed_annotations:
                     my_logger.error("getAnnotations: {} is not an allowed annotation namespace, please check spelling/capitalization.".format(fullItem))
                     continue
-                # type_obj = sub_obj.Type.catalog.getSchemaInCatalog(fullItem).my_terms[getType(fullItem)]
-                # sub_obj.properties[key] = RedfishProperty(type_obj, parent=self).populate(load[key])
+                type_obj = sub_obj.Type.catalog.getSchemaInCatalog(fullItem).terms[getType(fullItem)]
+                if type_obj.getBaseType()[0] == 'complex':
+                    object = RedfishObject(type_obj, name=key, parent=self)
+                else:
+                    object = RedfishProperty(type_obj, name=key, parent=self)
+                sub_obj.properties[key] = object.populate(load[key])
 
             evals.append(sub_obj)
         if not isinstance(payload, list):
@@ -825,8 +858,6 @@ class RedfishObject(RedfishProperty):
                 # if we don't exist or our type is Basic
                 if not item.Exists: continue
                 if not isinstance(item.Type, RedfishType): continue
-                # if n == 'Uri':
-                #     import pdb; pdb.set_trace()
                 if n == 'Actions':
                     new_type = item.Type.catalog.getTypeInCatalog('ActionInfo.ActionInfo')
                     for act in item.Value.values():
@@ -849,121 +880,16 @@ class RedfishObject(RedfishProperty):
                         links.extend(my_complex.getLinks())
         return links
 
-    # uri_item = uri
-    # fragment = urlparse(uri_item)[5]
-    # fragment_odata = urlparse(odata_id)[5]
-
     # if 'Resource.Resource' in allTypes:
-    #     if fragment == '':
-    #         if original_jsondata is None:
-    #             traverseLogger.debug('Acquired resource OK {}'.format(uri_item))
-    #         elif os.path.isfile(uri_item):
-    #             traverseLogger.info('Acquired resource is File OK {}'.format(uri_item))
-    #         else:
-    #             traverseLogger.debug('Acquired resource thru AutoExpanded means {}'.format(uri_item))
-    #             traverseLogger.info('Regetting resource from URI {}'.format(uri_item))
-    #             new_payload = createResourceObject(name, uri_item, None, typename, context, parent, isComplex, top_of_resource=top_of_resource)
-    #             if new_payload is None:
-    #                 traverseLogger.warn('Could not acquire resource, reverting to original payload...')
     #     else:
     #         if original_jsondata is None:
     #             traverseLogger.warn('Acquired Resource.Resource type with fragment, could cause issues  {}'.format(uri_item))
     #         else:
     #             traverseLogger.warn('Found uri with fragment, which Resource.Resource types do not use {}'.format(uri_item))
-    #     if fragment_odata == '':
-    #         pass
-    #     else:
+    #     if not fragment_odata == '':
     #         traverseLogger.warn('@odata.id should not have a fragment {}'.format(odata_id))
 
     # elif 'Resource.ReferenceableMember' in allTypes:
-    #     if fragment != '':
-    #         pass
-    #     else:
+    #     if not fragment != '':
     #         traverseLogger.warn('No fragment, but ReferenceableMembers require it {}'.format(uri_item))
-    #     if fragment_odata != '':
-    #         pass
-    #     else:
-    #         traverseLogger.warn('@odata.id should have a fragment {}'.format(odata_id))
-
-    # newResource = ResourceObj(name, uri, jsondata, typename, original_context, parent, isComplex, forceType=forceType, topVersion=topVersion, top_of_resource=top_of_resource)
-    # newResource.rtime = rtime
-    # newResource.status = status
-
-    # return newResource
-
-
-# class ResourceObj:
-#     def __init__(self, name: str, uri: str, jsondata: dict, typename: str, context: str, parent=None, isComplex=False, forceType=False, topVersion=None, top_of_resource=None):
-#         self.initiated = False
-#         self.parent = parent
-#         self.uri, self.name = uri, name
-#         self.rtime = 0
-#         self.status = -1
-#         self.isRegistry = False
-#         self.errorIndex = {
-#         }
-
-        # # Check if this is a Registry resource
-        # parent_type = parent.typename if parent is not None and parent is not None else None
-        # if parent_type is not None and getType(parent_type) == 'MessageRegistryFile' or\
-        #         getType(acquiredtype) in ['MessageRegistry', 'AttributeRegistry', 'PrivilegeRegistry']:
-        #     traverseLogger.debug('{} is a Registry resource'.format(self.uri))
-        #     self.isRegistry = True
-        #     self.context = None
-        #     context = None
-        # if topVersion is not None:
-        #     parent_type = topVersion
-
-        # # Check for @odata.id (todo: regex)
-        # odata_id = self.jsondata.get('@odata.id')
-        # if odata_id is None and not isComplex:
-        #     if self.isRegistry:
-        #         traverseLogger.debug('{}: @odata.id missing, but not required for Registry resource'
-        #                              .format(self.uri))
-        #     else:
-        #         traverseLogger.error('{}: Json does not contain @odata.id'.format(self.uri))
-
-
-
-        # if currentService:
-        #     if not oem and 'oemobject' in acquiredtype:
-        #         pass
-        #     else:
-        #         if jsondata.get('@odata.type') is not None:
-        #             currentService.metadata.add_service_namespace(getNamespace(jsondata.get('@odata.type')))
-        #         if jsondata.get('@odata.context') is not None:
-        #             # add the namespace to the set of namespaces referenced by this service
-        #             ns = getNamespace(jsondata.get('@odata.context').split('#')[-1])
-        #             if '/' not in ns and not ns.endswith('$entity'):
-        #                 currentService.metadata.add_service_namespace(ns)
-
-        # # Provide a context for this (todo: regex)
-        # if context is None:
-        #     context = self.jsondata.get('@odata.context')
-        #     if context is None:
-        #         context = createContext(acquiredtype)
-        #         if self.isRegistry:
-        #             # If this is a Registry resource, @odata.context is not required; do our best to construct one
-        #             traverseLogger.debug('{}: @odata.context missing from Registry resource; constructed context {}'
-        #                                  .format(acquiredtype, context))
-        #         elif isComplex:
-        #             pass
-        #         else:
-        #             traverseLogger.debug('{}:  Json does not contain @odata.context'.format(uri))
-
-    # linkList = OrderedDict()
-    # if linklimits is None:
-    #     linklimits = {}
-    # refDict = schemaObj.refs
-    # if item == 'Uri' and ownerNS == 'MessageRegistryFile' and ownerType == 'Location':
-    #     # special handling for MessageRegistryFile Location Uri
-    #     if insideItem is not None and isinstance(insideItem, str) and len(insideItem) > 0:
-    #         uriItem = {'@odata.id': insideItem}
-    #         cType = ownerNS + '.' + ownerNS
-    #         cSchema = refDict.get(getNamespace(cType), (None, None))[1]
-    #         if cSchema is None:
-    #             cSchema = context
-    #         traverseLogger.debug('Registry Location Uri: resource = {}, type = {}, schema = {}'
-    #                                 .format(insideItem, cType, cSchema))
-    #         linkList[prefix + str(item) + '.' + getType(propDict['attrs']['Name'])] = \
-    #             Link_Obj(uriItem.get('@odata.id', 'excerpt' if amExcerpt else None), autoExpand, cType, cSchema, uriItem, key)
+    #     if not fragment_odata != '':

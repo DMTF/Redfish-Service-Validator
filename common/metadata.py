@@ -4,9 +4,8 @@
 
 import os
 import time
-import logging
 from collections import Counter, OrderedDict, defaultdict
-import traverseService as rst
+import common.schema as schema
 
 EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
 EDMX_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edmx"
@@ -64,9 +63,10 @@ class Metadata(object):
     metadata_uri = '/redfish/v1/$metadata'
     schema_type = '$metadata'
 
-    def __init__(self, schema_object, logger):
+    def __init__(self, data, service, logger):
         logger.info('Constructing metadata...')
         self.success_get = False
+        self.service = service
         self.uri_to_namespaces = defaultdict(list)
         self.elapsed_secs = 0
         self.metadata_namespaces = set()
@@ -85,11 +85,13 @@ class Metadata(object):
         start = time.time()
         self.md_soup = None
         self.service_refs = None
-        self.schema_obj = schema_object
         uri = Metadata.metadata_uri
 
         self.elapsed_secs = time.time() - start
-        if self.schema_obj:
+        self.schema_obj = None
+        if data:
+            soup = schema.BeautifulSoup(data, "xml")
+            self.schema_obj = schema.rfSchema(soup, '$metadata', 'service')
             self.md_soup = self.schema_obj.soup
             self.service_refs = self.schema_obj.refs
             self.success_get = True
@@ -116,9 +118,9 @@ class Metadata(object):
             logger.debug('Metadata: includes_missing_ns = {}'.format(self.includes_missing_ns))
             logger.debug('Metadata: bad_schema_uris = {}'.format(self.bad_schema_uris))
             logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
-            for schema in self.service_refs:
-                name, uri = self.service_refs[schema]
-                self.schema_store[name] = rst.schema.getSchemaObject(name, uri)
+            for ref in self.service_refs:
+                name, uri = self.service_refs[ref]
+                self.schema_store[name] = schema.getSchemaObject(self.service, name, uri)
                 if self.schema_store[name] is not None:
                     for ref in self.schema_store[name].refs:
                         pass
@@ -188,7 +190,7 @@ class Metadata(object):
             if '#' in schema_uri:
                 schema_uri, frag = k.split('#', 1)
             schema_type = os.path.basename(os.path.normpath(k)).strip('.xml').strip('_v1')
-            success, soup, _ = rst.schema.getSchemaDetails(schema_type, schema_uri)
+            success, soup, _ = schema.getSchemaDetails(self.service, schema_type, schema_uri)
             if success:
                 for namespace in self.uri_to_namespaces[k]:
                     if soup.find('Schema', attrs={'Namespace': namespace}) is None:

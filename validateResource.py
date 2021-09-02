@@ -2,16 +2,14 @@
 # Copyright 2016-2021 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
-from common.redfish import getNamespaceUnversioned, getNamespace, getType, createContext
-from tohtml import create_entry
 import logging
 from collections import Counter, OrderedDict
 from io import StringIO
 
-import traverseService
+import common.traverse as traverse
 import common.catalog as catalog
-from common.redfish import checkPayloadConformance
-from validateRedfish import loadAttributeRegDict, checkPropertyConformance, displayValue
+from validateRedfish import checkPropertyConformance, displayValue
+from common.helper import getNamespace, getType, createContext, checkPayloadConformance, navigateJsonFragment, create_entry
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
@@ -20,8 +18,6 @@ class WarnFilter(logging.Filter):
            return rec.levelno == logging.WARN
 
 fmt = logging.Formatter('%(levelname)s - %(message)s')
-
-my_catalog = catalog.SchemaCatalog('./SchemaFiles/metadata/')
 
 def create_logging_capture(this_logger):
     errorMessages = StringIO()
@@ -41,15 +37,13 @@ def create_logging_capture(this_logger):
 
     return errh, warnh
 
-
 def get_my_capture(this_logger, handler):
     this_logger.removeHandler(handler)
     strings = handler.stream.getvalue()
     handler.stream.close()
     return strings
 
-
-def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, parent=None):
+def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=None, parent=None):
     # rs-assertion: 9.4.1
     # Initial startup here
     my_logger.log(logging.INFO-1,"\n*** %s, %s", uriName, URI)
@@ -77,10 +71,16 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
     # Generate dictionary of property info
     try:
         if expectedJson is None:
-            ret = traverseService.callResourceURI(URI)
+            ret = service.callResourceURI(URI)
             success, me['payload'], me['rcode'], me['rtime'] = ret
         else:
-            me['payload'], me['rcode'], me['rtime'] = expectedJson, -1, 0
+            success, me['payload'], me['rcode'], me['rtime'] = True, expectedJson, -1, 0
+        
+        if not success:
+            my_logger.error('URI did not return resource {}'.format(URI))
+            counts['failGet'] += 1
+            me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
+            return False, counts, results, None, None
 
         # verify basic odata strings
         if results[uriName]['payload'] is not None:
@@ -96,7 +96,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
         else:
             if isinstance(my_type, catalog.RedfishType):
                 my_type = my_type.parent_type[0] if my_type.IsPropertyType else my_type.fulltype
-            redfish_schema = my_catalog.getSchemaDocByClass(my_type)
+            redfish_schema = service.catalog.getSchemaDocByClass(my_type)
             redfish_type = redfish_schema.getTypeInSchemaDoc(my_type)
             redfish_obj = catalog.RedfishObject(redfish_type, 'Object', parent=parent).populate(me['payload']) if redfish_type else None
             me['fulltype'] = redfish_obj.Type.fulltype
@@ -105,7 +105,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
             counts['problemResource'] += 1
             me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
             return False, counts, results, None, None
-    except traverseService.AuthenticationError as e:
+    except traverse.AuthenticationError as e:
         raise  # re-raise exception
     except Exception as e:
         my_logger.error('Exception caught while creating ResourceObj', exc_info=1)
@@ -120,7 +120,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
     odata_id = me['payload'].get('@odata.id', '')
     if '#' in odata_id:
         if parent is not None:
-            payload_resolve = traverseService.navigateJsonFragment(parent.payload, URI)
+            payload_resolve = navigateJsonFragment(parent.payload, URI)
             if payload_resolve is None:
                 my_logger.error('@odata.id of ReferenceableMember does not contain a valid JSON pointer for this payload: {}'.format(odata_id))
                 counts['badOdataIdResolution'] += 1
@@ -135,25 +135,12 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
         my_logger.error(str(URI) + ': payload error, @odata property non-conformant',)
 
     # if URI was sampled, get the notation text from traverseService.uri_sample_map
-    sample_string = traverseService.uri_sample_map.get(URI)
-    sample_string = sample_string + ', ' if sample_string is not None else ''
-
     results[uriName]['uri'] = (str(URI))
-    results[uriName]['samplemapped'] = (str(sample_string))
     results[uriName]['context'] = createContext(me['fulltype'])
     results[uriName]['origin'] = redfish_obj.Type.owner.parent_doc.name
     results[uriName]['success'] = True
 
     my_logger.info("\t Type (%s), GET SUCCESS (time: %s)", me['fulltype'], me['rtime'])
-
-    # If this is an AttributeRegistry, load it for later use
-    if isinstance(me['payload'], dict):
-        odata_type = me['payload'].get('@odata.type')
-        if odata_type is not None:
-            namespace = getNamespaceUnversioned(odata_type)
-            type_name = getType(odata_type)
-            if namespace == 'AttributeRegistry' and type_name == 'AttributeRegistry':
-                loadAttributeRegDict(odata_type, me['payload'])
     
     for prop_name, prop in redfish_obj.properties.items():
         try:
@@ -164,25 +151,24 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
                 my_logger.error('No Schema for property {}'.format(prop.Name))
                 counts['errorNoSchema'] += 1
                 continue
-            propMessages, propCounts = checkPropertyConformance(redfish_obj, prop_name, prop)
+            propMessages, propCounts = checkPropertyConformance(service, prop_name, prop)
 
-            propMessages = {x:create_entry(x, *y) for x,y in propMessages.items()}
+            propMessages = {x:create_entry(x, *y) if isinstance(y, tuple) else y for x,y in propMessages.items()}
 
-            if '@Redfish.Copyright' in propMessages and 'MessageRegistry' not in redfish_obj.type.fulltype:
-                modified_entry = list(propMessages['@Redfish.Copyright'])
-                modified_entry[-1] = 'FAIL'
-                propMessages['@Redfish.Copyright'] = create_entry(*modified_entry)
+            if '@Redfish.Copyright' in propMessages:
+                modified_entry = propMessages['@Redfish.Copyright']
+                modified_entry.success = 'FAIL'
                 my_logger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
 
             messages.update(propMessages)
             counts.update(propCounts)
-        except traverseService.AuthenticationError as e:
+        except traverse.AuthenticationError as e:
             raise  # re-raise exception
         except Exception as ex:
             my_logger.error('Exception caught while validating single URI', exc_info=1)
             my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
+            propMessages[prop_name] = create_entry(prop_name, '', '', prop.Exists, 'exception')
             counts['exceptionPropCheck'] += 1
-
 
     SchemaFullType, jsonData = me['fulltype'], me['payload']
     SchemaNamespace, SchemaType = getNamespace(SchemaFullType), getType(SchemaFullType)
@@ -208,6 +194,17 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
             counts['unverifiedAdditional'] += 1
             messages[key] = create_entry(key, displayValue(item), '-', '-', 'Additional')
 
+        fuzz = catalog.get_fuzzy_property(key, redfish_obj.properties)
+        if fuzz != key and fuzz in redfish_obj.properties:
+            messages[fuzz] = create_entry(fuzz, '-', '-', '-', 'INVALID')
+            my_logger.error('Attempting {} (from {})?'.format(fuzz, key))
+            my_new_obj = redfish_obj.properties[fuzz].populate(item)
+            new_msgs, new_counts = checkPropertyConformance(service, key, my_new_obj)
+            new_msgs = {x:create_entry(x, *y) for x,y in new_msgs.items()}
+            messages.update(new_msgs)
+            counts.update(new_counts)
+            counts['invalidNamedProperty'] += 1
+
     for key in messages:
         if key not in jsonData:
             my_logger.log(logging.INFO-1,fmt % (key, messages[key].result))
@@ -230,7 +227,7 @@ def validateSingleURI(URI, uriName='', expectedType=None, expectedJson=None, par
     return True, counts, results, redfish_obj.getLinks(), redfish_obj
 
 
-def validateURITree(URI, uriName, expectedType=None, expectedJson=None, parent=None, allLinks=None):
+def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None, parent=None, allLinks=None):
     # from given URI, validate it, then follow its links like nodes
     #   Other than expecting a valid URI, on success (real URI) expects valid links
     #   valid links come from getAllLinks, includes info such as expected values, etc
@@ -245,15 +242,15 @@ def validateURITree(URI, uriName, expectedType=None, expectedJson=None, parent=N
         linkName = link.Name
 
         if link.Type is not None and link.Type.AutoExpand:
-            returnVal = validateURITree(linkURI, uriName + ' -> ' + linkName, link.Type, link.Value, parent, allLinks)
+            returnVal = validateURITree(service, linkURI, uriName + ' -> ' + linkName, link.Type, link.Value, parent, allLinks)
         else:
-            returnVal = validateURITree(linkURI, uriName + ' -> ' + linkName, parent=parent, allLinks=allLinks)
+            returnVal = validateURITree(service, linkURI, uriName + ' -> ' + linkName, parent=parent, allLinks=allLinks)
         my_logger.log(logging.INFO-1,'%s, %s', linkName, returnVal[1])
         return returnVal
 
     refLinks = []
 
-    validateSuccess, counts, results, links, thisobj = validateSingleURI(URI, uriName, expectedType, expectedJson, parent)
+    validateSuccess, counts, results, links, thisobj = validateSingleURI(service, URI, uriName, expectedType, expectedJson, parent)
     new_links = links
     if validateSuccess:
         # Bring Registries to Front if possible
@@ -299,7 +296,7 @@ def validateURITree(URI, uriName, expectedType=None, expectedJson=None, parent=N
             if link.Type.Excerpt:
                 continue
             elif link_destination is None:
-                errmsg = 'Referenced URI for NavigationProperty is missing {}'.format(uriName)
+                errmsg = 'Referenced URI for NavigationProperty is missing {} {}'.format(link_destination, uriName)
                 my_logger.error(errmsg)
                 results[uriName]['errors'] += '\n' + errmsg
                 counts['errorMissingRefOdata'] += 1
@@ -323,8 +320,8 @@ def validateURITree(URI, uriName, expectedType=None, expectedJson=None, parent=N
 
 
             my_link_type = link.Type.parent_type[0] if link.Type.IsPropertyType else link.Type.fulltype
-            success, my_data, _, __ = traverseService.callResourceURI(link_destination)
-            returnVal = validateURITree(link_destination, uriName + ' -> ' + link.Name,
+            success, my_data, _, __ = service.callResourceURI(link_destination)
+            returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name,
                     my_link_type, my_data, parent, allLinks)
             success, linkCounts, linkResults, xlinks, xobj = returnVal
             # refLinks.update(xlinks)

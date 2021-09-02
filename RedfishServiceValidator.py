@@ -48,14 +48,15 @@ def main(argslist=None, configfile=None):
     argget.add_argument('--debugging', action="store_true", help='Output debug statements to text log, otherwise it only uses INFO')
     argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
 
+    # parse...
     args = argget.parse_args(argslist)
 
     if configfile is None:
         configfile = args.config
 
+    # set logging file
     startTick = datetime.now()
 
-    # set logging file
     standard_out.setLevel(logging.INFO - args.verbose if args.verbose < 3 else logging.DEBUG)
 
     logpath = args.logdir
@@ -69,9 +70,11 @@ def main(argslist=None, configfile=None):
     file_handler.setFormatter(fmt)
     my_logger.addHandler(file_handler)
 
+    # begin logging
     my_logger.info("Redfish Service Validator, version {}".format(tool_version))
     my_logger.info("")
 
+    # config verification
     if args.ip is None and configfile is None:
         my_logger.error('No IP or Config Specified')
         argget.print_help()
@@ -88,7 +91,6 @@ def main(argslist=None, configfile=None):
         with open(configfilename, 'w') as f:
             my_config.write(f)
 
-    
     from urllib.parse import urlparse, urlunparse
     scheme, netloc, path, params, query, fragment = urlparse(args.ip)
     if scheme not in ['http', 'https']:
@@ -99,7 +101,6 @@ def main(argslist=None, configfile=None):
         my_logger.error('IP is missing ip/host')
         return 1, None, 'IP Incomplete'
 
-
     # start printing config details, remove redundant/private info from print
     my_logger.info('Target URI: ' + args.ip)
     my_logger.info('\n'.join(
@@ -107,7 +108,7 @@ def main(argslist=None, configfile=None):
     my_logger.info('Start time: ' + startTick.strftime('%x - %X'))
     my_logger.info("")
 
-
+    # schema and service init
     schemadir = args.schema_directory
 
     if not os.path.isdir(schemadir):
@@ -117,10 +118,9 @@ def main(argslist=None, configfile=None):
         schema_pack.my_logger.addHandler(file_handler)
         schema_pack.setup_schema_pack('latest', args.schema_directory)
 
-    import traverseService
+    import common.traverse as traverse
     try:
-        # traverseService.my_logger.addHandler(file_handler)
-        currentService = traverseService.startService(vars(args))
+        currentService = traverse.startService(vars(args))
     except Exception as ex:
         my_logger.debug('Exception caught while creating Service', exc_info=1)
         my_logger.error("Service could not be started: {}".format(ex))
@@ -131,7 +131,6 @@ def main(argslist=None, configfile=None):
         my_name = currentService.service_root.get('Name', '')
         my_uuid = currentService.service_root.get('UUID', 'No UUID')
         setattr(args, 'description', 'My Target System {}, version {}, {}'.format(my_name, my_version, my_uuid))
-
     
     my_logger.info('Description of service: {}'.format(args.description))
 
@@ -159,18 +158,19 @@ def main(argslist=None, configfile=None):
     try:
         from validateResource import validateSingleURI, validateURITree
         if 'single' in pmode:
-            success, counts, results, xlinks, topobj = validateSingleURI(ppath, 'Target', expectedJson=jsonData)
+            success, counts, results, xlinks, topobj = validateSingleURI(currentService, ppath, 'Target', expectedJson=jsonData)
         elif 'tree' in pmode:
-            success, counts, results, xlinks, topobj = validateURITree(ppath, 'Target', expectedJson=jsonData)
+            success, counts, results, xlinks, topobj = validateURITree(currentService, ppath, 'Target', expectedJson=jsonData)
         else:
-            success, counts, results, xlinks, topobj = validateURITree('/redfish/v1/', 'ServiceRoot', expectedJson=jsonData)
-    except traverseService.AuthenticationError as e:
+            success, counts, results, xlinks, topobj = validateURITree(currentService, '/redfish/v1/', 'ServiceRoot', expectedJson=jsonData)
+    except traverse.AuthenticationError as e:
         # log authentication error and terminate program
         my_logger.error('{}'.format(e))
         return 1, None, 'Failed to authenticate with the service'
 
     currentService.close()
 
+    # get final counts
     metadata = currentService.metadata
     my_logger.log(logging.INFO-1, '\nMetadata: Namespaces referenced in service: {}'.format(metadata.get_service_namespaces()))
     my_logger.info('Metadata: Namespaces missing from $metadata: {}'.format(metadata.get_missing_namespaces()))
@@ -209,7 +209,8 @@ def main(argslist=None, configfile=None):
     my_logger.info("\n".join('{}: {}   '.format(x, y) for x, y in sorted(finalCounts.items())))
 
     # dump cache info to debug log
-    my_logger.debug('getSchemaDetails() -> {}'.format(traverseService.schema.getSchemaDetails.cache_info()))
+    import common.schema as schema
+    my_logger.debug('getSchemaDetails() -> {}'.format(schema.getSchemaDetails.cache_info()))
     my_logger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
 
     if not success:

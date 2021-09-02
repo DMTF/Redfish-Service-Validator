@@ -4,6 +4,7 @@
 
 import re
 import logging
+from types import SimpleNamespace
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
@@ -13,6 +14,17 @@ my_logger.setLevel(logging.DEBUG)
 """
 
 versionpattern = 'v[0-9]+_[0-9]+_[0-9]+'
+
+LOG_ENTRY = ('name', 'value', 'type', 'exists', 'result')
+
+def create_entry(name, value, type, exists, result):
+    return SimpleNamespace(**{
+        "name": name,
+        "value": value,
+        "type": type,
+        "exists": exists,
+        "result": result
+    })
 
 
 def splitVersionString(version):
@@ -150,7 +162,7 @@ def checkPayloadConformance(jsondata, uri):
             if not paramPass:
                 my_logger.error("{} {}: Expected format is /path/to/uri, but received: {}".format(uri, key, decoded[key]))
             else:
-                if decoded[key] != uri:
+                if uri != '' and decoded[key] != uri:
                     my_logger.warn("{} {}: Expected @odata.id to match URI link {}".format(uri, key, decoded[key]))
         elif key == '@odata.count':
             paramPass = isinstance(decoded[key], int)
