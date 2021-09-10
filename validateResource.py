@@ -86,7 +86,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if results[uriName]['payload'] is not None:
             successPayload, odataMessages = checkPayloadConformance(me['payload'], URI)
             for m in odataMessages:
-                msg = create_entry(*m)
+                msg = create_entry(m, *odataMessages[m])
                 messages[msg.name] = msg
 
         my_type = me['payload'].get('@odata.type', expectedType)
@@ -108,7 +108,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     except traverse.AuthenticationError as e:
         raise  # re-raise exception
     except Exception as e:
-        my_logger.error('Exception caught while creating ResourceObj', exc_info=1)
+        my_logger.log(logging.INFO-1, 'Exception caught while creating ResourceObj', exc_info=1)
         my_logger.error('Unable to gather property info for URI {}: {}'.format(URI, repr(e)))
         counts['exceptionResource'] += 1
         me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
@@ -165,7 +165,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         except traverse.AuthenticationError as e:
             raise  # re-raise exception
         except Exception as ex:
-            my_logger.error('Exception caught while validating single URI', exc_info=1)
+            my_logger.log(logging.INFO-1, 'Exception caught while validating single URI', exc_info=1)
             my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
             propMessages[prop_name] = create_entry(prop_name, '', '', prop.Exists, 'exception')
             counts['exceptionPropCheck'] += 1

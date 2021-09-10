@@ -62,7 +62,7 @@ class rfService():
                 traverseLogger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
                 self.config['username'] = ''
                 self.config['password'] = ''
-
+        
         rhost, user, passwd = self.config['configuri'], self.config['username'], self.config['password']
         self.context = rf.redfish_client( base_url = rhost, username = user, password = passwd )
         self.context.login( auth = self.config['authtype'].lower() )

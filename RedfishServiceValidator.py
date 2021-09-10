@@ -122,8 +122,8 @@ def main(argslist=None, configfile=None):
     try:
         currentService = traverse.startService(vars(args))
     except Exception as ex:
-        my_logger.debug('Exception caught while creating Service', exc_info=1)
-        my_logger.error("Service could not be started: {}".format(ex))
+        my_logger.log(logging.INFO-1, 'Exception caught while creating Service', exc_info=1)
+        my_logger.error("Service could not be started: {}".format(repr(ex)))
         return 1, None, 'Service Exception'
     
     if args.description is None and currentService.service_root:

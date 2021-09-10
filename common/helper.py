@@ -149,7 +149,7 @@ def checkPayloadConformance(jsondata, uri):
     checks for @odata entries and their conformance
     These are not checked in the normal loop
     """
-    info = []
+    info = {}
     decoded = jsondata
     success = True
     for key in [k for k in decoded if '@odata' in k]:
@@ -187,6 +187,6 @@ def checkPayloadConformance(jsondata, uri):
 
         success = success and paramPass
 
-        info.append((key, decoded[key], 'odata', 'Exists', 'PASS' if paramPass else 'FAIL'))
+        info[key] = (decoded[key], 'odata', 'Exists', 'PASS' if paramPass else 'FAIL')
         
     return success, info

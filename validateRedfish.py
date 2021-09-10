@@ -198,9 +198,6 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
     if not successPayload:
         odataMessages['failPayloadError.complex'] += 1
         my_logger.error('{}: complex payload error, @odata property non-conformant'.format(str(sub_obj.Name)))
-    for m in odataMessages:
-        # msg = create_entry(*m)
-        subMsgs[m[0]] = m[1:]
 
     if prop_name == 'Actions':
         actionMessages, actionCounts = OrderedDict(), Counter()
@@ -360,7 +357,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     if 'Oem' in prop_name and not oem_check:
         my_logger.log(logging.INFO-1,'\tOem is skipped')
         counts['skipOem'] += 1
-        return {prop_name: (prop_name, '-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}, counts
+        return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}, counts
 
     # Parameter Passes
     paramPass = propMandatoryPass = propNullablePass = deprecatedPass = nullValid = True
@@ -447,7 +444,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 resultList.update(subMsgs)
                 counts.update(subCounts)
             except Exception as ex:
-                my_logger.error('Exception caught while validating Complex', exc_info=1)
+                my_logger.log(logging.INFO-1, 'Exception caught while validating Complex', exc_info=1)
                 my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
                 counts['exceptionPropCheck'] += 1
         return resultList, counts
