@@ -7,6 +7,7 @@
 
 import unittest
 import sys
+import pprint
 
 sys.path.append('../')
 
@@ -93,11 +94,11 @@ class TestCatalog(unittest.TestCase):
         my_schema_doc = my_catalog.getSchemaDocByClass("ExampleResource.v1_0_0.ExampleResource")
         my_type = my_schema_doc.getTypeInSchemaDoc("ExampleResource.v1_0_0.ExampleResource")
         object = catalog.RedfishObject( my_type )
-        print(object.as_json())
+        pprint.pprint(object.as_json(), indent=2)
         dct = object.as_json()
         dct = object.getLinks()
         object = catalog.RedfishObject( my_type ).populate({"Id": None, "Description": None})
-        print(object.as_json())
+        pprint.pprint(object.as_json(), indent=2)
         dct = object.as_json()
         dct = object.getLinks()
 

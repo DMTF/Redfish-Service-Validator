@@ -2,7 +2,7 @@
 from collections import Counter, OrderedDict
 from common.catalog import REDFISH_ABSENT, MissingSchemaError, ExcerptTypes, get_fuzzy_property
 
-from common.helper import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance, create_entry
+from common.helper import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance
 
 import logging
 
@@ -176,20 +176,19 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
                 my_logger.error('{} not defined in Complex {} {} (check version, spelling and casing)'
                                 .format(key, prop_name, sub_obj.Type))
                 subCounts['failAdditional.complex'] += 1
-                subMsgs[key] = create_entry(key, displayValue(item), '-', '-', 'FAIL')
+                subMsgs[key] = (displayValue(item), '-', '-', 'FAIL')
             else:
                 my_logger.warn('{} not defined in schema Complex {} {} (check version, spelling and casing)'
                                 .format(key, prop_name, sub_obj.Type))
                 subCounts['unverifiedAdditional.complex'] += 1
-                subMsgs[key] = create_entry(key, displayValue(item), '-', '-', 'FAIL')
+                subMsgs[key] = (displayValue(item), '-', '-', 'FAIL')
             
             fuzz = get_fuzzy_property(key, sub_obj.properties)
             if fuzz != key and fuzz in sub_obj.properties:
-                subMsgs[fuzz] = create_entry(fuzz, '-', '-', '-', 'INVALID')
+                subMsgs[fuzz] = ('-', '-', '-', 'INVALID')
                 my_logger.error('Attempting {} (from {})?'.format(fuzz, key))
                 my_new_obj = sub_obj.properties[fuzz].populate(item)
                 new_msgs, new_counts = checkPropertyConformance(service, key, my_new_obj)
-                new_msgs = {x:create_entry(x, *y) for x,y in new_msgs.items()}
                 subMsgs.update(new_msgs)
                 subCounts.update(new_counts)
                 subCounts['invalidNamedProperty.complex'] += 1
