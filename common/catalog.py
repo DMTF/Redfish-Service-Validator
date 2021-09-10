@@ -758,7 +758,7 @@ class RedfishObject(RedfishProperty):
                     min_version = min([tuple(splitVersionString(x.Namespace)) for x in sub_obj.Type.getTypeTree() if not x.IsPropertyType and sub_base in x.Namespace])
                     min_version = 'v' + '_'.join([str(x) for x in min_version])
                 except:
-                    my_logger.error('Issue getting minimum version', exc_info=1)
+                    my_logger.debug('Issue getting minimum version', exc_info=1)
                     min_version = 'v1_0_0'
                 if my_ns in [sub_base, sub_base + '.v1_0_0', '.'.join([sub_base, min_version])] or my_odata_type:
                     my_limit = 'v9_9_9'
