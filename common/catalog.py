@@ -734,7 +734,10 @@ class RedfishObject(RedfishProperty):
         for load in payloads:
             sub_obj = copy.copy(eval_obj)
             # Cast types if they're below their parent or are OemObjects
+            already_typed = False
             my_odata_type = load.get('@odata.type')
+            if my_odata_type is not None and str(sub_obj.Type) == my_odata_type.strip('#'):
+                already_typed = True
 
             # we can only cast if we have an odata type and valid schema
             if 'Resource.OemObject' in sub_obj.Type.getTypeTree() and not casted:
@@ -751,7 +754,7 @@ class RedfishObject(RedfishProperty):
                     evals.append(sub_obj)
                     continue
             # or if we're a Resource or unversioned or v1_0_0 type
-            elif not casted:
+            elif not casted and not already_typed:
                 my_ns = getNamespace(sub_obj.Type.parent_type[0]) if sub_obj.Type.IsPropertyType else sub_obj.Type.Namespace
                 sub_base = getNamespaceUnversioned(my_ns)
                 try:
