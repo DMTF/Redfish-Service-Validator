@@ -29,7 +29,7 @@ def count_errors(results):
         for countType in sorted(innerCounts.keys()):
             if innerCounts.get(countType) == 0:
                 continue
-            if any(x in countType for x in ['problem', 'fail', 'bad', 'exception']):
+            if any(x in countType for x in ['problem', 'fail', 'bad', 'exception', 'err.']):
                 counters_all_pass = False
                 error_lines.append('{} {} errors in {}'.format(innerCounts[countType], countType, results[item]['uri']))
             innerCounts[countType] += 0

@@ -120,7 +120,7 @@ class rfService():
         scheme, netloc, path, params, query, fragment = urlparse(URILink)
         inService = scheme == '' and netloc == ''
         if inService:
-            URLDest = URILink
+            URLDest = urlunparse((scheme, netloc, path, '', '', '')) #URILink
         else:
             URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
 

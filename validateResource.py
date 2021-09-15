@@ -37,11 +37,13 @@ def create_logging_capture(this_logger):
 
     return errh, warnh
 
+
 def get_my_capture(this_logger, handler):
     this_logger.removeHandler(handler)
     strings = handler.stream.getvalue()
     handler.stream.close()
     return strings
+
 
 def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=None, parent=None):
     # rs-assertion: 9.4.1
@@ -121,7 +123,9 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     if '#' in odata_id:
         if parent is not None:
             payload_resolve = navigateJsonFragment(parent.payload, URI)
-            if payload_resolve is None:
+            if parent.payload.get('@odata.id') not in URI:
+                my_logger.info('@odata.id of ReferenceableMember was referenced elsewhere...'.format(odata_id))
+            elif payload_resolve is None:
                 my_logger.error('@odata.id of ReferenceableMember does not contain a valid JSON pointer for this payload: {}'.format(odata_id))
                 counts['badOdataIdResolution'] += 1
             elif payload_resolve != me['payload']:
@@ -251,11 +255,13 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
     refLinks = []
 
     validateSuccess, counts, results, links, thisobj = validateSingleURI(service, URI, uriName, expectedType, expectedJson, parent)
-    new_links = links
+
     if validateSuccess:
         # Bring Registries to Front if possible
         if 'Registries.Registries' in [x.Type.fulltype for x in links]:
             logging.info('Move Registries to front for validation')
+        log_entries = [x for x in links if 'LogEntry' in x.Type.fulltype]
+        links = [x for x in links if 'LogEntry' not in x.Type.fulltype] + log_entries[:15] # Pare down logentries
         for link in sorted(links, key=lambda x: (x.Type.fulltype != 'Registries.Registries')):
             link_destination = link.Value.get('@odata.id')
             if link.Type.Excerpt:
@@ -321,8 +327,9 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
 
             my_link_type = link.Type.parent_type[0] if link.Type.IsPropertyType else link.Type.fulltype
             success, my_data, _, __ = service.callResourceURI(link_destination)
+            # Using None instead of refparent simply because the parent is not where the link comes from
             returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name,
-                    my_link_type, my_data, parent, allLinks)
+                    my_link_type, my_data, None, allLinks)
             success, linkCounts, linkResults, xlinks, xobj = returnVal
             # refLinks.update(xlinks)
 
