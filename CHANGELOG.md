@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.0.3] - 2021-09-07
+- Refactored code to make schema parsing and structure building for resource definitions to be modular
+
 ## [2.0.2] - 2021-08-30
 - Corrected usage of the 'oemcheck' flag to not skip over OEM object validation when enabled
 

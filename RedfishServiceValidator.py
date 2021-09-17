@@ -9,7 +9,7 @@ import logging
 import json
 from datetime import datetime
 
-tool_version = '2.0.2'
+tool_version = '2.0.3'
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
