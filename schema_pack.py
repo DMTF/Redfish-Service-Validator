@@ -10,7 +10,7 @@ import zipfile
 import requests
 
 # live_zip_uri = 'http://redfish.dmtf.org/schemas/DSP8010_2021.1.zip'
-live_zip_uri = 'https://www.dmtf.org/sites/default/files/standards/documents/DSP8010_2021.1.zip' 
+live_zip_uri = 'https://www.dmtf.org/sites/default/files/standards/documents/DSP8010.zip' 
 
 my_logger = logging.getLogger()
 
