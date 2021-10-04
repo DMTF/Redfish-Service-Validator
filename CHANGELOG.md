@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.0.4] - 2021-10-04
+- Updated schema pack link to point to the latest DSP8010 bundle
+
 ## [2.0.3] - 2021-09-07
 - Refactored code to make schema parsing and structure building for resource definitions to be modular
 
