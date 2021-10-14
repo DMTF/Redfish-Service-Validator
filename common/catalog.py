@@ -768,12 +768,17 @@ class RedfishObject(RedfishProperty):
                     if my_odata_type:
                         my_limit = getNamespace(my_odata_type).strip('#')
                     if sub_obj.parent and sub_base not in 'Resource': # we always cast Resource objects
-                        my_limit = sub_obj.parent.Type.Namespace
+                        parent = sub_obj.parent
+                        while True:
+                            my_limit = parent.Type.Namespace
+                            if not parent.parent or not parent.parent.Type.Namespace.startswith(sub_base + '.'):
+                                break
+                            parent = parent.parent
                     my_type = getType(sub_obj.Type.parent_type[0]) if sub_obj.Type.IsPropertyType else sub_obj.Type.Type
                     # get type order from bottom up of schema, check if my_type in that schema
                     top_ns = None
                     for new_ns, schema in reversed(sub_obj.Type.catalog.getSchemaDocByClass(my_ns).classes.items()):
-                        if my_type in schema.my_types: 
+                        if my_type in schema.my_types:
                             if top_ns is None:
                                 top_ns = new_ns
                             if not compareMinVersion(new_ns, my_limit):
