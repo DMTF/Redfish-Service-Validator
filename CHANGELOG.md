@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.0.5] - 2021-10-15
+- Corrected namespace referencing for objects nested in objects
+
 ## [2.0.4] - 2021-10-04
 - Updated schema pack link to point to the latest DSP8010 bundle
 
