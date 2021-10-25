@@ -777,7 +777,7 @@ class RedfishObject(RedfishProperty):
                     my_type = getType(sub_obj.Type.parent_type[0]) if sub_obj.Type.IsPropertyType else sub_obj.Type.Type
                     # get type order from bottom up of schema, check if my_type in that schema
                     top_ns = None
-                    for new_ns, schema in reversed(sub_obj.Type.catalog.getSchemaDocByClass(my_ns).classes.items()):
+                    for new_ns, schema in reversed(list(sub_obj.Type.catalog.getSchemaDocByClass(my_ns).classes.items())):
                         if my_type in schema.my_types:
                             if top_ns is None:
                                 top_ns = new_ns
