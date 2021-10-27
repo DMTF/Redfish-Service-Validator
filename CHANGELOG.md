@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.0.6] - 2021-10-27
+- Corrected use of iterators to be compatible with versions of Python older than 3.8
+
 ## [2.0.5] - 2021-10-15
 - Corrected namespace referencing for objects nested in objects
 
