@@ -801,6 +801,9 @@ class RedfishObject(RedfishProperty):
         if isinstance(payload, list):
             payloads = payload
         for load in payloads:
+            if load is None:
+                # If the object is null, treat it as an empty object for the cataloging
+                load = {}
             sub_obj = copy.copy(eval_obj)
 
             # Cast types if they're below their parent or are OemObjects
