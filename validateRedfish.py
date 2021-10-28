@@ -436,13 +436,28 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                         'complex')
         for n, sub_obj in enumerate(prop.Collection):
             try:
-                subMsgs, subCounts = validateComplex(service, sub_obj, prop_name, oem_check)
-                if len(prop.Collection) == 1:
-                    subMsgs = {'{}.{}'.format(prop_name,x):y for x,y in subMsgs.items()}
+                if sub_obj.Value is None:
+                    if propNullablePass:
+                        counts['pass'] += 1
+                        result_str = 'PASS'
+                    else:
+                        my_logger.error('{}: Property is null but is not Nullable'.format(prop_name))
+                        counts['failNullable'] += 1
+                        result_str = 'FAIL'
+                    if len(prop.Collection) == 1:
+                        resultList['{}.<Value>'.format(prop_name)] = ('[null]', displayType(prop.Type),
+                                                                      'Yes' if prop.Exists else 'No', result_str)
+                    else:
+                        resultList['{}.<Value>#{}'.format(prop_name,n)] = ('[null]', displayType(prop.Type),
+                                                                           'Yes' if prop.Exists else 'No', result_str)
                 else:
-                    subMsgs = {'{}.{}#{}'.format(prop_name,x,n):y for x,y in subMsgs.items()}
-                resultList.update(subMsgs)
-                counts.update(subCounts)
+                    subMsgs, subCounts = validateComplex(service, sub_obj, prop_name, oem_check)
+                    if len(prop.Collection) == 1:
+                        subMsgs = {'{}.{}'.format(prop_name,x):y for x,y in subMsgs.items()}
+                    else:
+                        subMsgs = {'{}.{}#{}'.format(prop_name,x,n):y for x,y in subMsgs.items()}
+                    resultList.update(subMsgs)
+                    counts.update(subCounts)
             except Exception as ex:
                 my_logger.log(logging.INFO-1, 'Exception caught while validating Complex', exc_info=1)
                 my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
