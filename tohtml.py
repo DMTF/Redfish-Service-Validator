@@ -319,7 +319,7 @@ def htmlLogScraper(htmlReport, output_name=None):
         resNumHtml = tr.find('div', {'class':'button warn'})
         resNum = resNumHtml.attrs['onclick'].split(";")
         resNum = resNum[0].split("'")[1] if len(resNum) < 3 else resNum[1].split("'")[1]
-        results = URI+'*'+Status+'*'+responseTime+'*'+context+'*'+FileOrigin+'*'+ResourceType+'*' #using * for csv splitting since some values have commas
+        results = [ URI, Status, responseTime, context, FileOrigin, ResourceType ]
         glanceDetails[resNum] = results # mapping of results to their respective tables
 
     properties = soup.findAll('td',{'class':'results'})
@@ -334,8 +334,8 @@ def htmlLogScraper(htmlReport, output_name=None):
             td = tr.find_all('td')
             row = [i.text for i in td]
             if tableID in glanceDetails:
-                data.append(glanceDetails[tableID]+'*'.join(row))
-    csv_output.writerows([x.split('*') for x in data]) #using * for csv splitting since some values have commas
+                data.append(glanceDetails[tableID] + row)
+    csv_output.writerows(data)
     output.close()
 
 
