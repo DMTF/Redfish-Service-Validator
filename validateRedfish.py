@@ -439,7 +439,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         for n, sub_obj in enumerate(prop.Collection):
             try:
                 if sub_obj.Value is None:
-                    if propNullablePass:
+                    if sub_obj.Type.IsNullable:
                         counts['pass'] += 1
                         result_str = 'PASS'
                     else:
