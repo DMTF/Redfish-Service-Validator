@@ -437,7 +437,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         for n, sub_obj in enumerate(prop.Collection):
             try:
                 if sub_obj.Value is None:
-                    if sub_obj.Type.IsNullable:
+                    if prop.Type.IsNullable:
                         counts['pass'] += 1
                         result_str = 'PASS'
                     else:
@@ -445,10 +445,10 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                         counts['failNullable'] += 1
                         result_str = 'FAIL'
                     if len(prop.Collection) == 1:
-                        resultList['{}.<Value>'.format(prop_name)] = ('[null]', displayType(prop.Type),
+                        resultList['{}.[Value]'.format(prop_name)] = ('[null]', displayType(prop.Type),
                                                                       'Yes' if prop.Exists else 'No', result_str)
                     else:
-                        resultList['{}.<Value>#{}'.format(prop_name,n)] = ('[null]', displayType(prop.Type),
+                        resultList['{}.[Value]#{}'.format(prop_name,n)] = ('[null]', displayType(prop.Type),
                                                                            'Yes' if prop.Exists else 'No', result_str)
                 else:
                     subMsgs, subCounts = validateComplex(service, sub_obj, prop_name, oem_check)
