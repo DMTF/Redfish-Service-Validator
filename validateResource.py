@@ -142,8 +142,12 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
             if redfish_obj.HasValidUri:
                 counts['passRedfishUri'] += 1
             else:
-                counts['failRedfishUri'] += 1
-                my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
+                if '/Oem/' in odata_id:
+                    counts['warnRedfishUri'] += 1
+                    my_logger.warning('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
+                else:
+                    counts['failRedfishUri'] += 1
+                    my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
 
     if not successPayload:
         counts['failPayloadError'] += 1
