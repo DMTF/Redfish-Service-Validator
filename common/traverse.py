@@ -55,7 +55,7 @@ class rfService():
         self.config['certificatebundle'] = None
         self.config['timeout'] = 10
 
-        self.catalog = catalog.SchemaCatalog('./SchemaFiles/metadata/')
+        self.catalog = catalog.SchemaCatalog(self.config['metadatafilepath'])
 
         if not self.config['usessl'] and not self.config['forceauth']:
             if self.config['username'] not in ['', None] or self.config['password'] not in ['', None]:
