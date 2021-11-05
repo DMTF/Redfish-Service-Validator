@@ -74,9 +74,11 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     try:
         if expectedJson is None:
             ret = service.callResourceURI(URI)
-            success, me['payload'], me['rcode'], me['rtime'] = ret
+            success, me['payload'], response, me['rtime'] = ret
+            me['rcode'] = response.status
         else:
             success, me['payload'], me['rcode'], me['rtime'] = True, expectedJson, -1, 0
+            response = None
         
         if not success:
             my_logger.error('URI did not return resource {}'.format(URI))
@@ -144,10 +146,26 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
             else:
                 if '/Oem/' in odata_id:
                     counts['warnRedfishUri'] += 1
+                    modified_entry = messages['@odata.id']
+                    modified_entry.result = 'WARN'
                     my_logger.warning('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
                 else:
                     counts['failRedfishUri'] += 1
+                    modified_entry = messages['@odata.id']
+                    modified_entry.result = 'FAIL'
                     my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
+
+    if response and response.getheader('Allow'):
+        allowed_responses = [x.strip().upper() for x in response.getheader('Allow').split(',')]
+        if not redfish_obj.Type.CanInsert and 'POST' in allowed_responses:
+            my_logger.error('Allow header should NOT contain POST for {}'.format(redfish_obj.Type))
+            counts['failAllowHeader'] += 1
+        if not redfish_obj.Type.CanDelete and 'DELETE' in allowed_responses:
+            my_logger.error('Allow header should NOT contain DELETE for {}'.format(redfish_obj.Type))
+            counts['failAllowHeader'] += 1
+        if not redfish_obj.Type.CanUpdate and any([x in allowed_responses for x in ['PATCH', 'PUT']]):
+            my_logger.error('Allow header should NOT contain PATCH or PUT for {}'.format(redfish_obj.Type))
+            counts['failAllowHeader'] += 1
 
     if not successPayload:
         counts['failPayloadError'] += 1
@@ -176,7 +194,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
             if '@Redfish.Copyright' in propMessages:
                 modified_entry = propMessages['@Redfish.Copyright']
-                modified_entry.success = 'FAIL'
+                modified_entry.result = 'FAIL'
                 my_logger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
 
             messages.update(propMessages)
@@ -341,7 +359,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
 
 
             my_link_type = link.Type.parent_type[0] if link.Type.IsPropertyType else link.Type.fulltype
-            success, my_data, _, __ = service.callResourceURI(link_destination)
+            success, my_data, _, _ = service.callResourceURI(link_destination)
             # Using None instead of refparent simply because the parent is not where the link comes from
             returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name,
                     my_link_type, my_data, None, allLinks)

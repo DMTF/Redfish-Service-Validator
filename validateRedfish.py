@@ -106,9 +106,11 @@ def validateEntity(service, prop, val, parentURI=""):
     # check if the entity is truly what it's supposed to be
     # if not autoexpand, we must grab the resource
     if not autoExpand:
-        success, data, status, delay = service.callResourceURI(uri)
+        success, data, _, delay = service.callResourceURI(uri)
+        status = _.status
     else:
-        success, data, status, delay = True, val, 200, 0
+        success, data, _, delay = True, val, None, 0
+        status = 200
 
     generics = ['Resource.ItemOrCollection', 'Resource.ResourceCollection', 'Resource.Item', 'Resource.Resource']
     my_type = prop.Type.parent_type[0] if prop.Type.IsPropertyType else prop.Type.fulltype

@@ -49,7 +49,7 @@
         <Annotation Term="Redfish.Uris">
           <Collection>
             <String>/redfish/v1/Example</String>
-            <String>/redfish/v1/Examples/{Id}</String>
+            <String>/redfish/v1/Examples/{ExampleId}</String>
           </Collection>
         </Annotation>
       </EntityType>

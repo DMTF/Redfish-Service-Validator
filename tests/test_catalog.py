@@ -103,6 +103,15 @@ class TestCatalog(unittest.TestCase):
         pprint.pprint(object.as_json(), indent=2)
         dct = object.as_json()
         dct = object.getLinks()
+
+    def test_capabilities(self):
+        my_catalog = catalog.SchemaCatalog('./tests/testdata/schemas/')
+        my_schema_doc = my_catalog.getSchemaDocByClass("Example.v1_0_0.Example")
+        my_type = my_schema_doc.getTypeInSchemaDoc("Example.v1_0_0.Example")
+        print(my_type.getCapabilities())
+        print(my_type.CanUpdate)
+        print(my_type.CanInsert)
+        print(my_type.CanDelete)
     
     def test_expected_uris(self):
         print('\nTesting expected Uris')
@@ -125,13 +134,13 @@ class TestCatalog(unittest.TestCase):
             })
         print(object.HasValidUri)
         object = catalog.RedfishObject( my_type ).populate({
-            "@odata.id": "/redfish/v1/Examples/FunnyID",
-            "Id": None,
+            "@odata.id": "/redfish/v1/Examples/FunnyId",
+            "Id": 'FunnyId',
             "Description": None
             })
         print(object.HasValidUri)
         object = catalog.RedfishObject( my_type ).populate({
-            "@odata.id": "/redfish/v1/Example/NoId",
+            "@odata.id": "/redfish/v1/Examples/NoId",
             "Id": None,
             "Description": None
             })

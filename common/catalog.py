@@ -20,7 +20,24 @@ includeTuple = namedtuple("include", ["Namespace", "Uri"])
 
 my_logger = logging.getLogger(__name__)
 
+REDFISH_ABSENT = "n/a"
 
+URI_ID_REGEX = '\{[A-Za-z0-9]*Id\}'
+
+# Excerpt definitions
+class ExcerptTypes(Enum):
+    NEUTRAL = auto()
+    CONTAINS = auto()
+    ALLOWED = auto()
+    EXCLUSIVE = auto()
+
+excerpt_info_by_type = {
+    'Redfish.ExcerptCopy': ExcerptTypes.CONTAINS,
+    'Redfish.Excerpt': ExcerptTypes.ALLOWED,
+    'Redfish.ExcerptCopyOnly': ExcerptTypes.EXCLUSIVE
+}
+
+allowed_annotations = ['odata', 'Redfish', 'Privileges', 'Message']
 
 def get_fuzzy_property(prop_name: str, jsondata: dict, allPropList=[]):
     """
@@ -144,9 +161,6 @@ class SchemaCatalog:
         my_doc = self.getSchemaDocByClass(typename)
         return my_doc.getTypeInSchemaDoc(fulltype)
         
-
-REDFISH_ABSENT = "n/a"
-
 
 class SchemaDoc:
     """Represents a schema document."""
@@ -311,20 +325,6 @@ class SchemaClass:
         return my_type
 
 
-# Excerpt definitions
-class ExcerptTypes(Enum):
-    NEUTRAL = auto()
-    CONTAINS = auto()
-    ALLOWED = auto()
-    EXCLUSIVE = auto()
-
-
-excerpt_info_by_type = {
-    'Redfish.ExcerptCopy': ExcerptTypes.CONTAINS,
-    'Redfish.Excerpt': ExcerptTypes.ALLOWED,
-    'Redfish.ExcerptCopyOnly': ExcerptTypes.EXCLUSIVE
-}
-
 class RedfishType:
     """Redfish Type
 
@@ -426,6 +426,43 @@ class RedfishType:
                     else False))
             if HasAdditional: return True
         return False
+
+    @property
+    def CanUpdate(self):
+        return self.getCapabilities()['CanUpdate']
+
+    @property
+    def CanDelete(self):
+        return self.getCapabilities()['CanDelete']
+
+    @property
+    def CanInsert(self):
+        return self.getCapabilities()['CanInsert']
+
+    def getCapabilities(self):
+        my_dict = {'CanUpdate': False,
+                   'CanInsert': False,
+                   'CanDelete': False}
+
+        my_parents = self.getTypeTree()
+        for my_type in reversed(my_parents):
+            if not isinstance(my_type, RedfishType): continue
+            try:
+                element = my_type.type_soup.find("Annotation", attrs={"Term": "Capabilities.InsertRestrictions"})
+                if element:
+                    my_dict['CanInsert'] = element.find("PropertyValue").get('Bool', 'False').lower() == 'true'
+                element = my_type.type_soup.find("Annotation", attrs={"Term": "Capabilities.UpdateRestrictions"})
+                if element:
+                    my_dict['CanUpdate'] = element.find("PropertyValue").get('Bool', 'False').lower() == 'true'
+                element = my_type.type_soup.find("Annotation", attrs={"Term": "Capabilities.DeleteRestrictions"})
+                if element:
+                    my_dict['CanDelete'] = element.find("PropertyValue").get('Bool', 'False').lower() == 'true'
+            except Exception as e:
+                my_logger.debug('Exception caught while checking Uri', exc_info=1)
+                my_logger.warn('Could not gather info from Capabilities annotation')
+                return {'CanUpdate': False, 'CanInsert': False, 'CanDelete': False}
+
+        return my_dict
 
     def getUris(self):
         """
@@ -572,6 +609,7 @@ class RedfishType:
     def createObject(self):
         return RedfishObject(self)
                 
+
 class RedfishProperty(object):
     """Property in a resource
     Represents all Types given, however, ComplexTypes are better suited to be RedfishObjects
@@ -716,17 +754,7 @@ class RedfishProperty(object):
         else:
             return False
 
-allowed_annotations = ['odata', 'Redfish', 'Privileges', 'Message']
-# class RedfishAnnotation(RedfishProperty):
-#     def populate(self, val, check=False):
-#         eval_prop = copy.copy(self)
-#         eval_prop.Populated = True
-#         eval_prop.Value = val
-#         eval_prop.IsValid = True
-#         eval_prop.SchemaExists = True
-#         eval_prop.Exists = val != REDFISH_ABSENT
 
-URI_ID_REGEX = '\{[A-Za-z0-9]*Id\}'
 class RedfishObject(RedfishProperty):
     """Represents Redfish as they are represented as Resource/ComplexTypes
 
