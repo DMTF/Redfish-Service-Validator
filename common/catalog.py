@@ -789,7 +789,7 @@ class RedfishObject(RedfishProperty):
 
         if payload == REDFISH_ABSENT:
             eval_obj.Collection = []
-            eval_obj.IsValid = eval_obj.Type.IsMandatory
+            eval_obj.IsValid = eval_obj.Type.IsNullable
             eval_obj.HasValidUri = True
             eval_obj.properties = {x:y.populate(REDFISH_ABSENT) for x, y in eval_obj.properties.items()}
             return eval_obj
