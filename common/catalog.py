@@ -719,8 +719,11 @@ class RedfishObject(RedfishProperty):
         eval_obj = super().populate(payload)
         eval_obj.payload = payload
 
-        if payload == REDFISH_ABSENT:
+        if payload == REDFISH_ABSENT or payload is None:
             eval_obj.Collection = []
+            if payload is None:
+                sub_obj = copy.copy(eval_obj)
+                eval_obj.Collection = [sub_obj]
             eval_obj.IsValid = eval_obj.Type.IsNullable
             eval_obj.properties = {x:y.populate(REDFISH_ABSENT) for x, y in eval_obj.properties.items()}
             return eval_obj
@@ -732,6 +735,9 @@ class RedfishObject(RedfishProperty):
         if isinstance(payload, list):
             payloads = payload
         for load in payloads:
+            if load is None:
+                # If the object is null, treat it as an empty object for the cataloging
+                load = {}
             sub_obj = copy.copy(eval_obj)
             # Cast types if they're below their parent or are OemObjects
             already_typed = False
