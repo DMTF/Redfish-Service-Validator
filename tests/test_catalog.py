@@ -24,6 +24,7 @@ class TestCatalog(unittest.TestCase):
         self.assertEqual(val, 'PropertyA')
         val = catalog.get_fuzzy_property('PropertyA', {'Name': 'Payload'}, ['PropertyB'])
         self.assertEqual(val, 'PropertyA')
+        # OK
 
     def test_catalog(self):
         print('\n')
@@ -38,6 +39,7 @@ class TestCatalog(unittest.TestCase):
         my_type = my_catalog.getTypeInCatalog('Example.v1_7_0.Example')
 
         my_type = my_catalog.getTypeInCatalog('Example.v1_2_0.Links')
+        # OK
     
     def test_schema_doc(self):
         print('\n')
@@ -66,7 +68,7 @@ class TestCatalog(unittest.TestCase):
         my_schema = my_catalog.getSchemaInCatalog('Example.v1_0_0')
     
     def test_basic_properties(self):
-        print('\n')
+        print('\nTesting basic types as json')
         prop = catalog.RedfishProperty("Edm.Int").populate(1)
         print(prop.as_json())
         prop = catalog.RedfishProperty("Edm.Decimal").populate(1.1)
@@ -77,19 +79,19 @@ class TestCatalog(unittest.TestCase):
         print(prop.as_json())
 
     def test_basic_properties_check(self):
-        print('\n')
+        print('\nTesting check values')
         prop = catalog.RedfishProperty("Edm.Int").populate(1, check=True)
         prop = catalog.RedfishProperty("Edm.Int").populate(1.1, check=True)
         prop = catalog.RedfishProperty("Edm.Int").populate("1", check=True)
         prop = catalog.RedfishProperty("Edm.Decimal").populate(1.1, check=True)
         prop = catalog.RedfishProperty("Edm.Decimal").populate("1.1", check=True)
-        prop = catalog.RedfishProperty("Edm.String").populate("1")
-        prop = catalog.RedfishProperty("Edm.String").populate(1)
+        prop = catalog.RedfishProperty("Edm.String").populate("1", check=True)
+        prop = catalog.RedfishProperty("Edm.String").populate(1, check=True)
         prop = catalog.RedfishProperty("Edm.Guid").populate("123", check=True)
         prop = catalog.RedfishProperty("Edm.Guid").populate(catalog.REDFISH_ABSENT, check=True)
     
     def test_object(self):
-        print('\n')
+        print('\nTesting object values')
         my_catalog = catalog.SchemaCatalog('./tests/testdata/schemas/')
         my_schema_doc = my_catalog.getSchemaDocByClass("ExampleResource.v1_0_0.ExampleResource")
         my_type = my_schema_doc.getTypeInSchemaDoc("ExampleResource.v1_0_0.ExampleResource")
@@ -101,6 +103,40 @@ class TestCatalog(unittest.TestCase):
         pprint.pprint(object.as_json(), indent=2)
         dct = object.as_json()
         dct = object.getLinks()
+    
+    def test_expected_uris(self):
+        print('\nTesting expected Uris')
+        my_catalog = catalog.SchemaCatalog('./tests/testdata/schemas/')
+        my_schema_doc = my_catalog.getSchemaDocByClass("Example.v1_0_0.Example")
+        my_type = my_schema_doc.getTypeInSchemaDoc("Example.v1_0_0.Example")
+        object = catalog.RedfishObject( my_type )
+        arr = object.Type.getUris()
+        self.assertEqual(len(arr), 2)
+        object = catalog.RedfishObject( my_type ).populate({
+            "@odata.id": "/redfish/v1/Example",
+            "Id": None,
+            "Description": None
+            })
+        print(object.HasValidUri)
+        object = catalog.RedfishObject( my_type ).populate({
+            "@odata.id": "/redfish/v1/Examples",
+            "Id": None,
+            "Description": None
+            })
+        print(object.HasValidUri)
+        object = catalog.RedfishObject( my_type ).populate({
+            "@odata.id": "/redfish/v1/Examples/FunnyID",
+            "Id": None,
+            "Description": None
+            })
+        print(object.HasValidUri)
+        object = catalog.RedfishObject( my_type ).populate({
+            "@odata.id": "/redfish/v1/Example/NoId",
+            "Id": None,
+            "Description": None
+            })
+        print(object.HasValidUri)
+
 
 
 if __name__ == '__main__':

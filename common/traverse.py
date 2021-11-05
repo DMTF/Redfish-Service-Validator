@@ -10,7 +10,7 @@ from http.client import responses
 
 import redfish as rf
 import common.catalog as catalog
-from common.helper import navigateJsonFragment
+from common.helper import navigateJsonFragment, compareMinVersion
 from common.metadata import Metadata
 
 import logging
@@ -28,19 +28,6 @@ def getLogger():
     Grab logger for tools that might use this lib
     """
     return my_logger
-
-def startService(config):
-    """startService
-
-    Begin service to use, sets as global
-
-    Notes: Strip globals, turn into normal factory
-
-    :param config: configuration of service
-    :param defaulted: config options not specified by the user
-    """
-    newService = rfService(config)
-    return newService
 
 class rfService():
     def __init__(self, config):
@@ -81,6 +68,12 @@ class rfService():
                 target_version = data['RedfishVersion']
         if target_version in ['1.0.0', 'n/a']:
             traverseLogger.warning('!!Version of target may produce issues!!')
+        if not compareMinVersion(target_version, '1.6.0') and not self.config['uricheck']:
+            traverseLogger.warning('RedfishVersion below 1.6.0, disabling uri checks')
+            self.catalog.flags['ignore_uri_checks'] = True
+        else:
+            self.catalog.flags['ignore_uri_checks'] = False
+            self.config['uricheck'] = True
         
         self.service_root = data
         success, data, status, delay = self.callResourceURI(Metadata.metadata_uri)

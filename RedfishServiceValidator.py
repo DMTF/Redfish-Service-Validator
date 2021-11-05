@@ -46,6 +46,7 @@ def main(argslist=None, configfile=None):
     argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
     argget.add_argument('--nooemcheck', action='store_false', dest='oemcheck', help='Don\'t check OEM items')
     argget.add_argument('--debugging', action="store_true", help='Output debug statements to text log, otherwise it only uses INFO')
+    argget.add_argument('--uricheck', action="store_true", help='Allow URI checking on services below RedfishVersion 1.6.0')
     argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
 
     # parse...
@@ -120,7 +121,7 @@ def main(argslist=None, configfile=None):
 
     import common.traverse as traverse
     try:
-        currentService = traverse.startService(vars(args))
+        currentService = traverse.rfService(vars(args))
     except Exception as ex:
         my_logger.log(logging.INFO-1, 'Exception caught while creating Service', exc_info=1)
         my_logger.error("Service could not be started: {}".format(repr(ex)))

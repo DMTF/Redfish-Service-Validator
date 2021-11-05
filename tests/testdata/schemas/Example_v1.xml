@@ -46,6 +46,12 @@
             <PropertyValue Property="Deletable" Bool="false"/>
           </Record>
         </Annotation>
+        <Annotation Term="Redfish.Uris">
+          <Collection>
+            <String>/redfish/v1/Example</String>
+            <String>/redfish/v1/Examples/{Id}</String>
+          </Collection>
+        </Annotation>
       </EntityType>
 
       <Action Name="ExampleAction" IsBound="true">
@@ -100,7 +106,7 @@
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="Redfish.Required"/>
         </Property>
-        <Property Name="Status" Type="ExampleExampleResource.Status" Nullable="false"/>
+        <Property Name="Status" Type="ExampleResource.Status" Nullable="false"/>
         <Property Name="cString" Type="Edm.String">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
@@ -133,7 +139,7 @@
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="Redfish.Required"/>
         </Property>
-        <Property Name="Status" Type="ExampleExampleResource.Status" Nullable="false"/>
+        <Property Name="Status" Type="ExampleResource.Status" Nullable="false"/>
         <Property Name="pString" Type="Edm.String">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
         </Property>
@@ -177,35 +183,11 @@
         <Property Name="ComplexInner" Type="Example.v1_0_0.ComplexInner" Nullable="false">
         </Property>
 
-        <NavigationProperty Name="LogServices" Type="LogServiceCollection.LogServiceCollection" ContainsTarget="true" Nullable="false">
-          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="A reference to the logs for this chassis."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be a link to a collection of type LogServiceCollection."/>
-          <Annotation Term="OData.AutoExpandReferences"/>
-        </NavigationProperty>
-        <NavigationProperty Name="Thermal" Type="Thermal.Thermal" ContainsTarget="true" Nullable="false">
-          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="A reference to the thermal properties (fans, cooling, sensors) of this chassis."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be a reference to the resource that represents the thermal characteristics of this chassis and shall be of type Thermal."/>
-          <Annotation Term="OData.AutoExpandReferences"/>
-        </NavigationProperty>
-        <NavigationProperty Name="Power" Type="Power.Power" ContainsTarget="true" Nullable="false">
-          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="A reference to the power properties (power supplies, power policies, sensors) of this chassis."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be a reference to the resource that represents the power characteristics of this chassis and shall be of type Power."/>
-          <Annotation Term="OData.AutoExpandReferences"/>
-        </NavigationProperty>
       </EntityType>
 
       <ComplexType Name="Links" BaseType="ExampleResource.Links">
         <Annotation Term="OData.Description" String="Contains references to other resources that are related to this resource."/>
         <Annotation Term="OData.LongDescription" String="This type, as described by the Redfish Specification, shall contain references to resources that are related to, but not contained by (subordinate to), this resource."/>
-        <NavigationProperty Name="ManagedBy" Type="Collection(Manager.Manager)">
-          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="An array of references to the Managers responsible for managing this chassis."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be a reference to the resource that manages this chassis and shall reference a resource of type Manager."/>
-          <Annotation Term="OData.AutoExpandReferences"/>
-        </NavigationProperty>
         <NavigationProperty Name="ContainedBy" Type="Example.Example" Nullable="false">
           <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
           <Annotation Term="OData.Description" String="A reference to the chassis that this chassis is contained by."/>
@@ -495,12 +477,6 @@
           <Annotation Term="Validation.Minimum" Int="0"/>
           <Annotation Term="Measures.Unit" String="kg"/>
         </Property>
-        <NavigationProperty Name="NetworkAdapters" Type="NetworkAdapterCollection.NetworkAdapterCollection" ContainsTarget="true" Nullable="false">
-          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="A reference to the collection of Network Adapters associated with this chassis."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be a link to a collection of type NetworkAdapterCollection."/>
-          <Annotation Term="OData.AutoExpandReferences"/>
-        </NavigationProperty>
       </EntityType>
 
       <ComplexType Name="Links" BaseType="Example.v1_2_0.Links">
@@ -561,12 +537,6 @@
       <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
       <Annotation Term="OData.Description" String="This version was created to add a link to an Assembly resource."/>
       <EntityType Name="Example" BaseType="Example.v1_5_2.Example">
-        <NavigationProperty Name="Assembly" Type="Assembly.Assembly" ContainsTarget="true" Nullable="false">
-          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
-          <Annotation Term="OData.Description" String="A reference to the Assembly resource associated with this chassis."/>
-          <Annotation Term="OData.LongDescription" String="The value of this property shall be a link to a resource of type Assembly."/>
-          <Annotation Term="OData.AutoExpandReferences"/>
-        </NavigationProperty>
       </EntityType>
     </Schema>
 

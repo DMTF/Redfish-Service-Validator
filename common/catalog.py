@@ -20,6 +20,8 @@ includeTuple = namedtuple("include", ["Namespace", "Uri"])
 
 my_logger = logging.getLogger(__name__)
 
+
+
 def get_fuzzy_property(prop_name: str, jsondata: dict, allPropList=[]):
     """
     Get property closest to the discovered property.
@@ -72,6 +74,9 @@ class SchemaCatalog:
         self.alias = {}
         self.catalog = {}
         self.catalog_by_class = {}
+        self.flags = {
+            'ignore_uri_checks': False
+        }
         my_logger.debug("Creating Schema catalog from filepath {}".format(filepath))
 
         # create SchemaDoc objects
@@ -346,10 +351,12 @@ class RedfishType:
 
         if self.tag_type in ['NavigationProperty', 'Property', 'Term']:
             self.IsPropertyType = True
+            self.IsNav = self.tag_type in ['NavigationProperty']
             self.fulltype = self.owner.class_name + ':' + soup['Name']
             self.Namespace, self.Type = getNamespace(self.fulltype), getType(self.fulltype)
         else:
             self.IsPropertyType = False
+            self.IsNav = False
             self.fulltype = self.owner.class_name + '.' + soup['Name']
             self.Namespace, self.Type = getNamespace(self.fulltype), getType(self.fulltype)
 
@@ -362,10 +369,7 @@ class RedfishType:
             if (tag.get('Term') == 'Redfish.Revisions'):
                 self.tags[tag['Term']] = tag.find_all('Record')
 
-
-
         dynamic = self.type_soup.find("Annotation", attrs={"Term": "Redfish.DynamicPropertyPatterns"})
-        uriElement = self.type_soup.find("Annotation", attrs={"Term": "Redfish.Uris"})
         propPermissions = self.tags.get('OData.Permissions')
 
         self.IsMandatory = self.tags.get('Redfish.Required') is not None
@@ -400,19 +404,6 @@ class RedfishType:
                     "Type": type_elem.get("String"),
                 }
 
-        self.expectedURI = None
-        if uriElement is not None:
-            try:
-                all_strings = uriElement.find("Collection").find_all("String")
-                self.expectedURI = [e.contents[0] for e in all_strings]
-            except Exception as e:
-                # logger.debug('Exception caught while checking URI', exc_info=1)
-                # logger.warn('Could not gather info from Redfish.Uris annotation')
-                self.expectedURI = None
-            uriElement = self.type_soup.find(
-                "Annotation", attrs={"Term": "Redfish.Uris"}
-            )
-
         # get properties
         prop_tags = self.type_soup.find_all( ["NavigationProperty", "Property"], recursive=False)
     
@@ -435,9 +426,38 @@ class RedfishType:
                     else False))
             if HasAdditional: return True
         return False
+
+    def getUris(self):
+        """
+        Return Redfish.Uris annotation values
+
+        :return: Array of Uris
+        :rtype: list
+        """
+        my_parents = self.getTypeTree()
+        expectedUris = []
+        for my_type in my_parents:
+            if not isinstance(my_type, RedfishType): continue
+            uriElement = my_type.type_soup.find("Annotation", attrs={"Term": "Redfish.Uris"})
+            if uriElement is not None:
+                try:
+                    all_strings = uriElement.find("Collection").find_all("String")
+                    expectedUris += [e.contents[0] for e in all_strings]
+                except Exception as e:
+                    my_logger.debug('Exception caught while checking Uri', exc_info=1)
+                    my_logger.warn('Could not gather info from Redfish.Uris annotation')
+                    expectedUris = []
+        return expectedUris
      
     @property 
     def parent_type(self):
+        """
+        Returns string of the parent type, and if that type is a collection
+
+        Returns:
+            string, boolean
+            None, False
+        """
         soup = self.type_soup
         parent_type = (
             soup["UnderlyingType"] if self.tag_type == "TypeDefinition"
@@ -450,6 +470,9 @@ class RedfishType:
             return None, False
         
     def getTypeTree(self, tree=None):
+        """
+        Returns tree of RedfishType/string of parent types
+        """
         if not tree: tree = [self]
         my_type, collection = self.parent_type
         if my_type:
@@ -462,6 +485,16 @@ class RedfishType:
         return tree
 
     def getBaseType(self, is_collection=False):
+        """
+        Returns string representing our tag type, and if that type is a collection
+
+        TODO:  This should be an enum
+            possible values ["complex", "enum", "entity", "Edm.String", "Edm.Int"...]
+
+        Returns:
+            string, boolean
+            None, False
+        """
         if self.tag_type == "EnumType":
             return 'enum', is_collection
         if self.tag_type == "ComplexType":
@@ -478,12 +511,18 @@ class RedfishType:
         return 'none', is_collection
 
     def getProperties(self):
+        """
+        Returns all our properties from our current type and its parents
+        """
         all_properties = {}
         for type_obj in self.getTypeTree():
             all_properties.update(type_obj.unique_properties)
         return all_properties
 
     def validate(self, val):
+        """
+        Returns True if validation succeeds, else raises a ValueError
+        """
         my_logger.debug((self, val, self.fulltype, self.tag_type, self.parent_type))
         if val == REDFISH_ABSENT:
             if self.type_soup.find("Annotation", attrs={"Term": "Redfish.Required"}):
@@ -533,9 +572,6 @@ class RedfishType:
     def createObject(self):
         return RedfishObject(self)
                 
-        # if 'OemObject' in eval_prop.Type.fulltype:
-        #     my_real_type = val.get('@odata.type', 'Resource.OemObject')
-        #     eval_prop.Type = eval_prop.Type.owner.parent_doc.catalog.getSchemaDocByClass(my_real_type).getTypeInSchemaDoc(my_real_type)
 class RedfishProperty(object):
     """Property in a resource
     Represents all Types given, however, ComplexTypes are better suited to be RedfishObjects
@@ -554,7 +590,7 @@ class RedfishProperty(object):
         eval_prop = copy.copy(self)
         eval_prop.Populated = True
         eval_prop.Value = val
-        eval_prop.IsValid = True
+        eval_prop.IsValid = True # Needs consistency, should be @property 
         eval_prop.SchemaExists = True
         eval_prop.Exists = val != REDFISH_ABSENT
         if isinstance(eval_prop.Type, str) and 'Edm.' in eval_prop.Type and check:
@@ -690,6 +726,7 @@ allowed_annotations = ['odata', 'Redfish', 'Privileges', 'Message']
 #         eval_prop.SchemaExists = True
 #         eval_prop.Exists = val != REDFISH_ABSENT
 
+URI_ID_REGEX = '\{[A-Za-z0-9]*Id\}'
 class RedfishObject(RedfishProperty):
     """Represents Redfish as they are represented as Resource/ComplexTypes
 
@@ -713,15 +750,19 @@ class RedfishObject(RedfishProperty):
                     self.properties[prop] = RedfishProperty(typ, prop, self)
             except MissingSchemaError:
                 self.properties[prop] = RedfishProperty(REDFISH_ABSENT, prop, self)
-                my_logger.warn('Schema not found for {}'.format(typ))
+                my_logger.warning('Schema not found for {}'.format(typ))
+        
 
     def populate(self, payload, check=False, casted=False):
         eval_obj = super().populate(payload)
         eval_obj.payload = payload
 
+        # This doesn't accomodate for null objects, or null collections
+
         if payload == REDFISH_ABSENT:
             eval_obj.Collection = []
-            eval_obj.IsValid = eval_obj.Type.IsNullable
+            eval_obj.IsValid = eval_obj.Type.IsMandatory
+            eval_obj.HasValidUri = True
             eval_obj.properties = {x:y.populate(REDFISH_ABSENT) for x, y in eval_obj.properties.items()}
             return eval_obj
 
@@ -733,10 +774,13 @@ class RedfishObject(RedfishProperty):
             payloads = payload
         for load in payloads:
             sub_obj = copy.copy(eval_obj)
+
             # Cast types if they're below their parent or are OemObjects
             already_typed = False
             my_odata_type = load.get('@odata.type')
             if my_odata_type is not None and str(sub_obj.Type) == my_odata_type.strip('#'):
+                already_typed = True
+            if sub_obj.Type.IsNav:
                 already_typed = True
 
             # we can only cast if we have an odata type and valid schema
@@ -748,9 +792,9 @@ class RedfishObject(RedfishProperty):
                         type_obj = sub_obj.Type.catalog.getSchemaDocByClass(my_odata_type).getTypeInSchemaDoc(my_odata_type)
                         sub_obj = RedfishObject(type_obj, sub_obj.Name, sub_obj.parent).populate(load, check=check, casted=True)
                     except MissingSchemaError:
-                        my_logger.warn("Couldn't get schema for object, skipping OemObject {}".format(sub_obj.Name))
+                        my_logger.warning("Couldn't get schema for object, skipping OemObject {}".format(sub_obj.Name))
                     except Exception as e:
-                        my_logger.warn("Couldn't get schema for object (?), skipping OemObject {} : {}".format(sub_obj.Name, e))
+                        my_logger.warning("Couldn't get schema for object (?), skipping OemObject {} : {}".format(sub_obj.Name, e))
                     evals.append(sub_obj)
                     continue
             # or if we're a Resource or unversioned or v1_0_0 type
@@ -794,7 +838,58 @@ class RedfishObject(RedfishProperty):
                         evals.append(sub_obj)
                         continue
 
+            # Only valid if we are a dictionary...
             sub_obj.IsValid = isinstance(load, dict)
+
+            # Validate our Uri
+            sub_obj.HasValidUri = True
+            my_uris = sub_obj.Type.getUris()
+            # If we have expected URIs and @odata.id
+            # And we AREN'T a navigation property
+            if not sub_obj.Type.catalog.flags['ignore_uri_checks'] and len(my_uris) and '@odata.id' in load:
+                # Strip our URI and warn if that's the case
+                my_odata_id = load['@odata.id']
+                if my_odata_id != '/redfish/v1/' and my_odata_id[-1] == '/':
+                    if check: my_logger.warning('Stripping end of URI... {}'.format(my_odata_id))
+                    my_odata_id = my_odata_id.rstrip('/')
+                
+                # Initial check if our URI matches our format at all
+                # Setup REGEX...
+                my_uri_regex = "^{}$".format("|".join(my_uris))
+                my_uri_regex = re.sub(URI_ID_REGEX, "[A-Za-z0-9]+", my_uri_regex)
+                sub_obj.HasValidUri = re.fullmatch(my_uri_regex, my_odata_id) is not None
+
+                # iterate through our resource chain, if possible, to check IDs matching
+                # this won't check NavigationProperties but the Resources will
+                if sub_obj.HasValidUri and not sub_obj.Type.IsNav:
+                    sub_obj.HasValidUri = False
+                    my_object = sub_obj.parent
+
+                    # pair our type, Id value, and odata.id value
+                    my_odata_split = my_odata_id.split('/')
+                    my_id_chain = [(sub_obj.Type.Type, load.get('Id'), my_odata_split.pop())]
+                    while my_object: 
+                        my_id_chain.append( (my_object.Type.Type, my_object.payload.get('Id'), my_odata_split.pop() ))
+                        my_object = my_object.parent
+
+                    for my_uri in my_uris:
+                        # regex URI check to confirm which URI 
+                        my_uri_regex = re.sub(URI_ID_REGEX, "[A-Za-z0-9]+", "^{}$".format(my_uri))
+                        if re.fullmatch(my_uri_regex, my_odata_id):
+                            sub_obj.HasValidUri = True
+                            # pair our uri pieces with their types
+                            for section, rsc in zip(my_uri.split('/')[::-1], my_id_chain):
+                                if re.match(URI_ID_REGEX, section):
+                                    rsc_type, rsc_value, odata_value = rsc
+                                    my_str = re.sub('\{|Id\}|', '', section)
+                                    sub_obj.HasValidUri = sub_obj.HasValidUri and rsc_type == my_str and rsc_value == odata_value
+                                    if rsc_type != my_str:
+                                        my_logger.warning('Resource tree in URI {} has incorrect typing: {} {}'.format(my_odata_id, rsc_type, my_str))
+                                    if rsc_value != odata_value:
+                                        my_logger.warning('Resource tree in URI {} has incorrect ID: {} {}'.format(my_odata_id, rsc_value, odata_value))
+
+                            if sub_obj.HasValidUri:
+                                break
 
             if 'Resource.OemObject' in sub_obj.Type.getTypeTree():
                 evals.append(sub_obj)
@@ -878,7 +973,7 @@ class RedfishObject(RedfishProperty):
                         uri = act.get('@Redfish.ActionInfo')
                         if isinstance(uri, str):
                             links.append(RedfishObject(new_type, 'ActionInfo', item).populate({'@odata.id': uri}))
-                if item.Type.tag_type == 'NavigationProperty':
+                if item.Type.IsNav:
                     if isinstance(item.Value, list):
                         for num, val in enumerate(item.Value):
                             new_link = item.populate(val)
