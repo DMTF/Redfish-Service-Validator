@@ -541,7 +541,10 @@ class RedfishProperty(object):
     Represents all Types given, however, ComplexTypes are better suited to be RedfishObjects
     """
     def __repr__(self):
-        return "{}--{}".format(self.Name, self.Type)
+        if self.Populated:
+            return "{}--{}, Value: {}".format(self.Name, self.Type, self.Value)
+        else:
+            return "{}--{}".format(self.Name, self.Type)
 
     def __init__(self, my_type, name="Property", parent=None):
         self.Name = name
@@ -700,6 +703,12 @@ class RedfishObject(RedfishProperty):
     """
     def __getitem__(self, index):
         return self.properties[index]
+    
+    def __contains__(self, item):
+        if self.Populated:
+            return item in self.properties and self.properties[item].Exists
+        else:
+            return item in self.properties
 
     def __init__(self, redfish_type: RedfishType, name="Object", parent=None):
         super().__init__(redfish_type, name, parent)
@@ -731,9 +740,10 @@ class RedfishObject(RedfishProperty):
         # Representation for Complexes as Collection, unless it is not a list
         # If an list object changes when populated, it will be represented properly here
         evals = []
-        payloads = [payload]
         if isinstance(payload, list):
             payloads = payload
+        else:
+            payloads = [payload]
         for load in payloads:
             if load is None:
                 # If the object is null, treat it as an empty object for the cataloging
@@ -858,10 +868,18 @@ class RedfishObject(RedfishProperty):
                 e.Value = v
             eval_obj.Collection = evals
             return eval_obj
+    
+    @property
+    def IsCollection(self):
+        my_base, is_collection = self.Type.getBaseType()
+        return is_collection
 
     def as_json(self):
         if self.Populated:
-            return {'Properties' : {a: b.as_json() for a, b in self.properties.items() if (b.Exists or not b.IsValid)}}
+            if self.IsCollection and len(self.Collection):
+                return {'Properties' : {a: b.as_json() for a, b in self.Collection[0].properties.items() if (b.Exists or not b.IsValid)}}
+            else:
+                return {'Properties' : {a: b.as_json() for a, b in self.properties.items() if (b.Exists or not b.IsValid)}}
         else:
             # base = {'Self': super().as_json()}
             base = super().as_json()
