@@ -429,6 +429,8 @@ class RedfishType:
             if not isinstance(my_type, RedfishType): continue
             if 'Bios' in str(my_type) and 'Attributes' in str(my_type):
                 return True
+            if my_type == 'MessageRegistry.v1_0_0.MessageProperty':
+                return True
             additionalElement = my_type.type_soup.find("Annotation", attrs={"Term": "OData.AdditionalProperties"})
             HasAdditional = ( False if additionalElement is None else (
                     True if additionalElement.get("Bool", False) in ["True", "true", True]

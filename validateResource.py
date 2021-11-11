@@ -4,46 +4,14 @@
 
 import logging
 from collections import Counter, OrderedDict
-from io import StringIO
 
 import common.traverse as traverse
 import common.catalog as catalog
 from validateRedfish import checkPropertyConformance, displayValue
-from common.helper import getNamespace, getType, createContext, checkPayloadConformance, navigateJsonFragment, create_entry
+from common.helper import getNamespace, getType, createContext, checkPayloadConformance, navigateJsonFragment, create_entry, create_logging_capture, get_my_capture
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
-class WarnFilter(logging.Filter):
-       def filter(self, rec):
-           return rec.levelno == logging.WARN
-
-fmt = logging.Formatter('%(levelname)s - %(message)s')
-
-def create_logging_capture(this_logger):
-    errorMessages = StringIO()
-    warnMessages = StringIO()
-
-    errh = logging.StreamHandler(errorMessages)
-    errh.setLevel(logging.ERROR)
-    errh.setFormatter(fmt)
-
-    warnh = logging.StreamHandler(warnMessages)
-    warnh.setLevel(logging.WARN)
-    warnh.addFilter(WarnFilter())
-    warnh.setFormatter(fmt)
-
-    this_logger.addHandler(errh)
-    this_logger.addHandler(warnh)
-
-    return errh, warnh
-
-
-def get_my_capture(this_logger, handler):
-    this_logger.removeHandler(handler)
-    strings = handler.stream.getvalue()
-    handler.stream.close()
-    return strings
-
 
 def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=None, parent=None):
     # rs-assertion: 9.4.1
@@ -242,7 +210,10 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
 
     def executeLink(link, parent=None, my_payload=None):
         success, linkResults, extra_refs = True, {}, []
-        link_destination = link.Value.get('@odata.id')
+        if 'Uri' in link.Value:
+            link_destination = link.Value.get('Uri')
+        else:
+            link_destination = link.Value.get('@odata.id')
         if link.Type.Excerpt:
             return success, linkResults, extra_refs
         if link_destination is None:
@@ -283,7 +254,9 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
         if 'Location' in thisobj:
             for sub_obj in thisobj['Location'].Collection:
                 if 'Uri' in sub_obj:
-                    success, counts, results = validateRegistry(service, sub_obj['Uri'].Value)
+                    registry_uri = sub_obj['Uri'].Value
+                    success, my_data, _, rtime = service.callResourceURI(registry_uri)
+                    success, linkResults, extra_refs = executeLink(sub_obj, None, my_data)
 
     # If successful...
     if validateSuccess:
@@ -329,21 +302,3 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 results.update(linkResults)
 
     return validateSuccess, counts, results, refLinks, thisobj
-
-
-def validateRegistry(service, registry_uri):
-    """
-    Validates a Registry File
-    """
-    counts, results, messages = Counter(), OrderedDict(), OrderedDict()
-
-    ehandler, whandler = create_logging_capture(my_logger)
-
-    me = {'uri': registry_uri, 'success': False, 'counts': counts, 'messages': messages,
-            'errors': '', 'warns': '', 'rtime': '', 'rcode': 0,
-            'fulltype': '', 'context': '...', 'payload': {}}
-
-    success, my_data, _, __ = service.callResourceURI(registry_uri)
-    if success:
-        import pdb; pdb.set_trace()
-    return True, counts, results

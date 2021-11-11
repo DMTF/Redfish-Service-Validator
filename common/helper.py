@@ -4,6 +4,7 @@
 
 import re
 import logging
+from io import StringIO
 from types import SimpleNamespace
 
 my_logger = logging.getLogger()
@@ -190,3 +191,34 @@ def checkPayloadConformance(jsondata, uri):
         info[key] = (decoded[key], 'odata', 'Exists', 'PASS' if paramPass else 'FAIL')
         
     return success, info
+
+class WarnFilter(logging.Filter):
+       def filter(self, rec):
+           return rec.levelno == logging.WARN
+
+fmt = logging.Formatter('%(levelname)s - %(message)s')
+
+def create_logging_capture(this_logger):
+    errorMessages = StringIO()
+    warnMessages = StringIO()
+
+    errh = logging.StreamHandler(errorMessages)
+    errh.setLevel(logging.ERROR)
+    errh.setFormatter(fmt)
+
+    warnh = logging.StreamHandler(warnMessages)
+    warnh.setLevel(logging.WARN)
+    warnh.addFilter(WarnFilter())
+    warnh.setFormatter(fmt)
+
+    this_logger.addHandler(errh)
+    this_logger.addHandler(warnh)
+
+    return errh, warnh
+
+
+def get_my_capture(this_logger, handler):
+    this_logger.removeHandler(handler)
+    strings = handler.stream.getvalue()
+    handler.stream.close()
+    return strings
