@@ -164,8 +164,8 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
             my_logger.error('Allow header should NOT contain DELETE for {}'.format(redfish_obj.Type))
             counts['failAllowHeader'] += 1
         if not redfish_obj.Type.CanUpdate and any([x in allowed_responses for x in ['PATCH', 'PUT']]):
-            my_logger.error('Allow header should NOT contain PATCH or PUT for {}'.format(redfish_obj.Type))
-            counts['failAllowHeader'] += 1
+            my_logger.warning('Allow header should NOT contain PATCH or PUT for {}'.format(redfish_obj.Type))
+            counts['warnAllowHeader'] += 1
 
     if not successPayload:
         counts['failPayloadError'] += 1
