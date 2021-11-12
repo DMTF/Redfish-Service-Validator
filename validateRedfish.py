@@ -94,6 +94,9 @@ def validateEntity(service, prop, val, parentURI=""):
     my_logger.debug('validateEntity: name = {}'.format(name))
 
     # check for required @odata.id
+    if not isinstance(val, dict):
+        my_logger.info("{}: EntityType val is null/absent, not testing...".format(name))
+        return False
     uri = val.get('@odata.id')
     if '@odata.id' not in val:
         if autoExpand: uri = parentURI + '#/{}'.format(name.replace('[', '/').strip(']'))
