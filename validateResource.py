@@ -41,9 +41,11 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     try:
         if expectedJson is None:
             ret = service.callResourceURI(URI)
-            success, me['payload'], me['rcode'], me['rtime'] = ret
+            success, me['payload'], response, me['rtime'] = ret
+            me['rcode'] = response.status
         else:
             success, me['payload'], me['rcode'], me['rtime'] = True, expectedJson, -1, 0
+            response = None
         
         if not success:
             my_logger.error('URI did not return resource {}'.format(URI))
@@ -63,14 +65,16 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if my_type is None:
             redfish_obj = None
         else:
+            # TODO: don't have the distinction between Property Type and a Normal Type
             if isinstance(my_type, catalog.RedfishType):
-                my_type = my_type.parent_type[0] if my_type.IsPropertyType else my_type.fulltype
+                my_type = my_type.fulltype
             redfish_schema = service.catalog.getSchemaDocByClass(my_type)
             redfish_type = redfish_schema.getTypeInSchemaDoc(my_type)
             redfish_obj = catalog.RedfishObject(redfish_type, 'Object', parent=parent).populate(me['payload']) if redfish_type else None
-            me['fulltype'] = redfish_obj.Type.fulltype
 
-        if not redfish_obj:
+        if redfish_obj:
+            me['fulltype'] = redfish_obj.Type.fulltype
+        else:
             counts['problemResource'] += 1
             me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
             return False, counts, results, None, None
@@ -87,8 +91,8 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     counts['passGet'] += 1
 
     # verify odata_id properly resolves to its parent if holding fragment
-    odata_id = me['payload'].get('@odata.id', '')
-    if '#' in odata_id:
+    odata_id = me['payload'].get('@odata.id')
+    if odata_id is not None and '#' in odata_id:
         if parent is not None:
             payload_resolve = navigateJsonFragment(parent.payload, URI)
             if parent.payload.get('@odata.id') not in URI:
@@ -101,6 +105,35 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                 counts['badOdataIdResolution'] += 1
         else:
             my_logger.warn('No parent found with which to test @odata.id of ReferenceableMember')
+    
+    if service.config['uricheck']:
+        my_uris = redfish_obj.Type.getUris()
+        if odata_id is not None and redfish_obj.Populated and len(my_uris) > 0:
+            if redfish_obj.HasValidUri:
+                counts['passRedfishUri'] += 1
+            else:
+                if '/Oem/' in odata_id:
+                    counts['warnRedfishUri'] += 1
+                    modified_entry = messages['@odata.id']
+                    modified_entry.result = 'WARN'
+                    my_logger.warning('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
+                else:
+                    counts['failRedfishUri'] += 1
+                    modified_entry = messages['@odata.id']
+                    modified_entry.result = 'FAIL'
+                    my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
+
+    if response and response.getheader('Allow'):
+        allowed_responses = [x.strip().upper() for x in response.getheader('Allow').split(',')]
+        if not redfish_obj.Type.CanInsert and 'POST' in allowed_responses:
+            my_logger.error('Allow header should NOT contain POST for {}'.format(redfish_obj.Type))
+            counts['failAllowHeader'] += 1
+        if not redfish_obj.Type.CanDelete and 'DELETE' in allowed_responses:
+            my_logger.error('Allow header should NOT contain DELETE for {}'.format(redfish_obj.Type))
+            counts['failAllowHeader'] += 1
+        if not redfish_obj.Type.CanUpdate and any([x in allowed_responses for x in ['PATCH', 'PUT']]):
+            my_logger.warning('Allow header should NOT contain PATCH or PUT for {}'.format(redfish_obj.Type))
+            counts['warnAllowHeader'] += 1
 
     if not successPayload:
         counts['failPayloadError'] += 1
@@ -131,7 +164,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
             if '@Redfish.Copyright' in propMessages:
                 modified_entry = propMessages['@Redfish.Copyright']
-                modified_entry.success = 'FAIL'
+                modified_entry.result = 'FAIL'
                 my_logger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
 
             messages.update(propMessages)

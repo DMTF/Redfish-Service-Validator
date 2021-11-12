@@ -106,12 +106,14 @@ def validateEntity(service, prop, val, parentURI=""):
     # check if the entity is truly what it's supposed to be
     # if not autoexpand, we must grab the resource
     if not autoExpand:
-        success, data, status, delay = service.callResourceURI(uri)
+        success, data, _, delay = service.callResourceURI(uri)
+        status = _.status
     else:
-        success, data, status, delay = True, val, 200, 0
+        success, data, _, delay = True, val, None, 0
+        status = 200
 
     generics = ['Resource.ItemOrCollection', 'Resource.ResourceCollection', 'Resource.Item', 'Resource.Resource']
-    my_type = prop.Type.parent_type[0] if prop.Type.IsPropertyType else prop.Type.fulltype
+    my_type = prop.Type.fulltype
     if success and my_type in generics:
         return True
     elif success:
@@ -124,6 +126,7 @@ def validateEntity(service, prop, val, parentURI=""):
             my_target_schema = prop.Type.catalog.getSchemaDocByClass(getNamespaceUnversioned(my_target_type))
         except MissingSchemaError:
             my_logger.error("{}: Could not get schema file for Entity check".format(name))
+            return False
 
         if getNamespace(my_target_type) not in my_target_schema.classes:
             my_logger.error('{}: Linked resource reports version {} not in Schema'.format(name.split(':')[-1], my_target_type))
@@ -238,7 +241,7 @@ def displayType(propTypeObject, is_collection=False):
     :return: the simplified type to display
     """
     propRealType, propCollection = propTypeObject.getBaseType()
-    propType = propTypeObject.parent_type[0] if propTypeObject.IsPropertyType else propTypeObject.fulltype
+    propType = propTypeObject.fulltype
     # Edm.* and other explicit types
     if propRealType == 'Edm.Boolean' or propRealType == 'Boolean':
         disp_type = 'boolean'
@@ -496,7 +499,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
 
         # Render our result
-        my_type = prop.Type.parent_type[0] if prop.Type.IsPropertyType else prop.Type.fulltype
+        my_type = prop.Type.fulltype
 
         if all([paramPass, propMandatoryPass, propNullablePass, excerptPass]):
             my_logger.log(logging.INFO-1,"\tSuccess")

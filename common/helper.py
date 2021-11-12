@@ -40,8 +40,8 @@ def splitVersionString(version):
     else:
         payload_split = v_payload.split('.')
     if len(payload_split) != 3:
-        return [0, 0, 0]
-    return [int(v) for v in payload_split]
+        return tuple([0, 0, 0])
+    return tuple([int(v) for v in payload_split])
 
 
 def compareMinVersion(version, min_version):
@@ -54,7 +54,7 @@ def compareMinVersion(version, min_version):
     payload_split = splitVersionString(version)
 
     # use array comparison, which compares each sequential number
-    return min_split < payload_split
+    return min_split <= payload_split
 
 
 def navigateJsonFragment(decoded, URILink):

@@ -75,7 +75,7 @@ def getSchemaDetails(service, SchemaType, SchemaURI):
             base_schema_uri, frag = tuple(SchemaURI.rsplit('#', 1))
         else:
             base_schema_uri, frag = SchemaURI, None
-        success, data, status, elapsed = service.callResourceURI(base_schema_uri)
+        success, data, response, elapsed = service.callResourceURI(base_schema_uri)
         if success:
             soup = BeautifulSoup(data, "xml")
             # if frag, look inside xml for real target as a reference
