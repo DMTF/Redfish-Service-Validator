@@ -162,10 +162,11 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
             # TODO: Cleanup message inconsistencies for html
             propMessages = {x:create_entry(x, *y) if isinstance(y, tuple) else y for x,y in propMessages.items()}
 
-            if '@Redfish.Copyright' in propMessages:
-                modified_entry = propMessages['@Redfish.Copyright']
-                modified_entry.result = 'FAIL'
-                my_logger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
+            if not 'MessageRegistry.MessageRegistry' in redfish_obj.Type.getTypeTree():
+                if '@Redfish.Copyright' in propMessages:
+                    modified_entry = propMessages['@Redfish.Copyright']
+                    modified_entry.result = 'FAIL'
+                    my_logger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
 
             messages.update(propMessages)
             counts.update(propCounts)
@@ -289,7 +290,17 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 if 'Uri' in sub_obj:
                     registry_uri = sub_obj['Uri'].Value
                     success, my_data, _, rtime = service.callResourceURI(registry_uri)
-                    success, linkResults, extra_refs = executeLink(sub_obj, None, my_data)
+                    if not success:
+                        counts['missingMessageRegistry'] += 1
+                        warnmsg = 'MessageRegistry did not return as present on Service...'
+                        my_logger.warning(warnmsg)
+                        results[uriName]['warns'] += '\n' + warnmsg
+                    else:
+                        success, linkResults, extra_refs = executeLink(sub_obj, None, my_data)
+                        if not success:
+                            counts['unvalidated'] += 1
+                        refLinks.extend(extra_refs)
+                        results.update(linkResults)
 
     # If successful...
     if validateSuccess:
