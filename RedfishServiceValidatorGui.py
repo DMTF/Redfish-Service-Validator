@@ -78,6 +78,10 @@ g_config_defaults = {
             "value": "False",
             "description": "Whether to print debug to log"
         },
+        "uricheck": {
+            "value": "False",
+            "description": "Whether to force urichecking if under RedfishVersion 1.6.0"
+        },
         "schema_directory": {
             "value": "./SchemaFiles/metadata",
             "description": "Where schema is located/saved on system"
