@@ -299,6 +299,9 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
         links = [x for x in links if not any([my_type in x.Type.fulltype for my_type in pare_down_types])] + pare_down[:15] # Pare down logentries
 
         for link in sorted(links, key=lambda x: (x.Type.fulltype != 'Registries.Registries')):
+            if link.Value is None:
+                my_logger.warning('Link of name link.Name returning a None, does it exist?')
+                continue
             link_destination = link.Value.get('@odata.id')
             if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']):
                 refLinks.append(link)
