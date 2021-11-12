@@ -125,6 +125,8 @@ class SchemaCatalog:
         :return: Schema Document
         :rtype: SchemaDoc
         """
+        if 'Collection(' in typename:
+            typename = typename.replace('Collection(', "").replace(')', "")
         typename = getNamespaceUnversioned(typename)
         typename = self.alias.get(typename, typename)
         if typename in self.catalog_by_class:
@@ -948,10 +950,6 @@ class RedfishObject(RedfishProperty):
                                     rsc_type, rsc_value, odata_value = rsc
                                     my_str = re.sub('\{|Id\}|', '', section)
                                     sub_obj.HasValidUriStrict = sub_obj.HasValidUriStrict and rsc_type == my_str and rsc_value == odata_value
-                                    if rsc_type != my_str:
-                                        my_logger.warning('Resource tree in URI {} has incorrect typing: {} {}'.format(my_odata_id, rsc_type, my_str))
-                                    if rsc_value != odata_value:
-                                        my_logger.warning('Resource tree in URI {} has incorrect ID: {} {}'.format(my_odata_id, rsc_value, odata_value))
 
                             if sub_obj.HasValidUriStrict:
                                 break
