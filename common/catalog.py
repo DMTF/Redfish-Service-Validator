@@ -845,6 +845,7 @@ class RedfishObject(RedfishProperty):
                 sub_obj.HasValidUri = True
                 sub_obj.HasValidUriStrict = False
                 sub_obj.properties = {x:y.populate(REDFISH_ABSENT) for x, y in sub_obj.properties.items()}
+                evals.append(sub_obj)
                 continue
 
             # Cast types if they're below their parent or are OemObjects
