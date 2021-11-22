@@ -146,13 +146,11 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
             else:
                 if '/Oem/' in odata_id:
                     counts['warnRedfishUri'] += 1
-                    modified_entry = messages['@odata.id']
-                    modified_entry.result = 'WARN'
+                    messages['@odata.id'].result = 'WARN'
                     my_logger.warning('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
                 else:
                     counts['failRedfishUri'] += 1
-                    modified_entry = messages['@odata.id']
-                    modified_entry.result = 'FAIL'
+                    messages['@odata.id'].result = 'FAIL'
                     my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
 
     if response and response.getheader('Allow'):
@@ -192,10 +190,11 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
             propMessages = {x:create_entry(x, *y) if isinstance(y, tuple) else y for x,y in propMessages.items()}
 
-            if '@Redfish.Copyright' in propMessages:
-                modified_entry = propMessages['@Redfish.Copyright']
-                modified_entry.result = 'FAIL'
-                my_logger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
+            if not 'MessageRegistry.MessageRegistry' in redfish_obj.Type.getTypeTree():
+                if '@Redfish.Copyright' in propMessages:
+                    modified_entry = propMessages['@Redfish.Copyright']
+                    modified_entry.result = 'FAIL'
+                    my_logger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
 
             messages.update(propMessages)
             counts.update(propCounts)
@@ -264,7 +263,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     return True, counts, results, redfish_obj.getLinks(), redfish_obj
 
 
-def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None, parent=None, allLinks=None):
+def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None, parent=None, allLinks=None, inAnnotation=False):
     # from given URI, validate it, then follow its links like nodes
     #   Other than expecting a valid URI, on success (real URI) expects valid links
     #   valid links come from getAllLinks, includes info such as expected values, etc
@@ -274,32 +273,36 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
     if top: allLinks = set()
     allLinks.add(URI)
 
-    def executeLink(link, parent=None):
-        linkURI = link.Value.get('@odata.id') if link.Value else ''
-        linkName = link.Name
-
-        if link.Type is not None and link.Type.AutoExpand:
-            returnVal = validateURITree(service, linkURI, uriName + ' -> ' + linkName, link.Type, link.Value, parent, allLinks)
-        else:
-            returnVal = validateURITree(service, linkURI, uriName + ' -> ' + linkName, parent=parent, allLinks=allLinks)
-        my_logger.log(logging.INFO-1,'%s, %s', linkName, returnVal[1])
-        return returnVal
-
     refLinks = []
 
+    if inAnnotation and service.config['uricheck']:
+        service.catalog.flags['ignore_uri_checks'] = True
     validateSuccess, counts, results, links, thisobj = validateSingleURI(service, URI, uriName, expectedType, expectedJson, parent)
+    if inAnnotation and service.config['uricheck']:
+        service.catalog.flags['ignore_uri_checks'] = False
 
+    # If successful and a MessageRegistryFile...
+    if validateSuccess and 'MessageRegistryFile.MessageRegistryFile' in thisobj.Type.getTypeTree():
+        # thisobj['Location'].Collection[0]['Uri'].Exists
+        if 'Location' in thisobj:
+            for sub_obj in thisobj['Location'].Collection:
+                if 'Uri' in sub_obj:
+                    links.append(sub_obj)
+
+    # If successful...
     if validateSuccess:
         # Bring Registries to Front if possible
-        if 'Registries.Registries' in [x.Type.fulltype for x in links]:
-            logging.info('Move Registries to front for validation')
         log_entries = [x for x in links if 'LogEntry' in x.Type.fulltype]
         links = [x for x in links if 'LogEntry' not in x.Type.fulltype] + log_entries[:15] # Pare down logentries
+
         for link in sorted(links, key=lambda x: (x.Type.fulltype != 'Registries.Registries')):
-            if link.Value is None:
-                my_logger.warning('Link of name link.Name returning a None, does it exist?')
+            if link is None or link.Value is None:
+                my_logger.warning('Link is None, does it exist?')
                 continue
-            link_destination = link.Value.get('@odata.id')
+
+            # get Uri or @odata.id
+            link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
+
             if link.Type.Excerpt:
                 continue
             if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']):
@@ -325,20 +328,32 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                     counts['repeat'] += 1
                     continue
 
-            success, linkCounts, linkResults, xlinks, xobj = executeLink(link, thisobj)
+            if link.Type is not None and link.Type.AutoExpand:
+                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, link.Type, link.Value, parent, allLinks, link.InAnnotation)
+            else:
+                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=parent, allLinks=allLinks, inAnnotation=link.InAnnotation)
+            success, linkCounts, linkResults, xlinks, xobj = returnVal
+
+            my_logger.log(logging.INFO-1,'%s, %s', link.Name, linkCounts)
+
             refLinks.extend(xlinks)
             if not success:
                 counts['unvalidated'] += 1
             results.update(linkResults)
 
     if top:
+        # TODO: consolidate above code block with this
         for link in refLinks:
             link, refparent = link
-            link_destination = link.Value.get('@odata.id')
+            # get Uri or @odata.id
+            if link is None or link.Value is None:
+                my_logger.warning('Link is None, does it exist?')
+                continue
+            link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
             if link.Type.Excerpt:
                 continue
             elif link_destination is None:
-                errmsg = 'Referenced URI for NavigationProperty is missing {} {}'.format(link_destination, uriName)
+                errmsg = 'Referenced URI for NavigationProperty is missing {} {}'.format(link_destination, link.Name, link.parent)
                 my_logger.error(errmsg)
                 results[uriName]['errors'] += '\n' + errmsg
                 counts['errorMissingRefOdata'] += 1
