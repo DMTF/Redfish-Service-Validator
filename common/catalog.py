@@ -412,6 +412,8 @@ class RedfishType:
             if not isinstance(my_type, RedfishType): continue
             if 'Bios' in str(my_type) and 'Attributes' in str(my_type):
                 return True
+            if my_type == 'MessageRegistry.v1_0_0.MessageProperty':
+                return True
             additionalElement = my_type.type_soup.find("Annotation", attrs={"Term": "OData.AdditionalProperties"})
             HasAdditional = ( False if additionalElement is None else (
                     True if additionalElement.get("Bool", False) in ["True", "true", True]
@@ -451,7 +453,7 @@ class RedfishType:
                     my_dict['CanDelete'] = element.find("PropertyValue").get('Bool', 'False').lower() == 'true'
             except Exception as e:
                 my_logger.debug('Exception caught while checking Uri', exc_info=1)
-                my_logger.warn('Could not gather info from Capabilities annotation')
+                my_logger.warning('Could not gather info from Capabilities annotation')
                 return {'CanUpdate': False, 'CanInsert': False, 'CanDelete': False}
 
         return my_dict
@@ -478,7 +480,7 @@ class RedfishType:
             except Exception as e:
                 my_logger.debug('Exception caught while checking Dynamic', exc_info=1)
                 my_logger.warn('Could not gather info from DynamicProperties annotation')
-                return {'CanUpdate': False, 'CanInsert': False, 'CanDelete': False}
+                return None 
         
         return None
 
@@ -634,7 +636,10 @@ class RedfishProperty(object):
     Represents all Types given, however, ComplexTypes are better suited to be RedfishObjects
     """
     def __repr__(self):
-        return "{}--{}".format(self.Name, self.Type)
+        if self.Populated:
+            return "{}--{}, Value: {}".format(self.Name, self.Type, self.Value)
+        else:
+            return "{}--{}".format(self.Name, self.Type)
 
     def __init__(self, my_type, name="Property", parent=None):
         self.Name = name
@@ -648,6 +653,7 @@ class RedfishProperty(object):
         eval_prop.Populated = True
         eval_prop.Value = val
         eval_prop.IsValid = True # Needs consistency, should be @property 
+        eval_prop.InAnnotation = False 
         eval_prop.SchemaExists = True
         eval_prop.Exists = val != REDFISH_ABSENT
         if isinstance(eval_prop.Type, str) and 'Edm.' in eval_prop.Type and check:
@@ -785,6 +791,12 @@ class RedfishObject(RedfishProperty):
     def __getitem__(self, index):
         return self.properties[index]
 
+    def __contains__(self, item):
+        if self.Populated:
+            return item in self.properties and self.properties[item].Exists
+        else:
+            return item in self.properties
+
     def __init__(self, redfish_type: RedfishType, name="Object", parent=None):
         super().__init__(redfish_type, name, parent)
         self.properties = {}
@@ -798,7 +810,6 @@ class RedfishObject(RedfishProperty):
             except MissingSchemaError:
                 self.properties[prop] = RedfishProperty(REDFISH_ABSENT, prop, self)
                 my_logger.warning('Schema not found for {}'.format(typ))
-        
 
     def populate(self, payload, check=False, casted=False):
         eval_obj = super().populate(payload)
@@ -998,7 +1009,7 @@ class RedfishObject(RedfishProperty):
                 splitKey = key.split('@', 1)
                 fullItem = splitKey[1]
                 if getNamespace(fullItem) not in allowed_annotations:
-                    my_logger.error("getAnnotations: {} is not an allowed annotation namespace, please check spelling/capitalization.".format(fullItem))
+                    my_logger.warning("getAnnotations: {} is not an allowed annotation namespace, please check spelling/capitalization.".format(fullItem))
                     continue
                 type_obj = sub_obj.Type.catalog.getSchemaInCatalog(fullItem).terms[getType(fullItem)]
                 if type_obj.getBaseType()[0] == 'complex':
@@ -1017,6 +1028,11 @@ class RedfishObject(RedfishProperty):
                 e.Value = v
             eval_obj.Collection = evals
             return eval_obj
+    
+    @property
+    def IsCollection(self):
+        my_base, is_collection = self.Type.getBaseType()
+        return is_collection
 
     def as_json(self):
         if self.Populated:
@@ -1042,7 +1058,9 @@ class RedfishObject(RedfishProperty):
                     for act in item.Value.values():
                         uri = act.get('@Redfish.ActionInfo')
                         if isinstance(uri, str):
-                            links.append(RedfishObject(new_type, 'ActionInfo', item).populate({'@odata.id': uri}))
+                            my_link = RedfishObject(new_type, 'ActionInfo', item).populate({'@odata.id': uri})
+                            my_link.InAnnotation = True
+                            links.append(my_link)
                 if item.Type.IsNav:
                     if isinstance(item.Value, list):
                         for num, val in enumerate(item.Value):
@@ -1052,10 +1070,11 @@ class RedfishObject(RedfishProperty):
                     else:
                         links.append(item)
                 elif item.Type.getBaseType()[0] == 'complex':
-                    if isinstance(item.Value, list): target = item.Value
-                    else: target = [item.Value]
-                    for sub in target:
-                        my_complex = item.Type.createObject().populate(sub)
-                        links.extend(my_complex.getLinks())
+                    for sub in item.Collection:
+                        InAnnotation = sub.Name in ['@Redfish.Settings', '@Redfish.ActionInfo', '@Redfish.CollectionCapabilities']
+                        my_links = sub.getLinks()
+                        for item in my_links:
+                            item.InAnnotation = True
+                        links.extend(my_links)
         return links
 

@@ -493,12 +493,13 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 else:
                     propNullablePass = False
             
+            prop = prop.populate(val, check=True)
+
             paramPass = prop.IsValid
-        
-            paramPass = prop.populate(val, True)
 
             if propRealType == 'entity':
                 paramPass = validateEntity(service, prop, val)
+            
 
 
         # Render our result
