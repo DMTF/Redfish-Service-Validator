@@ -364,12 +364,10 @@ class RedfishType:
 
         self.tags = {}
         for tag in self.type_soup.find_all(recursive=False):
-            if(not tag.get('Term')):
-                my_logger.debug((tag, 'does not contain a Term name'))
-            else:
+            if(tag.get('Term')):
                 self.tags[tag['Term']] = tag.attrs
-            if (tag.get('Term') == 'Redfish.Revisions'):
-                self.tags[tag['Term']] = tag.find_all('Record')
+                if (tag.get('Term') == 'Redfish.Revisions'):
+                    self.tags[tag['Term']] = tag.find_all('Record')
 
         propPermissions = self.tags.get('OData.Permissions')
 
@@ -815,6 +813,10 @@ class RedfishObject(RedfishProperty):
         eval_obj = super().populate(payload)
         eval_obj.payload = payload
 
+        # todo: redesign objects to have consistent variables, not only when populated
+        # if populated, should probably just use another python class?
+        # remember that populated RedfishObjects may have more objects embedded in them
+        # i.e. OEM or complex or arrays
         if payload == REDFISH_ABSENT or payload is None:
             eval_obj.Collection = []
             if payload is None:
@@ -839,6 +841,7 @@ class RedfishObject(RedfishProperty):
             sub_obj = copy.copy(eval_obj)
 
             # Only valid if we are a dictionary...
+            # todo: see above None/REDFISH_ABSENT block
             sub_obj.IsValid = isinstance(sub_payload, dict)
             if not sub_obj.IsValid:
                 my_logger.error("This complex object {} should be a dictionary or None, but it's of type {}...".format(sub_obj.Name, str(type(sub_payload))))
@@ -873,37 +876,31 @@ class RedfishObject(RedfishProperty):
                     continue
             # or if we're a Resource or unversioned or v1_0_0 type
             elif not casted and not already_typed:
-                my_ns = sub_obj.Type.Namespace
-                sub_base = getNamespaceUnversioned(my_ns)
+                my_ns, my_ns_unversioned = sub_obj.Type.Namespace, getNamespaceUnversioned(sub_obj.Type.Namespace)
                 try:
-                    min_version = min([tuple(splitVersionString(x.Namespace)) for x in sub_obj.Type.getTypeTree() if not x.IsPropertyType and sub_base in x.Namespace])
+                    min_version = min([tuple(splitVersionString(x.Namespace)) for x in sub_obj.Type.getTypeTree() if not x.IsPropertyType and my_ns_unversioned in x.Namespace])
                     min_version = 'v' + '_'.join([str(x) for x in min_version])
                 except:
                     my_logger.debug('Issue getting minimum version', exc_info=1)
                     min_version = 'v1_0_0'
-                if my_ns in [sub_base, sub_base + '.v1_0_0', '.'.join([sub_base, min_version])] or my_odata_type:
+                if my_ns in [my_ns_unversioned, my_ns_unversioned + '.v1_0_0', '.'.join([my_ns_unversioned, min_version])] or my_odata_type:
                     my_limit = 'v9_9_9'
                     if my_odata_type:
                         my_limit = getNamespace(my_odata_type).strip('#')
-                    if sub_obj.parent and sub_base not in 'Resource': # we always cast Resource objects
-                        parent = sub_obj.parent
-                        while True:
-                            my_limit = parent.Type.Namespace
-                            if not parent.parent or not parent.parent.Type.Namespace.startswith(sub_base + '.'):
-                                break
+                    if sub_obj.parent and my_ns_unversioned not in 'Resource': # we always cast Resource objects
+                        parent = sub_obj
+                        while parent.parent and parent.parent.Type.Namespace.startswith(my_ns_unversioned + '.'):
                             parent = parent.parent
+                            my_limit = parent.Type.Namespace
                     my_type = sub_obj.Type.Type
                     # get type order from bottom up of schema, check if my_type in that schema
-                    top_ns = None
-                    for new_ns, schema in reversed(list(sub_obj.Type.catalog.getSchemaDocByClass(my_ns).classes.items())):
+                    for top_ns, schema in reversed(list(sub_obj.Type.catalog.getSchemaDocByClass(my_ns).classes.items())):
                         if my_type in schema.my_types:
-                            if top_ns is None:
-                                top_ns = new_ns
-                            if not compareMinVersion(new_ns, my_limit):
-                                my_ns = new_ns
+                            if compareMinVersion(top_ns, my_limit):
+                                my_ns = top_ns
                                 break
                     # ISSUE: We can't cast under v1_0_0, get the next best Type
-                    if my_ns == sub_base:
+                    if my_ns == my_ns_unversioned:
                         my_ns = top_ns
                     if my_ns not in sub_obj.Type.Namespace:
                         my_logger.log(logging.INFO-1, ('Morphing Complex', my_ns, my_type, my_limit))
