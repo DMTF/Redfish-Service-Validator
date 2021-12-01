@@ -3,11 +3,12 @@
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 from collections import namedtuple
+from re import split
 from bs4 import BeautifulSoup
 from functools import lru_cache
 import os.path
 
-from common.helper import getType, getNamespace, getNamespaceUnversioned, getVersion, compareMinVersion, splitVersionString
+from common.helper import getType, getNamespace, getNamespaceUnversioned, getVersion, splitVersionString
 
 import logging
 my_logger = logging.getLogger(__name__)
@@ -313,7 +314,7 @@ class rfSchema:
             if limit is not None:
                 if getVersion(newNamespace) is None:
                     continue
-                if compareMinVersion(newNamespace, limit):
+                if splitVersionString(newNamespace) > splitVersionString(limit):
                     continue
             if schema.find(['EntityType', 'ComplexType'], attrs={'Name': getType(acquiredtype)}, recursive=False):
                 typelist.append(splitVersionString(newNamespace))

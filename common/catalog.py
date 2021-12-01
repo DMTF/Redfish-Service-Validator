@@ -8,7 +8,6 @@ from os import path
 from bs4 import BeautifulSoup
 
 from common.helper import (
-    compareMinVersion,
     getNamespace,
     getNamespaceUnversioned,
     getType,
@@ -316,7 +315,7 @@ class SchemaClass:
             if limit is not None:
                 if getVersion(newNamespace) is None:
                     continue
-                if compareMinVersion(newNamespace, limit):
+                if splitVersionString(newNamespace) > splitVersionString(limit):
                     continue
             if (my_type in self.my_types):
                 typelist.append(splitVersionString(newNamespace))
@@ -896,7 +895,7 @@ class RedfishObject(RedfishProperty):
                     # get type order from bottom up of schema, check if my_type in that schema
                     for top_ns, schema in reversed(list(sub_obj.Type.catalog.getSchemaDocByClass(my_ns).classes.items())):
                         if my_type in schema.my_types:
-                            if compareMinVersion(top_ns, my_limit):
+                            if splitVersionString(top_ns) <= splitVersionString(my_limit):
                                 my_ns = top_ns
                                 break
                     # ISSUE: We can't cast under v1_0_0, get the next best Type

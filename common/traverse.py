@@ -10,7 +10,7 @@ from http.client import responses
 
 import redfish as rf
 import common.catalog as catalog
-from common.helper import navigateJsonFragment, compareMinVersion
+from common.helper import navigateJsonFragment, splitVersionString
 from common.metadata import Metadata
 
 import logging
@@ -68,7 +68,7 @@ class rfService():
                 target_version = data['RedfishVersion']
         if target_version in ['1.0.0', 'n/a']:
             traverseLogger.warning('!!Version of target may produce issues!!')
-        if not compareMinVersion(target_version, '1.6.0') and not self.config['uricheck']:
+        if splitVersionString(target_version) < splitVersionString('1.6.0') and not self.config['uricheck']:
             traverseLogger.warning('RedfishVersion below 1.6.0, disabling uri checks')
             self.catalog.flags['ignore_uri_checks'] = True
         else:

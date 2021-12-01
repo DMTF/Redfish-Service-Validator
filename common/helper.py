@@ -27,33 +27,24 @@ def create_entry(name, value, type, exists, result):
     })
 
 
-def splitVersionString(version):
-    v_payload = version
-    if(re.match('([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', version) is not None):
-        new_payload = getVersion(version)
-        if new_payload is not None:
-            v_payload = new_payload
-    if ('_' in v_payload):
-        v_payload = v_payload.replace('v', '')
-        payload_split = v_payload.split('_')
+def splitVersionString(v_string):
+    """
+    Split x.y.z and Namespace.vX_Y_Z, vX_Y_Z type version strings into tuples of integers
+
+    :return: tuple of integers
+    """
+    if(re.match('([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', v_string) is not None):
+        new_string = getVersion(v_string)
+        if new_string is not None:
+            v_string = new_string
+    if ('_' in v_string):
+        v_string = v_string.replace('v', '')
+        payload_split = v_string.split('_')
     else:
-        payload_split = v_payload.split('.')
+        payload_split = v_string.split('.')
     if len(payload_split) != 3:
         return tuple([0, 0, 0])
     return tuple([int(v) for v in payload_split])
-
-
-def compareMinVersion(version, min_version):
-    """
-    Checks for the minimum version of a resource's type
-    """
-    # If version doesn't contain version as is, try it as v#_#_#
-    # get version from payload
-    min_split = splitVersionString(min_version)
-    payload_split = splitVersionString(version)
-
-    # use array comparison, which compares each sequential number
-    return min_split <= payload_split
 
 
 def navigateJsonFragment(decoded, URILink):
