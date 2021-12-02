@@ -10,7 +10,7 @@ from http.client import responses
 
 import redfish as rf
 import common.catalog as catalog
-from common.helper import navigateJsonFragment
+from common.helper import navigateJsonFragment, splitVersionString
 from common.metadata import Metadata
 
 import logging
@@ -28,19 +28,6 @@ def getLogger():
     Grab logger for tools that might use this lib
     """
     return my_logger
-
-def startService(config):
-    """startService
-
-    Begin service to use, sets as global
-
-    Notes: Strip globals, turn into normal factory
-
-    :param config: configuration of service
-    :param defaulted: config options not specified by the user
-    """
-    newService = rfService(config)
-    return newService
 
 class rfService():
     def __init__(self, config):
@@ -70,7 +57,7 @@ class rfService():
         target_version = 'n/a'
 
         # get Version
-        success, data, status, delay = self.callResourceURI('/redfish/v1')
+        success, data, response, delay = self.callResourceURI('/redfish/v1')
         if not success:
             traverseLogger.warn('Could not get ServiceRoot')
         else:
@@ -81,11 +68,17 @@ class rfService():
                 target_version = data['RedfishVersion']
         if target_version in ['1.0.0', 'n/a']:
             traverseLogger.warning('!!Version of target may produce issues!!')
+        if splitVersionString(target_version) < splitVersionString('1.6.0') and not self.config['uricheck']:
+            traverseLogger.warning('RedfishVersion below 1.6.0, disabling uri checks')
+            self.catalog.flags['ignore_uri_checks'] = True
+        else:
+            self.catalog.flags['ignore_uri_checks'] = False
+            self.config['uricheck'] = True
         
         self.service_root = data
-        success, data, status, delay = self.callResourceURI(Metadata.metadata_uri)
+        success, data, response, delay = self.callResourceURI(Metadata.metadata_uri)
 
-        if success and data is not None and status in range(200,210):
+        if success and data is not None and response.status in range(200,210):
             self.metadata = Metadata(data, self, my_logger)
         else:
             self.metadata = Metadata(None, self, my_logger)
@@ -108,9 +101,10 @@ class rfService():
         # rs-assertions: 6.4.1, including accept, content-type and odata-versions
         # rs-assertion: handle redirects?  and target permissions
         # rs-assertion: require no auth for serviceroot calls
+        # TODO: Written with "success" values, should replace with Exception and catches
         if URILink is None:
             traverseLogger.warn("This URI is empty!")
-            return False, None, -1, 0
+            return False, None, None, 0
 
         config = self.config
         # proxies = self.proxies
@@ -154,8 +148,6 @@ class rfService():
             'out of service ' if not inService else '', AuthType, UseSSL, URILink, headers))
         response = None
         try:
-            if payload is not None: # and CacheMode == 'Prefer':
-                return True, payload, -1, 0
             startTick = datetime.now()
             response = self.context.get(URLDest)  # only proxy non-service
             elapsed = datetime.now() - startTick
@@ -199,7 +191,7 @@ class rfService():
                         except ValueError:
                             pass
 
-                return decoded is not None, decoded, statusCode, elapsed
+                return decoded is not None, decoded, response, elapsed
             elif statusCode == 401:
                 if inService and AuthType in ['Basic', 'Token']:
                     if AuthType == 'Token':
@@ -209,18 +201,6 @@ class rfService():
                     raise AuthenticationError('Error accessing URI {}. Status code "{} {}". Check {} supplied for "{}" authentication.'
                                               .format(URILink, statusCode, responses[statusCode], cred_type, AuthType))
 
-        # except requests.exceptions.SSLError as e:
-        #     traverseLogger.error("SSLError on {}: {}".format(URILink, repr(e)))
-        #     traverseLogger.debug("output: ", exc_info=True)
-        # except requests.exceptions.ConnectionError as e:
-        #     traverseLogger.error("ConnectionError on {}: {}".format(URILink, repr(e)))
-        #     traverseLogger.debug("output: ", exc_info=True)
-        # except requests.exceptions.Timeout as e:
-        #     traverseLogger.error("Request has timed out ({}s) on resource {}".format(timeout, URILink))
-        #     traverseLogger.debug("output: ", exc_info=True)
-        # except requests.exceptions.RequestException as e:
-        #     traverseLogger.error("Request has encounted a problem when getting resource {}: {}".format(URILink, repr(e)))
-        #     traverseLogger.debug("output: ", exc_info=True)
         except AuthenticationError as e:
             raise e  # re-raise exception
         except Exception as e:
@@ -230,5 +210,5 @@ class rfService():
                 traverseLogger.debug("payload: {}".format(response.text))
 
         if payload is not None:
-            return True, payload, -1, 0
-        return False, None, statusCode, elapsed
+            return True, payload, response, 0
+        return False, None, response, elapsed

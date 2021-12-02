@@ -44,7 +44,9 @@ Variable   | Type   | Definition
 Version    | string | Internal config version (optional)
 Copyright  | string | _DMTF_ copyright (optional)
 verbose    | int    | level of verbosity (0-3) 
+
 ### [Host]
+
 Variable   | Type    | Definition
 --         |--       |--
 ip         | string  | Host of testing system, formatted as https:// ip : port (can use http as well)
@@ -56,15 +58,18 @@ authtype   | string  | Authorization type (Basic | Session | Token | None)
 token      | string  | Token string for Token authentication
 
 ### [Validator]
+
 Variable        | Type    | Definition
 --              |--       |--
 payload         | string  | Option to test a specific payload or resource tree (see below)
 logdir          | string  | Place to save logs and run configs
 oemcheck        | boolean | Whether to check Oem items on service
+uricheck        | boolean | Allow URI checking on services below RedfishVersion 1.6.0
 debugging       | boolean | Whether to print debug to log
 schema_directory| string  | Where schema is located/saved on system
 
 ### Payload options
+
 The payload option takes two parameters as "option uri"
 
 (Single, SingleFile, Tree, TreeFile)

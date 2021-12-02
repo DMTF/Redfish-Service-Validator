@@ -74,9 +74,11 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     try:
         if expectedJson is None:
             ret = service.callResourceURI(URI)
-            success, me['payload'], me['rcode'], me['rtime'] = ret
+            success, me['payload'], response, me['rtime'] = ret
+            me['rcode'] = response.status
         else:
             success, me['payload'], me['rcode'], me['rtime'] = True, expectedJson, -1, 0
+            response = None
         
         if not success:
             my_logger.error('URI did not return resource {}'.format(URI))
@@ -96,14 +98,16 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if my_type is None:
             redfish_obj = None
         else:
+            # TODO: don't have the distinction between Property Type and a Normal Type
             if isinstance(my_type, catalog.RedfishType):
-                my_type = my_type.parent_type[0] if my_type.IsPropertyType else my_type.fulltype
+                my_type = my_type.fulltype
             redfish_schema = service.catalog.getSchemaDocByClass(my_type)
             redfish_type = redfish_schema.getTypeInSchemaDoc(my_type)
             redfish_obj = catalog.RedfishObject(redfish_type, 'Object', parent=parent).populate(me['payload']) if redfish_type else None
-            me['fulltype'] = redfish_obj.Type.fulltype
 
-        if not redfish_obj:
+        if redfish_obj:
+            me['fulltype'] = redfish_obj.Type.fulltype
+        else:
             counts['problemResource'] += 1
             me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
             return False, counts, results, None, None
@@ -119,8 +123,8 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     counts['passGet'] += 1
 
     # verify odata_id properly resolves to its parent if holding fragment
-    odata_id = me['payload'].get('@odata.id', '')
-    if '#' in odata_id:
+    odata_id = me['payload'].get('@odata.id')
+    if odata_id is not None and '#' in odata_id:
         if parent is not None:
             payload_resolve = navigateJsonFragment(parent.payload, URI)
             if parent.payload.get('@odata.id') not in URI:
@@ -133,6 +137,33 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                 counts['badOdataIdResolution'] += 1
         else:
             my_logger.warn('No parent found with which to test @odata.id of ReferenceableMember')
+    
+    if service.config['uricheck']:
+        my_uris = redfish_obj.Type.getUris()
+        if odata_id is not None and redfish_obj.Populated and len(my_uris) > 0:
+            if redfish_obj.HasValidUri:
+                counts['passRedfishUri'] += 1
+            else:
+                if '/Oem/' in odata_id:
+                    counts['warnRedfishUri'] += 1
+                    messages['@odata.id'].result = 'WARN'
+                    my_logger.warning('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
+                else:
+                    counts['failRedfishUri'] += 1
+                    messages['@odata.id'].result = 'FAIL'
+                    my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
+
+    if response and response.getheader('Allow'):
+        allowed_responses = [x.strip().upper() for x in response.getheader('Allow').split(',')]
+        if not redfish_obj.Type.CanInsert and 'POST' in allowed_responses:
+            my_logger.error('Allow header should NOT contain POST for {}'.format(redfish_obj.Type))
+            counts['failAllowHeader'] += 1
+        if not redfish_obj.Type.CanDelete and 'DELETE' in allowed_responses:
+            my_logger.error('Allow header should NOT contain DELETE for {}'.format(redfish_obj.Type))
+            counts['failAllowHeader'] += 1
+        if not redfish_obj.Type.CanUpdate and any([x in allowed_responses for x in ['PATCH', 'PUT']]):
+            my_logger.warning('Allow header should NOT contain PATCH or PUT for {}'.format(redfish_obj.Type))
+            counts['warnAllowHeader'] += 1
 
     if not successPayload:
         counts['failPayloadError'] += 1
@@ -159,10 +190,11 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
             propMessages = {x:create_entry(x, *y) if isinstance(y, tuple) else y for x,y in propMessages.items()}
 
-            if '@Redfish.Copyright' in propMessages:
-                modified_entry = propMessages['@Redfish.Copyright']
-                modified_entry.success = 'FAIL'
-                my_logger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
+            if not 'MessageRegistry.MessageRegistry' in redfish_obj.Type.getTypeTree():
+                if '@Redfish.Copyright' in propMessages:
+                    modified_entry = propMessages['@Redfish.Copyright']
+                    modified_entry.result = 'FAIL'
+                    my_logger.error('@Redfish.Copyright is only allowed for mockups, and should not be allowed in official implementations')
 
             messages.update(propMessages)
             counts.update(propCounts)
@@ -231,7 +263,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     return True, counts, results, redfish_obj.getLinks(), redfish_obj
 
 
-def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None, parent=None, allLinks=None):
+def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None, parent=None, allLinks=None, inAnnotation=False):
     # from given URI, validate it, then follow its links like nodes
     #   Other than expecting a valid URI, on success (real URI) expects valid links
     #   valid links come from getAllLinks, includes info such as expected values, etc
@@ -241,29 +273,36 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
     if top: allLinks = set()
     allLinks.add(URI)
 
-    def executeLink(link, parent=None):
-        linkURI = link.Value.get('@odata.id') if link.Value else ''
-        linkName = link.Name
-
-        if link.Type is not None and link.Type.AutoExpand:
-            returnVal = validateURITree(service, linkURI, uriName + ' -> ' + linkName, link.Type, link.Value, parent, allLinks)
-        else:
-            returnVal = validateURITree(service, linkURI, uriName + ' -> ' + linkName, parent=parent, allLinks=allLinks)
-        my_logger.log(logging.INFO-1,'%s, %s', linkName, returnVal[1])
-        return returnVal
-
     refLinks = []
 
+    if inAnnotation and service.config['uricheck']:
+        service.catalog.flags['ignore_uri_checks'] = True
     validateSuccess, counts, results, links, thisobj = validateSingleURI(service, URI, uriName, expectedType, expectedJson, parent)
+    if inAnnotation and service.config['uricheck']:
+        service.catalog.flags['ignore_uri_checks'] = False
 
+    # If successful and a MessageRegistryFile...
+    if validateSuccess and 'MessageRegistryFile.MessageRegistryFile' in thisobj.Type.getTypeTree():
+        # thisobj['Location'].Collection[0]['Uri'].Exists
+        if 'Location' in thisobj:
+            for sub_obj in thisobj['Location'].Collection:
+                if 'Uri' in sub_obj:
+                    links.append(sub_obj)
+
+    # If successful...
     if validateSuccess:
         # Bring Registries to Front if possible
-        if 'Registries.Registries' in [x.Type.fulltype for x in links]:
-            logging.info('Move Registries to front for validation')
         log_entries = [x for x in links if 'LogEntry' in x.Type.fulltype]
         links = [x for x in links if 'LogEntry' not in x.Type.fulltype] + log_entries[:15] # Pare down logentries
+
         for link in sorted(links, key=lambda x: (x.Type.fulltype != 'Registries.Registries')):
-            link_destination = link.Value.get('@odata.id')
+            if link is None or link.Value is None:
+                my_logger.warning('Link is None, does it exist?')
+                continue
+
+            # get Uri or @odata.id
+            link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
+
             if link.Type.Excerpt:
                 continue
             if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']):
@@ -289,20 +328,32 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                     counts['repeat'] += 1
                     continue
 
-            success, linkCounts, linkResults, xlinks, xobj = executeLink(link, thisobj)
+            if link.Type is not None and link.Type.AutoExpand:
+                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, link.Type, link.Value, parent, allLinks, link.InAnnotation)
+            else:
+                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=parent, allLinks=allLinks, inAnnotation=link.InAnnotation)
+            success, linkCounts, linkResults, xlinks, xobj = returnVal
+
+            my_logger.log(logging.INFO-1,'%s, %s', link.Name, linkCounts)
+
             refLinks.extend(xlinks)
             if not success:
                 counts['unvalidated'] += 1
             results.update(linkResults)
 
     if top:
+        # TODO: consolidate above code block with this
         for link in refLinks:
             link, refparent = link
-            link_destination = link.Value.get('@odata.id')
+            # get Uri or @odata.id
+            if link is None or link.Value is None:
+                my_logger.warning('Link is None, does it exist?')
+                continue
+            link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
             if link.Type.Excerpt:
                 continue
             elif link_destination is None:
-                errmsg = 'Referenced URI for NavigationProperty is missing {} {}'.format(link_destination, uriName)
+                errmsg = 'Referenced URI for NavigationProperty is missing {} {}'.format(link_destination, link.Name, link.parent)
                 my_logger.error(errmsg)
                 results[uriName]['errors'] += '\n' + errmsg
                 counts['errorMissingRefOdata'] += 1
@@ -325,8 +376,8 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 continue
 
 
-            my_link_type = link.Type.parent_type[0] if link.Type.IsPropertyType else link.Type.fulltype
-            success, my_data, _, __ = service.callResourceURI(link_destination)
+            my_link_type = link.Type.fulltype
+            success, my_data, _, _ = service.callResourceURI(link_destination)
             # Using None instead of refparent simply because the parent is not where the link comes from
             returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name,
                     my_link_type, my_data, None, allLinks)
