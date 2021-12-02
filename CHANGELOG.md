@@ -1,5 +1,11 @@
 # Change Log
 
+## [2.0.7] - 2021-12-01
+- Corrected validation of null objects
+- Added checks to ensure URIs match patterns defined in schema
+- Added checks to ensure the 'Allow' HTTP header does not go beyond the capabilities definitions in schema
+- Added validation of registries if discovered via the 'Uri' property in 'MessageRegistryFile' resources
+
 ## [2.0.6] - 2021-10-27
 - Corrected use of iterators to be compatible with versions of Python older than 3.8
 
