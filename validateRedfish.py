@@ -458,7 +458,9 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                                                                            'Yes' if prop.Exists else 'No', result_str)
                 else:
                     subMsgs, subCounts = validateComplex(service, sub_obj, prop_name, oem_check)
-                    if len(prop.Collection) == 1:
+                    if isCollection:
+                        subMsgs = {'{}[{}].{}'.format(prop_name,n,x):y for x,y in subMsgs.items()}
+                    elif len(prop.Collection) == 1:
                         subMsgs = {'{}.{}'.format(prop_name,x):y for x,y in subMsgs.items()}
                     else:
                         subMsgs = {'{}.{}#{}'.format(prop_name,x,n):y for x,y in subMsgs.items()}
