@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.0.8] - 2022-01-10
+- Several enhancements and fixes to CSV handling
+
 ## [2.0.7] - 2021-12-01
 - Corrected validation of null objects
 - Added checks to ensure URIs match patterns defined in schema
