@@ -51,7 +51,7 @@ class rfService():
                 self.config['password'] = ''
         
         rhost, user, passwd = self.config['configuri'], self.config['username'], self.config['password']
-        self.context = rf.redfish_client( base_url = rhost, username = user, password = passwd )
+        self.context = rf.redfish_client(base_url=rhost, username=user, password=passwd, timeout=self.config['timeout'])
         self.context.login( auth = self.config['authtype'].lower() )
 
         target_version = 'n/a'
