@@ -27,7 +27,7 @@ def convert_args_to_config(args):
                 if isinstance(my_var, list):
                     my_var = ' '.join(my_var)
                     print(my_var)
-                my_config.set(section, option, str(my_var) if my_var else '')
+                my_config.set(section, option, str(my_var) if my_var is not None else '')
             else:
                 my_config.set(section, option, '******')
     return my_config
