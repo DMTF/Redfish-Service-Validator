@@ -962,9 +962,9 @@ class RedfishObject(RedfishProperty):
                                 break
 
             # TODO: Oem support is able, but it is tempermental for Actions and Additional properties
-            if 'Resource.OemObject' in sub_obj.Type.getTypeTree():
-                evals.append(sub_obj)
-                continue
+            #if 'Resource.OemObject' in sub_obj.Type.getTypeTree():
+            #    evals.append(sub_obj)
+            #    continue
 
             # populate properties
             if sub_obj.Name == 'Actions':
