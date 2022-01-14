@@ -1,5 +1,9 @@
 # Change Log
 
+## [2.0.9] - 2022-01-14
+- Removed statements that prevented building models for objects contained within OEM extensions
+- Some configuration fixes for handling '--nooemcheck'
+
 ## [2.0.8] - 2022-01-10
 - Several enhancements and fixes to CSV handling
 
