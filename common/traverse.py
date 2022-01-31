@@ -139,7 +139,7 @@ class rfService():
             auth = None
 
         # only send token when we're required to chkauth, during a Session, and on Service and Secure
-        headers = {}
+        headers = {"Accept-Encoding": "*"}
 
         certVal = ChkCertBundle if ChkCert and ChkCertBundle not in [None, ""] else ChkCert
 
@@ -149,7 +149,7 @@ class rfService():
         response = None
         try:
             startTick = datetime.now()
-            response = self.context.get(URLDest)  # only proxy non-service
+            response = self.context.get(URLDest, headers=headers)
             elapsed = datetime.now() - startTick
             statusCode = response.status
 
