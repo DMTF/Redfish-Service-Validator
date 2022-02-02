@@ -916,10 +916,10 @@ class RedfishObject(RedfishProperty):
             if not sub_obj.Type.catalog.flags['ignore_uri_checks'] and len(my_uris) and '@odata.id' in sub_payload:
                 # Strip our URI and warn if that's the case
                 my_odata_id = sub_payload['@odata.id']
-                if my_odata_id != '/redfish/v1/' and my_odata_id[-1] == '/':
+                if my_odata_id != '/redfish/v1/' and my_odata_id.endswith('/'):
                     if check: my_logger.warning('Stripping end of URI... {}'.format(my_odata_id))
                     my_odata_id = my_odata_id.rstrip('/')
-                
+
                 # Initial check if our URI matches our format at all
                 # Setup REGEX...
                 my_uri_regex = "^{}$".format("|".join(my_uris))
