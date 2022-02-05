@@ -1,5 +1,9 @@
 # Change Log
 
+## [2.1.0] - 2022-02-05
+- Added 'Accept-Encoding' header to allow for any encoding in responses
+- Corrected '@odata.id' inspection to not crash the tool if the string is empty
+
 ## [2.0.9] - 2022-01-14
 - Removed statements that prevented building models for objects contained within OEM extensions
 - Some configuration fixes for handling '--nooemcheck'
