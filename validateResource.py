@@ -301,6 +301,12 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 continue
 
             # get Uri or @odata.id
+            if not isinstance(link.Value, dict):
+                errmsg = '{} is expected to be an object containing @odata.id'.format(link.Name)
+                my_logger.error(errmsg)
+                results[uriName]['errors'] += '\n' + errmsg
+                counts['errorInvalidReferenceObject'] += 1
+                continue
             link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
 
             if link.Type.Excerpt:
