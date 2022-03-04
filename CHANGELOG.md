@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.1.1] - 2022-03-04
+- Added check to ensure a reference object is an object prior to attempting to extract the link information
+
 ## [2.1.0] - 2022-02-05
 - Added 'Accept-Encoding' header to allow for any encoding in responses
 - Corrected '@odata.id' inspection to not crash the tool if the string is empty
