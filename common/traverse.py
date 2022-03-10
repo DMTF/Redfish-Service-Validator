@@ -7,6 +7,7 @@ from datetime import datetime
 from functools import lru_cache
 from urllib.parse import urlparse, urlunparse
 from http.client import responses
+import os
 
 import redfish as rf
 import common.catalog as catalog
@@ -149,7 +150,14 @@ class rfService():
         response = None
         try:
             startTick = datetime.now()
-            response = self.context.get(URLDest, headers=headers)
+            mockup_file_path = os.path.join(config['mockup'], URLDest.replace('/redfish/v1/', '', 1).strip('/'), 'index.json')
+            if config['mockup'] != '' and os.path.isfile(mockup_file_path):
+                content = {}
+                with open(mockup_file_path) as mockup_file:
+                    content = json.load(mockup_file)
+                response = rf.rest.v1.StaticRestResponse(Status=200, Headers={'Content-Type': 'application/json'}, Content=content)
+            else:
+                response = self.context.get(URLDest, headers=headers)
             elapsed = datetime.now() - startTick
             statusCode = response.status
 

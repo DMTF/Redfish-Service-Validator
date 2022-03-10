@@ -67,6 +67,7 @@ oemcheck        | boolean | Whether to check Oem items on service
 uricheck        | boolean | Allow URI checking on services below RedfishVersion 1.6.0
 debugging       | boolean | Whether to print debug to log
 schema_directory| string  | Where schema is located/saved on system
+mockup          | string  | Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage
 
 ### Payload options
 

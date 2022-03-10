@@ -48,6 +48,7 @@ def main(argslist=None, configfile=None):
     argget.add_argument('--debugging', action="store_true", help='Output debug statements to text log, otherwise it only uses INFO')
     argget.add_argument('--uricheck', action="store_true", help='Allow URI checking on services below RedfishVersion 1.6.0')
     argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
+    argget.add_argument('--mockup', type=str, default='', help='Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage')
 
     # parse...
     args = argget.parse_args(argslist)
@@ -125,6 +126,7 @@ def main(argslist=None, configfile=None):
     except Exception as ex:
         my_logger.log(logging.INFO-1, 'Exception caught while creating Service', exc_info=1)
         my_logger.error("Service could not be started: {}".format(repr(ex)))
+        my_logger.error("Try running the Redfish Protocol Validator to ensure the service meets basic protocol conformance")
         return 1, None, 'Service Exception'
     
     if args.description is None and currentService.service_root:
