@@ -155,7 +155,7 @@ class rfService():
                 content = {}
                 with open(mockup_file_path) as mockup_file:
                     content = json.load(mockup_file)
-                response = rf.rest.v1.StaticRestResponse(Status=200, Headers={'Content-Type': 'application/json'}, Content=content)
+                response = rf.rest.v1.StaticRestResponse(Status=200, Headers={'Content-Type': 'application/json', 'X-Redfish-Mockup': 'true'}, Content=content)
             else:
                 response = self.context.get(URLDest, headers=headers)
             elapsed = datetime.now() - startTick
