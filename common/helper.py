@@ -165,7 +165,7 @@ def checkPayloadConformance(jsondata, uri):
                 '/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
             if not paramPass:
                 my_logger.warn("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
-                info.append((key, decoded[key], 'odata', 'Exists', 'WARN'))
+                info[key] = (decoded[key], 'odata', 'Exists', 'WARN')
                 continue
         elif key == '@odata.type':
             paramPass = isinstance(decoded[key], str)
