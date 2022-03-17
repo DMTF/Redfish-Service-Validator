@@ -46,7 +46,7 @@ def setup_schema_pack(uri, local_dir):
                 zf.close()
     except Exception as ex:
         my_logger.error("A problem when getting resource has occurred {}".format(uri))
-        my_logger.warn("output: ", exc_info=True)
+        my_logger.warning("output: ", exc_info=True)
     return True
 
 

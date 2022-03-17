@@ -154,7 +154,7 @@ def checkPayloadConformance(jsondata, uri):
                 my_logger.error("{} {}: Expected format is /path/to/uri, but received: {}".format(uri, key, decoded[key]))
             else:
                 if uri != '' and decoded[key] != uri:
-                    my_logger.warn("{} {}: Expected @odata.id to match URI link {}".format(uri, key, decoded[key]))
+                    my_logger.warning("{} {}: Expected @odata.id to match URI link {}".format(uri, key, decoded[key]))
         elif key == '@odata.count':
             paramPass = isinstance(decoded[key], int)
             if not paramPass:
@@ -164,7 +164,7 @@ def checkPayloadConformance(jsondata, uri):
             paramPass = re.match(
                 '/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
             if not paramPass:
-                my_logger.warn("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
+                my_logger.warning("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
                 info.append((key, decoded[key], 'odata', 'Exists', 'WARN'))
                 continue
         elif key == '@odata.type':
