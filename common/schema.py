@@ -134,8 +134,8 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI, config):
 
         # get tags
         soup = BeautifulSoup(data, "xml")
-        edmxTag = soup.find('edmx:Edmx', recursive=False)
-        parentTag = edmxTag.find('edmx:DataServices', recursive=False)
+        edmxTag = soup.find('Edmx', recursive=False)
+        parentTag = edmxTag.find('DataServices', recursive=False)
         child = parentTag.find('Schema', recursive=False)
         SchemaNamespace = child['Namespace']
         FoundAlias = SchemaNamespace.split(".")[0]
@@ -186,10 +186,10 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
     includeTuple = namedtuple('include', ['Namespace', 'Uri'])
     refDict = {}
 
-    maintag = soup.find("edmx:Edmx", recursive=False)
-    reftags = maintag.find_all('edmx:Reference', recursive=False)
+    maintag = soup.find("Edmx", recursive=False)
+    reftags = maintag.find_all('Reference', recursive=False)
     for ref in reftags:
-        includes = ref.find_all('edmx:Include', recursive=False)
+        includes = ref.find_all('Include', recursive=False)
         for item in includes:
             uri = ref.get('Uri')
             ns, alias = (item.get(x) for x in ['Namespace', 'Alias'])
