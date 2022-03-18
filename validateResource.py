@@ -165,6 +165,10 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
             my_logger.warning('Allow header should NOT contain PATCH or PUT for {}'.format(redfish_obj.Type))
             counts['warnAllowHeader'] += 1
 
+    if response and response.getheader('x-Redfish-Mockup'):
+        my_logger.warning('Response payload loaded from mockup, not the service under test')
+        counts['warnMockupUsed'] += 1
+
     if not successPayload:
         counts['failPayloadError'] += 1
         my_logger.error(str(URI) + ': payload error, @odata property non-conformant',)

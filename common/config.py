@@ -11,7 +11,7 @@ my_logger.setLevel(logging.DEBUG)
 config_struct = {
     'Tool': ['verbose'],
     'Host': ['ip', 'username', 'password', 'description', 'forceauth', 'authtype', 'token'],
-    'Validator': ['payload', 'logdir', 'oemcheck', 'debugging', 'schema_directory', 'uricheck']
+    'Validator': ['payload', 'logdir', 'oemcheck', 'debugging', 'schema_directory', 'uricheck', 'mockup']
 }
 
 config_options = [x for name in config_struct for x in config_struct[name]]

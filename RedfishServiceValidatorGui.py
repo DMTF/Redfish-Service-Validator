@@ -85,6 +85,10 @@ g_config_defaults = {
         "schema_directory": {
             "value": "./SchemaFiles/metadata",
             "description": "Where schema is located/saved on system"
+        },
+        "mockup": {
+            "value": "",
+            "description": "Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage"
         }
     }
 }
