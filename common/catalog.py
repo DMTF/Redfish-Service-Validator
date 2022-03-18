@@ -476,7 +476,7 @@ class RedfishType:
 
             except Exception as e:
                 my_logger.debug('Exception caught while checking Dynamic', exc_info=1)
-                my_logger.warn('Could not gather info from DynamicProperties annotation')
+                my_logger.warning('Could not gather info from DynamicProperties annotation')
                 return None 
         
         return None
@@ -500,7 +500,7 @@ class RedfishType:
                     expectedUris += [e.contents[0] for e in all_strings]
                 except Exception as e:
                     my_logger.debug('Exception caught while checking Uri', exc_info=1)
-                    my_logger.warn('Could not gather info from Redfish.Uris annotation')
+                    my_logger.warning('Could not gather info from Redfish.Uris annotation')
                     expectedUris = []
         return expectedUris
      
@@ -932,7 +932,7 @@ class RedfishObject(RedfishProperty):
                         my_logger.warning('Found uri with fragment, which Resource.Resource types do not use {}'.format(my_odata_id))
                 elif 'Resource.ReferenceableMember' in sub_obj.Type.getTypeTree():
                     if '#' not in my_odata_id:
-                        my_logger.warn('No fragment in URI, but ReferenceableMembers require it {}'.format(my_odata_id))
+                        my_logger.warning('No fragment in URI, but ReferenceableMembers require it {}'.format(my_odata_id))
 
                 # iterate through our resource chain, if possible, to check IDs matching
                 # this won't check NavigationProperties but the Resources will
@@ -1073,4 +1073,3 @@ class RedfishObject(RedfishProperty):
                             item.InAnnotation = True
                         links.extend(my_links)
         return links
-

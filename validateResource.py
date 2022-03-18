@@ -136,7 +136,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                 my_logger.error('@odata.id of ReferenceableMember does not point to the correct object: {}'.format(odata_id))
                 counts['badOdataIdResolution'] += 1
         else:
-            my_logger.warn('No parent found with which to test @odata.id of ReferenceableMember')
+            my_logger.warning('No parent found with which to test @odata.id of ReferenceableMember')
     
     if service.config['uricheck']:
         my_uris = redfish_obj.Type.getUris()
@@ -230,7 +230,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
             counts['failAdditional'] += 1
             messages[key] = create_entry(key, displayValue(item), '-', '-', 'FAIL')
         else:
-            my_logger.warn('{} not defined in schema {} (check version, spelling and casing)'.format(key, SchemaNamespace))
+            my_logger.warning('{} not defined in schema {} (check version, spelling and casing)'.format(key, SchemaNamespace))
             counts['unverifiedAdditional'] += 1
             messages[key] = create_entry(key, displayValue(item), '-', '-', 'Additional')
 

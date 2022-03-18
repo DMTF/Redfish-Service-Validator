@@ -60,10 +60,10 @@ class rfService():
         # get Version
         success, data, response, delay = self.callResourceURI('/redfish/v1')
         if not success:
-            traverseLogger.warn('Could not get ServiceRoot')
+            traverseLogger.warning('Could not get ServiceRoot')
         else:
             if 'RedfishVersion' not in data:
-                traverseLogger.warn('Could not get RedfishVersion from ServiceRoot')
+                traverseLogger.warning('Could not get RedfishVersion from ServiceRoot')
             else:
                 traverseLogger.info('Redfish Version of Service: {}'.format(data['RedfishVersion']))
                 target_version = data['RedfishVersion']
@@ -104,7 +104,7 @@ class rfService():
         # rs-assertion: require no auth for serviceroot calls
         # TODO: Written with "success" values, should replace with Exception and catches
         if URILink is None:
-            traverseLogger.warn("This URI is empty!")
+            traverseLogger.warning("This URI is empty!")
             return False, None, None, 0
 
         config = self.config
@@ -181,7 +181,7 @@ class rfService():
                 elif 'text/xml' in contenttype:
                     # non-service schemas can use "text/xml" Content-Type
                     if inService:
-                        traverseLogger.warn(
+                        traverseLogger.warning(
                                 "Incorrect content type 'text/xml' for file within service {}".format(URILink))
                     decoded = response.text
                 else:

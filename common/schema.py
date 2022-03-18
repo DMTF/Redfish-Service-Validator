@@ -150,7 +150,7 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI, config):
             my_logger.debug("Unable to find a xml of {} at {}, defaulting to {}".format(SchemaURI, SchemaLocation, Alias + SchemaSuffix))
             return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix, config)
         else:
-            my_logger.warn("Schema file {} not found in {}".format(filestring, SchemaLocation))
+            my_logger.warning("Schema file {} not found in {}".format(filestring, SchemaLocation))
             if Alias == '$metadata':
                 my_logger.warning("If $metadata cannot be found, Annotations may be unverifiable")
     except Exception as ex:
@@ -341,4 +341,3 @@ def getSchemaObject(service, typename, uri, metadata=None):
     success, soup, origin = getSchemaDetails(service, typename, uri)
 
     return rfSchema(soup, uri, origin, metadata=metadata, name=typename) if success else None
-
