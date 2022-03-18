@@ -436,10 +436,15 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         propValueList = [prop.Value]
 
     if propRealType == 'complex':
+        result_str = 'complex'
+        if prop.Type.IsMandatory:
+            my_logger.error("{}: Mandatory prop does not exist".format(prop_name))
+            counts['failMandatoryExist'] += 1
+            result_str = 'FAIL'
         resultList[prop_name] = (
                         '[JSON Object]', displayType(prop.Type),
                         'Yes' if prop.Exists else 'No',
-                        'complex')
+                        result_str)
         for n, sub_obj in enumerate(prop.Collection):
             try:
                 if sub_obj.Value is None:
