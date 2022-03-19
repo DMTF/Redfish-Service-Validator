@@ -437,7 +437,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
     if propRealType == 'complex':
         result_str = 'complex'
-        if prop.Type.IsMandatory:
+        if prop.Type.IsMandatory and not prop.Exists:
             my_logger.error("{}: Mandatory prop does not exist".format(prop_name))
             counts['failMandatoryExist'] += 1
             result_str = 'FAIL'
