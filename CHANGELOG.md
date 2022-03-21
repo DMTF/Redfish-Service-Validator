@@ -1,5 +1,9 @@
 # Change Log
 
+## [2.1.2] - 2022-03-21
+- Added '--mockup' option to override payloads from a service with a mockup in a directory
+- Added support for ensuring properties that are JSON objects that are marked as 'required' are present in payloads
+
 ## [2.1.1] - 2022-03-04
 - Added check to ensure a reference object is an object prior to attempting to extract the link information
 
