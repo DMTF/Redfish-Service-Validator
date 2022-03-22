@@ -18,7 +18,8 @@ config_options = [x for name in config_struct for x in config_struct[name]]
 
 
 def convert_args_to_config(args):
-    my_config = configparser.ConfigParser()
+    # Disable interpolation (https://docs.python.org/3/library/configparser.html#interpolation-of-values)
+    my_config = configparser.ConfigParser(interpolation=None)
     for section in ['Tool', 'Host', 'Validator']:
         my_config.add_section(section)
         for option in config_struct[section]:
