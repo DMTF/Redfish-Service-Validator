@@ -379,7 +379,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             return {prop_name: ( '-', displayType(prop.Type), 'Yes' if prop.Exists else 'No', 'Optional')}, counts
 
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
-    if prop.Type.Deprecated is not None:
+    if prop.Type.Deprecated is not None and not prop.Type.IsMandatory:
         deprecatedPass = False
         counts['warnDeprecated'] += 1
         my_logger.warning('{}: The given property is deprecated: {}'.format(prop_name, prop.Type.Deprecated.get('String', '')))
@@ -387,14 +387,14 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     if prop.Type.Revisions is not None:
         for tag_item in prop.Type.Revisions:
             revision_tag = tag_item.find('PropertyValue', attrs={ 'EnumMember': 'Redfish.RevisionKind/Deprecated', 'Property': 'Kind'})
-            if (revision_tag):
+            if revision_tag and not prop.Type.IsMandatory:
                 desc_tag = tag_item.find('PropertyValue', attrs={'Property': 'Description'})
                 deprecatedPass = False
                 counts['warnDeprecated'] += 1
-                if (desc_tag):
-                    my_logger.warning('{}: The given property is deprecated by revision: {}'.format(prop_name, desc_tag.attrs.get('String', '')))
+                if desc_tag:
+                    my_logger.warning('{}: The given property is deprecated: {}'.format(prop_name, desc_tag.attrs.get('String', '')))
                 else:
-                    my_logger.warning('{}: The given property is deprecated by revision'.format(prop_name))
+                    my_logger.warning('{}: The given property is deprecated'.format(prop_name))
 
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
