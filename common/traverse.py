@@ -43,17 +43,25 @@ class rfService():
         self.config['certificatebundle'] = None
         self.config['timeout'] = 10
 
-        self.catalog = catalog.SchemaCatalog(self.config['metadatafilepath'])
-
+        # Log into the service
         if not self.config['usessl'] and not self.config['forceauth']:
             if self.config['username'] not in ['', None] or self.config['password'] not in ['', None]:
                 traverseLogger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
                 self.config['username'] = ''
                 self.config['password'] = ''
-        
         rhost, user, passwd = self.config['configuri'], self.config['username'], self.config['password']
         self.context = rf.redfish_client(base_url=rhost, username=user, password=passwd, timeout=self.config['timeout'])
         self.context.login( auth = self.config['authtype'].lower() )
+
+        # Go through $metadata and download any additional schema files needed
+        success, data, response, delay = self.callResourceURI(Metadata.metadata_uri)
+        if success and data is not None and response.status in range(200,210):
+            self.metadata = Metadata(data, self, my_logger)
+        else:
+            self.metadata = Metadata(None, self, my_logger)
+
+        # Build the data model based on cached schema files
+        self.catalog = catalog.SchemaCatalog(self.config['metadatafilepath'])
 
         target_version = 'n/a'
 
@@ -77,12 +85,6 @@ class rfService():
             self.config['uricheck'] = True
         
         self.service_root = data
-        success, data, response, delay = self.callResourceURI(Metadata.metadata_uri)
-
-        if success and data is not None and response.status in range(200,210):
-            self.metadata = Metadata(data, self, my_logger)
-        else:
-            self.metadata = Metadata(None, self, my_logger)
 
         self.active = True
 
