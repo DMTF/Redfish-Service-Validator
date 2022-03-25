@@ -1,5 +1,10 @@
 # Change Log
 
+## [2.1.3] - 2022-03-25
+- Corrected order of operations for initializing the tool to collect additional schema files from $metadata before building the data model for payload validation
+- Suppress warning messages for deprecated properties when the property is also marked as required
+- Added support for Unix sockets
+
 ## [2.1.2] - 2022-03-21
 - Added '--mockup' option to override payloads from a service with a mockup in a directory
 - Added support for ensuring properties that are JSON objects that are marked as 'required' are present in payloads
