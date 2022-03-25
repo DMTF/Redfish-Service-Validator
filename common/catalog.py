@@ -177,11 +177,11 @@ class SchemaDoc:
         self.classes = {}
         self.alias = {}
 
-        edmxTag = self.soup.find("edmx:Edmx", recursive=False)
-        reftags = edmxTag.find_all("edmx:Reference", recursive=False)
+        edmxTag = self.soup.find("Edmx", recursive=False)
+        reftags = edmxTag.find_all("Reference", recursive=False)
         self.refs = {}
         for ref in reftags:
-            includes = ref.find_all("edmx:Include", recursive=False)
+            includes = ref.find_all("Include", recursive=False)
             for item in includes:
                 uri = ref.get("Uri")
                 ns, alias = (item.get(x) for x in ["Namespace", "Alias"])
@@ -200,7 +200,7 @@ class SchemaDoc:
 
         cntref = len(self.refs)
 
-        parentTag = edmxTag.find("edmx:DataServices", recursive=False)
+        parentTag = edmxTag.find("DataServices", recursive=False)
         children = parentTag.find_all("Schema", recursive=False)
         self.classes = {}
         for child in children:
