@@ -53,7 +53,7 @@ def get_fuzzy_property(prop_name: str, jsondata: dict, allPropList=[]):
         prop_name: Closest match
         rtype: str
     """
-    possibleMatch = difflib.get_close_matches(prop_name, [s for s in jsondata], 1, 0.70)
+    possibleMatch = difflib.get_close_matches(prop_name, list(jsondata), 1, 0.70)
     if len(possibleMatch) > 0 and possibleMatch[0] not in [
         s[2] for s in allPropList if s[2] != prop_name
     ]:

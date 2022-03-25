@@ -194,7 +194,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
             propMessages = {x:create_entry(x, *y) if isinstance(y, tuple) else y for x,y in propMessages.items()}
 
-            if not 'MessageRegistry.MessageRegistry' in redfish_obj.Type.getTypeTree():
+            if 'MessageRegistry.MessageRegistry' not in redfish_obj.Type.getTypeTree():
                 if '@Redfish.Copyright' in propMessages:
                     modified_entry = propMessages['@Redfish.Copyright']
                     modified_entry.result = 'FAIL'
