@@ -95,8 +95,8 @@ def main(argslist=None, configfile=None):
 
     from urllib.parse import urlparse, urlunparse
     scheme, netloc, path, params, query, fragment = urlparse(args.ip)
-    if scheme not in ['http', 'https']:
-        my_logger.error('IP is missing http or https')
+    if scheme not in ['http', 'https', 'http+unix']:
+        my_logger.error('IP is missing http or https or http+unix')
         return 1, None, 'IP Incomplete'
 
     if netloc == '':
