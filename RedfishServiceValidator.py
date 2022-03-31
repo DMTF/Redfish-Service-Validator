@@ -33,21 +33,21 @@ def main(argslist=None, configfile=None):
     argget.add_argument('-c', '--config', type=str, help='Configuration for this tool')
 
     # host info
-    argget.add_argument('-i', '--ip', type=str, help='Address of host to test against, using http or https (example: https://123.45.6.7:8000)')
-    argget.add_argument('-u', '--username', type=str, help='Username for Authentication')
-    argget.add_argument('-p', '--password', type=str, help='Password for Authentication')
-    argget.add_argument('--description', type=str, help='sysdescription for identifying logs, if none is given, draw from serviceroot')
+    argget.add_argument('-i', '--ip', '--rhost', '-r', type=str, help='The address of the Redfish service (with scheme); example: \'https://123.45.6.7:8000\'')
+    argget.add_argument('-u', '--username', '-user', type=str, help='The username for authentication')
+    argget.add_argument('-p', '--password', type=str, help='The password for authentication')
+    argget.add_argument('--description', type=str, help='The description of the system for identifying logs; if none is given, a value is produced from information in the service root')
     argget.add_argument('--forceauth', action='store_true', help='Force authentication on unsecure connections')
-    argget.add_argument('--authtype', type=str, default='Basic', help='authorization type (None|Basic|Session|Token)')
-    argget.add_argument('--token', type=str, help='bearer token for authtype Token')
+    argget.add_argument('--authtype', type=str, default='Basic', help='Authorization type; \'None\', \'Basic\', \'Session\', or \'Token\'')
+    argget.add_argument('--token', type=str, help='Token when \'authtype\' is \'Token\'')
 
     # validator options
-    argget.add_argument('--payload', type=str, help='mode to validate payloads [Tree, Single, SingleFile, TreeFile] followed by resource/filepath', nargs=2)
-    argget.add_argument('--logdir', type=str, default='./logs', help='directory for log files')
+    argget.add_argument('--payload', type=str, help='The mode to validate payloads (\'Tree\', \'Single\', \'SingleFile\', or \'TreeFile\') followed by resource/filepath', nargs=2)
+    argget.add_argument('--logdir', '--report-dir', type=str, default='./logs', help='The directory for generated report files; default: \'logs\'')
     argget.add_argument('--nooemcheck', action='store_false', dest='oemcheck', help='Don\'t check OEM items')
     argget.add_argument('--debugging', action="store_true", help='Output debug statements to text log, otherwise it only uses INFO')
     argget.add_argument('--uricheck', action="store_true", help='Allow URI checking on services below RedfishVersion 1.6.0')
-    argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='directory for local schema files')
+    argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='Directory for local schema files')
     argget.add_argument('--mockup', type=str, default='', help='Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage')
 
     # parse...
