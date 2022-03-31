@@ -341,7 +341,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
             if link.Type is not None and link.Type.AutoExpand:
                 returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, link.Type, link.Value, thisobj, allLinks, link.InAnnotation)
             else:
-                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=thisobj, allLinks=allLinks, inAnnotation=link.InAnnotation)
+                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=parent, allLinks=allLinks, inAnnotation=link.InAnnotation)
             success, linkCounts, linkResults, xlinks, xobj = returnVal
 
             my_logger.log(logging.INFO-1,'%s, %s', link.Name, linkCounts)
