@@ -1,5 +1,9 @@
 # Change Log
 
+## [2.1.4] - 2022-04-01
+- Corrected parent reference to allow for '@odata.id' testing on referenceable members
+- Extended argument usage to allow for argument forms used in other tools, such as 'rhost' instead of 'ip'
+
 ## [2.1.3] - 2022-03-25
 - Corrected order of operations for initializing the tool to collect additional schema files from $metadata before building the data model for payload validation
 - Suppress warning messages for deprecated properties when the property is also marked as required
