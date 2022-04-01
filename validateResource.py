@@ -137,7 +137,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                 counts['badOdataIdResolution'] += 1
         else:
             my_logger.warning('No parent found with which to test @odata.id of ReferenceableMember')
-    
+
     if service.config['uricheck']:
         my_uris = redfish_obj.Type.getUris()
         if odata_id is not None and redfish_obj.Populated and len(my_uris) > 0:
@@ -315,7 +315,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
 
             if link.Type.Excerpt:
                 continue
-            if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']):
+            if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']) and not link.Type.AutoExpand:
                 refLinks.append((link, thisobj))
                 continue
             if link_destination in allLinks:
@@ -339,7 +339,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                     continue
 
             if link.Type is not None and link.Type.AutoExpand:
-                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, link.Type, link.Value, parent, allLinks, link.InAnnotation)
+                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, link.Type, link.Value, thisobj, allLinks, link.InAnnotation)
             else:
                 returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=parent, allLinks=allLinks, inAnnotation=link.InAnnotation)
             success, linkCounts, linkResults, xlinks, xobj = returnVal
