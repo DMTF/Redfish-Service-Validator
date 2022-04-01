@@ -315,7 +315,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
 
             if link.Type.Excerpt:
                 continue
-            if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']):
+            if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']) and not link.Type.AutoExpand:
                 refLinks.append((link, thisobj))
                 continue
             if link_destination in allLinks:
