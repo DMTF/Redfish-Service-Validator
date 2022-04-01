@@ -35,7 +35,11 @@ Place the RedfishServiceValidator folder into the desired directory.  Create the
 
 The `Redfish Service Validator` is designed to execute as a purely command line interface tool with no intermediate inputs expected during tool execution. However, the tool requires various inputs regarding system details, _DMTF_ schema files etc. which are consumed by the tool during execution to generate the conformance report logs. Below are the step by step instructions on setting up the tool for execution on any identified _Redfish_ device for conformance test:
 
-Modify the config\example.ini file to enter the system details under below section
+An example command line to run:
+
+    python RedfishServiceValidator.py -c config/example.ini
+
+Modify the `config/example.ini` file to enter the system details, under the below sections. At a minimum, `ip` should be modified.
 
 ### [Tool]
 
