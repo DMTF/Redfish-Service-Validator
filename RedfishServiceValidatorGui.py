@@ -59,6 +59,22 @@ g_config_defaults = {
         "token": {
             "value": "False",
             "description": "Token string for Token authentication"
+        },
+        "ext_http_proxy": {
+            "value": "",
+            "description": "URL of the HTTP proxy for accessing external sites"
+        },
+        "ext_https_proxy": {
+            "value": "",
+            "description": "URL of the HTTPS proxy for accessing external sites"
+        },
+        "serv_http_proxy": {
+            "value": "",
+            "description": "URL of the HTTP proxy for accessing the service"
+        },
+        "serv_https_proxy": {
+            "value": "",
+            "description": "URL of the HTTPS proxy for accessing the service"
         }
     },
     "Validator": {

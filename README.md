@@ -51,15 +51,19 @@ verbose    | int    | level of verbosity (0-3)
 
 ### [Host]
 
-Variable   | Type    | Definition
---         |--       |--
-ip         | string  | Host of testing system, formatted as https:// ip : port (can use http as well)
-username   | string  | Username for Basic authentication
-password   | string  | Password for Basic authentication (removed from logs)
-description| string  | Description of system being tested (optional)
-forceauth  | boolean | Force authentication even on http servers
-authtype   | string  | Authorization type (Basic | Session | Token | None)
-token      | string  | Token string for Token authentication
+Variable         | Type    | Definition
+--               |--       |--
+ip               | string  | Host of testing system, formatted as https:// ip : port (can use http as well)
+username         | string  | Username for Basic authentication
+password         | string  | Password for Basic authentication (removed from logs)
+description      | string  | Description of system being tested (optional)
+forceauth        | boolean | Force authentication even on http servers
+authtype         | string  | Authorization type (Basic | Session | Token | None)
+token            | string  | Token string for Token authentication
+ext_http_proxy   | string | URL of the HTTP proxy for accessing external sites
+ext_https_proxy  | string | URL of the HTTPS proxy for accessing external sites
+serv_http_proxy  | string | URL of the HTTP proxy for accessing the service
+serv_https_proxy | string | URL of the HTTPS proxy for accessing the service
 
 ### [Validator]
 

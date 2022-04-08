@@ -14,8 +14,13 @@ live_zip_uri = 'https://www.dmtf.org/sites/default/files/standards/documents/DSP
 
 my_logger = logging.getLogger()
 
-def setup_schema_pack(uri, local_dir):
+def setup_schema_pack(uri, local_dir, http_proxy, https_proxy):
     proxies, timeout = None, 20
+    if http_proxy is not '' or https_proxy is not '':
+        proxies = {}
+        if http_proxy is not '': proxies['http'] = http_proxy
+        if https_proxy is not '': proxies['https'] = https_proxy
+    print(proxies)
     if uri == 'latest':
         uri = live_zip_uri
     my_logger.info('Unpacking schema pack... {}'.format(uri))

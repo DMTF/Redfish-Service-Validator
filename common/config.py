@@ -10,7 +10,7 @@ my_logger.setLevel(logging.DEBUG)
 
 config_struct = {
     'Tool': ['verbose'],
-    'Host': ['ip', 'username', 'password', 'description', 'forceauth', 'authtype', 'token'],
+    'Host': ['ip', 'username', 'password', 'description', 'forceauth', 'authtype', 'token', 'ext_http_proxy', 'ext_https_proxy', 'serv_http_proxy', 'serv_https_proxy'],
     'Validator': ['payload', 'logdir', 'oemcheck', 'debugging', 'schema_directory', 'uricheck', 'mockup']
 }
 
