@@ -426,6 +426,10 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                                 'Yes' if prop.Exists else 'No', 'PASS' if propMandatoryPass else 'FAIL')
             my_logger.error("{}: Mandatory prop does not exist".format(prop_name))
             counts['failMandatoryExist'] += 1
+        elif not isinstance(prop.Value, list):
+            my_logger.error('{}: property is expected to contain an array'.format(prop_name))
+            counts['failInvalidArray'] += 1
+            return {prop_name: ( '-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')}, counts
         else:
             propValueList = prop.Value
             resultList[prop_name] = ('Array (size: {})'.format(len(prop.Value)), 
