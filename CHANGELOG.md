@@ -1,5 +1,10 @@
 # Change Log
 
+## [2.1.5] - 2022-04-08
+- Added check to ensure array properties are returned as arrays before iterating over their values
+- Added context-driven pattern checking for 'DurableName'
+- Added proxy arguments for controlling proxy usage with external sites and the service
+
 ## [2.1.4] - 2022-04-01
 - Corrected parent reference to allow for '@odata.id' testing on referenceable members
 - Extended argument usage to allow for argument forms used in other tools, such as 'rhost' instead of 'ip'
