@@ -160,6 +160,22 @@ def validateEntity(service, prop, val, parentURI=""):
 def validateComplex(service, sub_obj, prop_name, oem_check=True):
     subMsgs, subCounts = OrderedDict(), Counter()
 
+    # Based on the object's properties, see if we need to insert a pattern to verify the contents
+    # At this time, only the Identifier object has this type of check to ensure the DurableName matches the long description
+    if "DurableName" in sub_obj.properties and "DurableNameFormat" in sub_obj.properties:
+        if sub_obj.properties["DurableNameFormat"].Value == "NAA":
+            sub_obj.properties["DurableName"].added_pattern = '^(([0-9A-Fa-f]{2}){8}){1,2}$'
+        elif sub_obj.properties["DurableNameFormat"].Value == "FC_WWN":
+            sub_obj.properties["DurableName"].added_pattern = '^([0-9A-Fa-f]{2}[:-]){7}([0-9A-Fa-f]{2})$'
+        elif sub_obj.properties["DurableNameFormat"].Value == "UUID":
+            sub_obj.properties["DurableName"].added_pattern = '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'
+        elif sub_obj.properties["DurableNameFormat"].Value == "EUI":
+            sub_obj.properties["DurableName"].added_pattern = '^([0-9A-Fa-f]{2}[:-]){7}([0-9A-Fa-f]{2})$'
+        elif sub_obj.properties["DurableNameFormat"].Value == "NGUID":
+            sub_obj.properties["DurableName"].added_pattern = '^([0-9A-Fa-f]{2}){16}$'
+        elif sub_obj.properties["DurableNameFormat"].Value == "MACAddress":
+            sub_obj.properties["DurableName"].added_pattern = '^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
+
     for sub_name, sub_prop in sub_obj.properties.items():
         if not sub_prop.HasSchema and not sub_prop.Exists:
             subCounts['skipNoSchema'] += 1
@@ -426,6 +442,10 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                                 'Yes' if prop.Exists else 'No', 'PASS' if propMandatoryPass else 'FAIL')
             my_logger.error("{}: Mandatory prop does not exist".format(prop_name))
             counts['failMandatoryExist'] += 1
+        elif not isinstance(prop.Value, list):
+            my_logger.error('{}: property is expected to contain an array'.format(prop_name))
+            counts['failInvalidArray'] += 1
+            return {prop_name: ( '-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')}, counts
         else:
             propValueList = prop.Value
             resultList[prop_name] = ('Array (size: {})'.format(len(prop.Value)), 

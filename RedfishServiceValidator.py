@@ -40,6 +40,10 @@ def main(argslist=None, configfile=None):
     argget.add_argument('--forceauth', action='store_true', help='Force authentication on unsecure connections')
     argget.add_argument('--authtype', type=str, default='Basic', help='Authorization type; \'None\', \'Basic\', \'Session\', or \'Token\'')
     argget.add_argument('--token', type=str, help='Token when \'authtype\' is \'Token\'')
+    argget.add_argument('--ext_http_proxy', type=str, default='', help='URL of the HTTP proxy for accessing external sites')
+    argget.add_argument('--ext_https_proxy', type=str, default='', help='URL of the HTTPS proxy for accessing external sites')
+    argget.add_argument('--serv_http_proxy', type=str, default='', help='URL of the HTTP proxy for accessing the service')
+    argget.add_argument('--serv_https_proxy', type=str, default='', help='URL of the HTTPS proxy for accessing the service')
 
     # validator options
     argget.add_argument('--payload', type=str, help='The mode to validate payloads (\'Tree\', \'Single\', \'SingleFile\', or \'TreeFile\') followed by resource/filepath', nargs=2)
@@ -118,7 +122,7 @@ def main(argslist=None, configfile=None):
         my_logger.info('Downloading initial schemas from online')
         my_logger.info('The tool will, by default, attempt to download and store XML files to relieve traffic from DMTF/service')
         schema_pack.my_logger.addHandler(file_handler)
-        schema_pack.setup_schema_pack('latest', args.schema_directory)
+        schema_pack.setup_schema_pack('latest', args.schema_directory, args.ext_http_proxy, args.ext_https_proxy)
 
     import common.traverse as traverse
     try:
