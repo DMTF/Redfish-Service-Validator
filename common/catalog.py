@@ -574,7 +574,7 @@ class RedfishType:
             all_properties.update(type_obj.unique_properties)
         return all_properties
 
-    def validate(self, val):
+    def validate(self, val, added_pattern=None):
         """
         Returns True if validation succeeds, else raises a ValueError
         """
@@ -613,6 +613,8 @@ class RedfishType:
                 validMin, validMax = int(validMinAttr['Int']) if validMinAttr is not None else None, \
                     int(validMaxAttr['Int']) if validMaxAttr is not None else None
                 validPattern = validPatternAttr.get('String', '') if validPatternAttr is not None else None
+                if added_pattern is not None:
+                    validPattern = added_pattern
 
                 if my_type == 'Edm.String' and enum_annotation is not None:
                     memberList = enum_annotation.find('Collection').find_all('PropertyValue', attrs={'Property': 'Member'})
@@ -644,6 +646,7 @@ class RedfishProperty(object):
         self.HasSchema = self.Type != REDFISH_ABSENT
         self.Populated = False
         self.parent = parent
+        self.added_pattern = None
 
     def populate(self, val, check=False):
         eval_prop = copy.copy(self)
@@ -663,7 +666,7 @@ class RedfishProperty(object):
                 eval_prop.IsValid = False
         elif isinstance(eval_prop.Type, RedfishType) and check:
             try:
-                eval_prop.IsValid = eval_prop.Type.validate(val)
+                eval_prop.IsValid = eval_prop.Type.validate(val, self.added_pattern)
             except ValueError as e:
                 my_logger.error('{}: {}'.format(self.Name, e))  # log this
                 eval_prop.IsValid = False
