@@ -864,7 +864,7 @@ class RedfishObject(RedfishProperty):
 
             # we can only cast if we have an odata type and valid schema
             if 'Resource.OemObject' in sub_obj.Type.getTypeTree() and not casted:
-                my_logger.log(logging.INFO-1,('Morphing OemObject', my_odata_type, sub_obj.Type))
+                my_logger.verbose1(('Morphing OemObject', my_odata_type, sub_obj.Type))
                 if my_odata_type:
                     my_odata_type = my_odata_type.strip('#')
                     try:
@@ -905,7 +905,7 @@ class RedfishObject(RedfishProperty):
                     if my_ns == my_ns_unversioned:
                         my_ns = top_ns
                     if my_ns not in sub_obj.Type.Namespace:
-                        my_logger.log(logging.INFO-1, ('Morphing Complex', my_ns, my_type, my_limit))
+                        my_logger.verbose1(('Morphing Complex', my_ns, my_type, my_limit))
                         new_type_obj = sub_obj.Type.catalog.getSchemaDocByClass(my_ns).getTypeInSchemaDoc('.'.join([my_ns, my_type]))
                         sub_obj = RedfishObject(new_type_obj, sub_obj.Name, sub_obj.parent).populate(sub_payload, check=check, casted=True)
                         evals.append(sub_obj)
@@ -1000,7 +1000,7 @@ class RedfishObject(RedfishProperty):
                     else:
                         object = RedfishProperty(type_obj, name=add_name, parent=self)
                     my_logger.debug('Populated {} with {}'.format(my_property_names, object.as_json()))
-                    my_logger.log(logging.INFO-1,('Adding Additional', add_name, my_odata_type, sub_obj.Type))
+                    my_logger.verbose1(('Adding Additional', add_name, my_odata_type, sub_obj.Type))
                     sub_obj.properties[add_name] = object.populate(sub_payload.get(add_name, REDFISH_ABSENT))
 
             my_annotations = [x for x in sub_payload if x not in sub_obj.properties if '@' in x and '@odata' not in x]
@@ -1015,7 +1015,7 @@ class RedfishObject(RedfishProperty):
                     object = RedfishObject(type_obj, name=key, parent=self)
                 else:
                     object = RedfishProperty(type_obj, name=key, parent=self)
-                my_logger.log(logging.INFO-1,('Adding Additional', key, my_odata_type, sub_obj.Type))
+                my_logger.verbose1(('Adding Additional', key, my_odata_type, sub_obj.Type))
                 sub_obj.properties[key] = object.populate(sub_payload[key])
 
             evals.append(sub_obj)

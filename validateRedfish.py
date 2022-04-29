@@ -144,7 +144,7 @@ def validateEntity(service, prop, val, parentURI=""):
     else:
         if excerptType == ExcerptTypes.NEUTRAL:
             if "OriginOfCondition" in name:
-                my_logger.log(logging.INFO-1, "{}: GET of resource at URI {} returned HTTP {}, but was a temporary resource."
+                my_logger.verbose1("{}: GET of resource at URI {} returned HTTP {}, but was a temporary resource."
                                 .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
                 return True
 
@@ -356,8 +356,8 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     resultList = OrderedDict()
     counts = Counter()
 
-    my_logger.log(logging.INFO-1, prop_name)
-    my_logger.log(logging.INFO-1,"\tvalue: {} {}".format(prop.Value, type(prop.Value)))
+    my_logger.verbose1(prop_name)
+    my_logger.verbose1("\tvalue: {} {}".format(prop.Value, type(prop.Value)))
 
     prop_name = '.'.join([x for x in (parent_name, prop_name) if x])
 
@@ -365,7 +365,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
     if not prop.SchemaExists:
         if not prop.Exists:
-            my_logger.log(logging.INFO-1,'{}: Item is skipped, no schema'.format(prop_name))
+            my_logger.verbose1('{}: Item is skipped, no schema'.format(prop_name))
             counts['skipNoSchema'] += 1
             return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'NoSchema')}, counts
         else:
@@ -377,7 +377,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     # rs-assertion: 7.4.7.2
     oem_check = service.config.get('oemcheck', True)
     if 'Oem' in prop_name and not oem_check:
-        my_logger.log(logging.INFO-1,'\tOem is skipped')
+        my_logger.verbose1('\tOem is skipped')
         counts['skipOem'] += 1
         return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}, counts
 
@@ -386,11 +386,11 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
     if prop.Type.IsMandatory:
         propMandatoryPass = True if prop.Exists else False
-        my_logger.log(logging.INFO-1,"\tMandatory Test: {}".format('OK' if propMandatoryPass else 'FAIL'))
+        my_logger.verbose1("\tMandatory Test: {}".format('OK' if propMandatoryPass else 'FAIL'))
     else:
-        my_logger.log(logging.INFO-1,"\tis Optional")
+        my_logger.verbose1("\tis Optional")
         if not prop.Exists:
-            my_logger.log(logging.INFO-1,"\tprop Does not exist, skip...")
+            my_logger.verbose1("\tprop Does not exist, skip...")
             counts['skipOptional'] += 1
             return {prop_name: ( '-', displayType(prop.Type), 'Yes' if prop.Exists else 'No', 'Optional')}, counts
 
@@ -434,7 +434,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         # rs-assumption: do not assume URIs for collections
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
-        my_logger.log(logging.INFO-1,"\tis Collection")
+        my_logger.verbose1("\tis Collection")
         if prop.Value == 'n/a':
             propValueList = []
             resultList[prop_name] = ('Array (absent)'.format(len(prop.Value)),
@@ -492,7 +492,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                     resultList.update(subMsgs)
                     counts.update(subCounts)
             except Exception as ex:
-                my_logger.log(logging.INFO-1, 'Exception caught while validating Complex', exc_info=1)
+                my_logger.verbose1('Exception caught while validating Complex', exc_info=1)
                 my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
                 counts['exceptionPropCheck'] += 1
         return resultList, counts
@@ -533,7 +533,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         my_type = prop.Type.fulltype
 
         if all([paramPass, propMandatoryPass, propNullablePass, excerptPass]):
-            my_logger.log(logging.INFO-1,"\tSuccess")
+            my_logger.verbose1("\tSuccess")
             counts['pass'] += 1
             result_str = 'PASS'
             if not deprecatedPass:
@@ -542,7 +542,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 counts['invalidPropertyValue'] += 1
                 result_str = 'WARN'
         else:
-            my_logger.log(logging.INFO-1,"\tFAIL")
+            my_logger.verbose1("\tFAIL")
             counts['err.' + str(my_type)] += 1
             result_str = 'FAIL'
             if not paramPass:
