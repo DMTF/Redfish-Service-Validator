@@ -437,7 +437,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         my_logger.verbose1("\tis Collection")
         if prop.Value == 'n/a':
             propValueList = []
-            resultList[prop_name] = ('Array (absent)'.format(len(prop.Value)),
+            resultList[prop_name] = ('Array (absent) {}'.format(len(prop.Value)),
                                 displayType(prop.Type, is_collection=True),
                                 'Yes' if prop.Exists else 'No', 'PASS' if propMandatoryPass else 'FAIL')
             my_logger.error("{}: Mandatory prop does not exist".format(prop_name))

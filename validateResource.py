@@ -128,7 +128,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if parent is not None:
             payload_resolve = navigateJsonFragment(parent.payload, URI)
             if parent.payload.get('@odata.id') not in URI:
-                my_logger.info('@odata.id of ReferenceableMember was referenced elsewhere...'.format(odata_id))
+                my_logger.info('@odata.id of ReferenceableMember was referenced elsewhere...: {}'.format(odata_id))
             elif payload_resolve is None:
                 my_logger.error('@odata.id of ReferenceableMember does not contain a valid JSON pointer for this payload: {}'.format(odata_id))
                 counts['badOdataIdResolution'] += 1
@@ -363,7 +363,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
             if link.Type.Excerpt:
                 continue
             elif link_destination is None:
-                errmsg = 'Referenced URI for NavigationProperty is missing {} {}'.format(link_destination, link.Name, link.parent)
+                errmsg = 'Referenced URI for NavigationProperty is missing {} {} {}'.format(link_destination, link.Name, link.parent)
                 my_logger.error(errmsg)
                 results[uriName]['errors'] += '\n' + errmsg
                 counts['errorMissingRefOdata'] += 1
