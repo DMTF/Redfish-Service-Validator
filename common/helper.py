@@ -146,7 +146,9 @@ def checkPayloadConformance(jsondata, uri):
     for key in [k for k in decoded if '@odata' in k]:
         paramPass = False
 
-        if key == '@odata.id':
+        property_name, odata_name = tuple(key.rsplit('@', maxsplit=1))
+
+        if odata_name == 'odata.id':
             paramPass = isinstance(decoded[key], str)
             paramPass = re.match(
                 '(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
@@ -155,11 +157,11 @@ def checkPayloadConformance(jsondata, uri):
             else:
                 if uri != '' and decoded[key] != uri:
                     my_logger.warning("{} {}: Expected @odata.id to match URI link {}".format(uri, key, decoded[key]))
-        elif key == '@odata.count':
+        elif odata_name == 'odata.count':
             paramPass = isinstance(decoded[key], int)
             if not paramPass:
                 my_logger.error("{} {}: Expected an integer, but received: {}".format(uri, key, decoded[key]))
-        elif key == '@odata.context':
+        elif odata_name == 'odata.context':
             paramPass = isinstance(decoded[key], str)
             paramPass = re.match(
                 '/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
@@ -167,7 +169,7 @@ def checkPayloadConformance(jsondata, uri):
                 my_logger.warning("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
                 info[key] = (decoded[key], 'odata', 'Exists', 'WARN')
                 continue
-        elif key == '@odata.type':
+        elif odata_name == 'odata.type':
             paramPass = isinstance(decoded[key], str)
             paramPass = re.match(
                 '#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
