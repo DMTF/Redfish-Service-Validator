@@ -13,14 +13,29 @@ from datetime import datetime
 
 tool_version = '2.1.5'
 
+# Set up the custom debug levels
+VERBOSE1=logging.INFO-1
+VERBOSE2=logging.INFO-2
+
+logging.addLevelName(VERBOSE1, "VERBOSE1")
+logging.addLevelName(VERBOSE2, "VERBOSE2")
+
+def verbose1(self, msg, *args, **kwargs):
+    if self.isEnabledFor(VERBOSE1):
+        self._log(VERBOSE1, msg, args, **kwargs)
+
+def verbose2(self, msg, *args, **kwargs):
+    if self.isEnabledFor(VERBOSE2):
+        self._log(VERBOSE2, msg, args, **kwargs)
+        
+logging.Logger.verbose1 = verbose1
+logging.Logger.verbose2 = verbose2
+
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
 standard_out = logging.StreamHandler(sys.stdout)
 standard_out.setLevel(logging.INFO)
 my_logger.addHandler(standard_out)
-
-logging.addLevelName(logging.INFO-1, "VERBOSE1")
-logging.addLevelName(logging.INFO-2, "VERBOSE2")
 
 def main(argslist=None, configfile=None):
     """Main command
@@ -130,7 +145,7 @@ def main(argslist=None, configfile=None):
     try:
         currentService = traverse.rfService(vars(args))
     except Exception as ex:
-        my_logger.log(logging.INFO-1, 'Exception caught while creating Service', exc_info=1)
+        my_logger.verbose1('Exception caught while creating Service', exc_info=1)
         my_logger.error("Service could not be started: {}".format(repr(ex)))
         my_logger.error("Try running the Redfish Protocol Validator to ensure the service meets basic protocol conformance")
         return 1, None, 'Service Exception'
@@ -181,7 +196,7 @@ def main(argslist=None, configfile=None):
 
     # get final counts
     metadata = currentService.metadata
-    my_logger.log(logging.INFO-1, '\nMetadata: Namespaces referenced in service: {}'.format(metadata.get_service_namespaces()))
+    my_logger.verbose1('\nMetadata: Namespaces referenced in service: {}'.format(metadata.get_service_namespaces()))
     my_logger.info('Metadata: Namespaces missing from $metadata: {}'.format(metadata.get_missing_namespaces()))
 
     if len(metadata.get_missing_namespaces()) > 0:

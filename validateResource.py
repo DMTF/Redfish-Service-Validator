@@ -48,9 +48,9 @@ def get_my_capture(this_logger, handler):
 def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=None, parent=None):
     # rs-assertion: 9.4.1
     # Initial startup here
-    my_logger.log(logging.INFO-1,"\n*** %s, %s", uriName, URI)
+    my_logger.verbose1("\n*** %s, %s", uriName, URI)
     my_logger.info("\n*** %s", URI)
-    my_logger.log(logging.INFO-1,"\n*** {}, {}".format(expectedType, expectedJson is not None))
+    my_logger.verbose1("\n*** {}, {}".format(expectedType, expectedJson is not None))
     counts = Counter()
     results, messages = OrderedDict(), OrderedDict()
 
@@ -114,7 +114,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     except traverse.AuthenticationError as e:
         raise  # re-raise exception
     except Exception as e:
-        my_logger.log(logging.INFO-1, 'Exception caught while creating ResourceObj', exc_info=1)
+        my_logger.verbose1('Exception caught while creating ResourceObj', exc_info=1)
         my_logger.error('Unable to gather property info for URI {}: {}'.format(URI, repr(e)))
         counts['exceptionResource'] += 1
         me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
@@ -128,7 +128,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if parent is not None:
             payload_resolve = navigateJsonFragment(parent.payload, URI)
             if parent.payload.get('@odata.id') not in URI:
-                my_logger.info('@odata.id of ReferenceableMember was referenced elsewhere...'.format(odata_id))
+                my_logger.info('@odata.id of ReferenceableMember was referenced elsewhere...: {}'.format(odata_id))
             elif payload_resolve is None:
                 my_logger.error('@odata.id of ReferenceableMember does not contain a valid JSON pointer for this payload: {}'.format(odata_id))
                 counts['badOdataIdResolution'] += 1
@@ -205,7 +205,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         except traverse.AuthenticationError as e:
             raise  # re-raise exception
         except Exception as ex:
-            my_logger.log(logging.INFO-1, 'Exception caught while validating single URI', exc_info=1)
+            my_logger.verbose1('Exception caught while validating single URI', exc_info=1)
             my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
             propMessages[prop_name] = create_entry(prop_name, '', '', prop.Exists, 'exception')
             counts['exceptionPropCheck'] += 1
@@ -216,10 +216,10 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     # List all items checked and unchecked
     # current logic does not check inside complex types
     fmt = '%-30s%30s'
-    my_logger.log(logging.INFO-1,'%s, %s, %s', uriName, SchemaNamespace, SchemaType)
+    my_logger.verbose1('%s, %s, %s', uriName, SchemaNamespace, SchemaType)
 
     for key in jsonData:
-        my_logger.log(logging.INFO-1,fmt % (key, messages[key].result if key in messages else 'Exists, no schema check'))
+        my_logger.verbose1(fmt % (key, messages[key].result if key in messages else 'Exists, no schema check'))
 
     allowAdditional = redfish_obj.Type.HasAdditional
     for key in [k for k in jsonData if k not in messages and k not in redfish_obj.properties and '@' not in k]:
@@ -247,7 +247,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
     for key in messages:
         if key not in jsonData:
-            my_logger.log(logging.INFO-1,fmt % (key, messages[key].result))
+            my_logger.verbose1(fmt % (key, messages[key].result))
 
     results[uriName]['warns'], results[uriName]['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
 
@@ -258,7 +258,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
             break
     my_logger.info("\t {}".format('PASS' if pass_val else' FAIL...'))
 
-    my_logger.log(logging.INFO-1,'%s, %s', SchemaFullType, counts)
+    my_logger.verbose1('%s, %s', SchemaFullType, counts)
 
     # Get all links available
 
@@ -344,7 +344,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=parent, allLinks=allLinks, inAnnotation=link.InAnnotation)
             success, linkCounts, linkResults, xlinks, xobj = returnVal
 
-            my_logger.log(logging.INFO-1,'%s, %s', link.Name, linkCounts)
+            my_logger.verbose1('%s, %s', link.Name, linkCounts)
 
             refLinks.extend(xlinks)
             if not success:
@@ -363,7 +363,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
             if link.Type.Excerpt:
                 continue
             elif link_destination is None:
-                errmsg = 'Referenced URI for NavigationProperty is missing {} {}'.format(link_destination, link.Name, link.parent)
+                errmsg = 'Referenced URI for NavigationProperty is missing {} {} {}'.format(link_destination, link.Name, link.parent)
                 my_logger.error(errmsg)
                 results[uriName]['errors'] += '\n' + errmsg
                 counts['errorMissingRefOdata'] += 1
@@ -380,7 +380,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                     continue
 
             if link_destination not in allLinks:
-                my_logger.log(logging.INFO-1,'{}, {}'.format(link.Name, link))
+                my_logger.verbose1('{}, {}'.format(link.Name, link))
                 counts['reflink'] += 1
             else:
                 continue
