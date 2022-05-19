@@ -143,10 +143,8 @@ From a Windows system, the following command can be used to build a Windows exec
 
 ## Release Process
 
-1. Update `CHANGELOG.md` with the list of changes since the last release
-2. Update the `tool_version` variable in `RedfishServiceValidator.py` to reflect the new tool version
-3. Push changes to Github
-4. Create the standalone executable as described in the [above section](#building-a-standalone-windows-executable)
-5. Create the zip file for the release containing the generated exe file and `README.md`
-    * Name format: Redfish-Service-Validator-X.Y.Z-Windows.zip
-6. Create a new release in Github with the zip file attached
+1. Go to the "Actions" page
+2. Select the "Release and Publish" workflow
+3. Click "Run workflow"
+4. Fill out the form
+5. Click "Run workflow"
