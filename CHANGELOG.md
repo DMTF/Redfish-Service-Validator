@@ -1,5 +1,10 @@
 # Change Log
 
+## [2.1.6] - 2022-05-19
+- Added shebang statements at the beginning of the tool in order to execute it directly
+- Added support for verifying the data type of '@odata.count' annotations
+- Minor enhancements to debug statements
+
 ## [2.1.5] - 2022-04-08
 - Added check to ensure array properties are returned as arrays before iterating over their values
 - Added context-driven pattern checking for 'DurableName'
