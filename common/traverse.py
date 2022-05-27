@@ -10,6 +10,7 @@ from http.client import responses
 import os
 
 import redfish as rf
+import requests
 import common.catalog as catalog
 from common.helper import navigateJsonFragment, splitVersionString
 from common.metadata import Metadata
@@ -158,7 +159,11 @@ class rfService():
         try:
             startTick = datetime.now()
             mockup_file_path = os.path.join(config['mockup'], URLDest.replace('/redfish/v1/', '', 1).strip('/'), 'index.json')
-            if config['mockup'] != '' and os.path.isfile(mockup_file_path):
+            if not inService:
+                req = requests.get(URLDest)
+                content = req.json if not isXML else req.text
+                response = rf.rest.v1.StaticRestResponse(Status=req.status_code, Headers={x:req.headers[x] for x in req.headers}, Content=req.text)
+            elif config['mockup'] != '' and os.path.isfile(mockup_file_path):
                 content = {}
                 with open(mockup_file_path) as mockup_file:
                     content = json.load(mockup_file)
