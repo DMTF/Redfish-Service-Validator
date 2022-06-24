@@ -160,7 +160,7 @@ class rfService():
             startTick = datetime.now()
             mockup_file_path = os.path.join(config['mockup'], URLDest.replace('/redfish/v1/', '', 1).strip('/'), 'index.json')
             if not inService:
-                req = requests.get(URLDest)
+                req = requests.get(URLDest, proxies=self.context._proxies)
                 content = req.json if not isXML else req.text
                 response = rf.rest.v1.StaticRestResponse(Status=req.status_code, Headers={x:req.headers[x] for x in req.headers}, Content=req.text)
             elif config['mockup'] != '' and os.path.isfile(mockup_file_path):
