@@ -106,7 +106,7 @@ g_config_defaults = {
         },
         "mockup": {
             "value": "",
-            "description": "Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage"
+            "description": "Enables insertion of local mockup resources to replace payloads from the service"
         }
     }
 }
@@ -224,16 +224,27 @@ class RSVGui:
         Edits the configuration settings
         """
         option_win = tk.Toplevel()
+        option_win_frame = tk.Frame( option_win )
+        option_win_contents = tk.Canvas( option_win_frame )
+        option_y_scroll = tk.Scrollbar( option_win_frame, orient = "vertical", command = option_win_contents.yview )
+        option_y_scroll.pack( side = tk.RIGHT, fill = tk.Y )
+        option_x_scroll = tk.Scrollbar( option_win, orient = "horizontal", command = option_win_contents.xview )
+        option_x_scroll.pack( side = tk.BOTTOM, fill = tk.X )
+        option_win_frame.pack( side = tk.TOP, fill = tk.BOTH, expand = True )
+        option_win_contents.pack( side = tk.LEFT, fill = tk.BOTH, expand = True )
+        option_win_contents.bind( "<Configure>", lambda e: option_win_contents.configure( scrollregion = option_win_contents.bbox( "all" ) ) )
+        option_win_frame2 = tk.Frame( option_win_contents )
+        option_win_contents.create_window( ( 0, 0 ), window = option_win_frame2 )
         config_values = {}
 
         # Iterate through the config file options to build the window
         for section in self.config:
             config_values[section] = {}
-            section_frame = tk.Frame( option_win )
+            section_frame = tk.Frame( option_win_frame2 )
             section_frame.pack( side = tk.TOP )
             tk.Label( section_frame, text = section, anchor = "center", font = ( None, 16 ) ).pack( side = tk.LEFT )
             for option in self.config[section]:
-                option_frame = tk.Frame( option_win )
+                option_frame = tk.Frame( option_win_frame2 )
                 option_frame.pack( side = tk.TOP, fill = tk.X )
                 tk.Label( option_frame, text = option, width = 16, anchor = "w" ).pack( side = tk.LEFT )
                 config_values[section][option] = tk.StringVar()
@@ -245,7 +256,9 @@ class RSVGui:
                 else:
                     tk.Entry( option_frame, width = 32, textvariable = config_values[section][option] ).pack( side = tk.LEFT )
                 tk.Label( option_frame, text = self.config[section][option]["description"], anchor = "w" ).pack( side = tk.LEFT )
-        tk.Button( option_win, text = "Apply", command = lambda: self.apply_config( option_win, config_values ) ).pack( side = tk.BOTTOM )
+        tk.Button( option_win_frame2, text = "Apply", command = lambda: self.apply_config( option_win, config_values ) ).pack( side = tk.BOTTOM )
+        option_win_frame2.update()
+        option_win_contents.config( xscrollcommand = option_x_scroll.set, yscrollcommand = option_y_scroll.set, width = option_win_frame2.winfo_width(), height = option_win_frame2.winfo_height() )
 
     def apply_config( self, window, config_values ):
         """
