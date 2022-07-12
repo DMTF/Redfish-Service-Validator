@@ -24,7 +24,7 @@ If you have a previous beautifulsoup4 installation, use the following command:
     pip3 install beautifulsoup4 --upgrade
 
 There is no dependency based on Windows or Linux OS.
-The result logs are generated in HTML format and an appropriate browser, such as Chrome, Firefox, or IE, is required to view the logs on the client system.
+The result logs are generated in HTML format and an appropriate browser, such as Chrome, Firefox, or Edge, is required to view the logs on the client system.
 
 ## Usage
 
@@ -38,7 +38,7 @@ Example usage with a configuration file:
 
 The following sections describe the arguments and configuration file options.
 The file `config/example.ini` can be used as a template configuration file.
-At a minimum, the `ip`, `username`, and `password` options be modified.
+At a minimum, the `ip`, `username`, and `password` options must be modified.
 
 ### [Tool]
 
