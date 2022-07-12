@@ -14,7 +14,6 @@ Brief : This file contains the GUI to interact with the RedfishServiceValidator
 
 import configparser
 import os
-import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog as tkFileDialog
@@ -116,7 +115,7 @@ class RSVGui:
     Main class for the GUI
 
     Args:
-        parent (tkinter): Parent Tkinter object
+        parent (Tk): Parent Tkinter object
     """
 
     def __init__( self, parent ):
@@ -136,7 +135,7 @@ class RSVGui:
         self.parent = parent
         self.parent.title( "Redfish Service Validator {}".format( rsv.tool_version ) )
 
-        # Add the menubar
+        # Add the menu bar
         menu_bar = tk.Menu( self.parent )
         file_menu = tk.Menu( menu_bar, tearoff = 0 )
         file_menu.add_command( label = "Open Config", command = self.open_config )
@@ -200,7 +199,7 @@ class RSVGui:
             ConfigParser: A ConfigParser object generated from the configuration data
         """
         config_parser = configparser.ConfigParser()
-        if preserve_case == True:
+        if preserve_case:
             config_parser.optionxform = str
         for section in self.config:
             config_parser.add_section( section )
@@ -225,26 +224,26 @@ class RSVGui:
         """
         option_win = tk.Toplevel()
         option_win_frame = tk.Frame( option_win )
-        option_win_contents = tk.Canvas( option_win_frame )
-        option_y_scroll = tk.Scrollbar( option_win_frame, orient = "vertical", command = option_win_contents.yview )
+        option_win_canvas = tk.Canvas( option_win_frame )
+        option_y_scroll = tk.Scrollbar( option_win_frame, orient = "vertical", command = option_win_canvas.yview )
         option_y_scroll.pack( side = tk.RIGHT, fill = tk.Y )
-        option_x_scroll = tk.Scrollbar( option_win, orient = "horizontal", command = option_win_contents.xview )
+        option_x_scroll = tk.Scrollbar( option_win, orient = "horizontal", command = option_win_canvas.xview )
         option_x_scroll.pack( side = tk.BOTTOM, fill = tk.X )
         option_win_frame.pack( side = tk.TOP, fill = tk.BOTH, expand = True )
-        option_win_contents.pack( side = tk.LEFT, fill = tk.BOTH, expand = True )
-        option_win_contents.bind( "<Configure>", lambda e: option_win_contents.configure( scrollregion = option_win_contents.bbox( "all" ) ) )
-        option_win_frame2 = tk.Frame( option_win_contents )
-        option_win_contents.create_window( ( 0, 0 ), window = option_win_frame2 )
+        option_win_canvas.pack( side = tk.LEFT, fill = tk.BOTH, expand = True )
+        option_win_canvas.bind( "<Configure>", lambda e: option_win_canvas.configure( scrollregion = option_win_canvas.bbox( "all" ) ) )
+        option_win_contents = tk.Frame( option_win_canvas )
+        option_win_canvas.create_window( ( 0, 0 ), window = option_win_contents )
         config_values = {}
 
         # Iterate through the config file options to build the window
         for section in self.config:
             config_values[section] = {}
-            section_frame = tk.Frame( option_win_frame2 )
+            section_frame = tk.Frame( option_win_contents )
             section_frame.pack( side = tk.TOP )
             tk.Label( section_frame, text = section, anchor = "center", font = ( None, 16 ) ).pack( side = tk.LEFT )
             for option in self.config[section]:
-                option_frame = tk.Frame( option_win_frame2 )
+                option_frame = tk.Frame( option_win_contents )
                 option_frame.pack( side = tk.TOP, fill = tk.X )
                 tk.Label( option_frame, text = option, width = 16, anchor = "w" ).pack( side = tk.LEFT )
                 config_values[section][option] = tk.StringVar()
@@ -256,9 +255,9 @@ class RSVGui:
                 else:
                     tk.Entry( option_frame, width = 32, textvariable = config_values[section][option] ).pack( side = tk.LEFT )
                 tk.Label( option_frame, text = self.config[section][option]["description"], anchor = "w" ).pack( side = tk.LEFT )
-        tk.Button( option_win_frame2, text = "Apply", command = lambda: self.apply_config( option_win, config_values ) ).pack( side = tk.BOTTOM )
-        option_win_frame2.update()
-        option_win_contents.config( xscrollcommand = option_x_scroll.set, yscrollcommand = option_y_scroll.set, width = option_win_frame2.winfo_width(), height = option_win_frame2.winfo_height() )
+        tk.Button( option_win_contents, text = "Apply", command = lambda: self.apply_config( option_win, config_values ) ).pack( side = tk.BOTTOM )
+        option_win_contents.update()
+        option_win_canvas.config( xscrollcommand = option_x_scroll.set, yscrollcommand = option_y_scroll.set, width = option_win_contents.winfo_width(), height = option_win_contents.winfo_height() )
 
     def apply_config( self, window, config_values ):
         """
@@ -291,7 +290,7 @@ class RSVGui:
             # User closed the box; just return
             return
         self.config_file = filename
-        if self.config_file.lower().endswith( ".ini" ) == False:
+        if not self.config_file.lower().endswith( ".ini" ):
             self.config_file = self.config_file + ".ini"
         self.save_config()
 
@@ -328,7 +327,7 @@ class RSVGui:
         try:
             rsv_config = self.build_config_parser( False )
             status_code, last_results_page, exit_string = rsv.main(configfile = rsv_config )
-            if last_results_page != None:
+            if last_results_page is not None:
                 webbrowser.open_new( last_results_page )
             else:
                 # The validation could not take place (for a controlled reason)
@@ -390,7 +389,7 @@ def main():
     Entry point for the GUI
     """
     root = tk.Tk()
-    gui = RSVGui( root )
+    RSVGui( root )
     root.mainloop()
 
 if __name__ == '__main__':
