@@ -178,8 +178,6 @@ class RSVGui:
         """
         Parses the configuration settings from a file
         """
-        print( "Before" )
-        print( self.config )
         config_parser = configparser.ConfigParser()
         config_parser.optionxform = str
         config_parser.read( self.config_file )
@@ -188,8 +186,6 @@ class RSVGui:
                 if section in self.config:
                     if option in self.config[section]:
                         self.config[section][option]["value"] = config_parser.get( section, option )
-        print( "After" )
-        print( self.config )
         self.update_sut()
 
     def build_config_parser( self, preserve_case ):
