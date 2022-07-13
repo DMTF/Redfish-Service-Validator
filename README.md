@@ -7,6 +7,12 @@ Copyright 2017-2022 DMTF.  All rights reserved.
 The Redfish Service Validator is a Python3 tool for checking conformance of any "device" with a Redfish interface against Redfish CSDL schema.
 The tool is designed to be device-agnostic and is driven based on the Redfish specifications and schema intended to be supported by the device.
 
+## Installation
+
+The Redfish Service Validator can be installed by cloning the Git repository:
+
+    git clone https://github.com/DMTF/Redfish-Service-Validator.git
+
 ## Requirements
 
 External modules:
