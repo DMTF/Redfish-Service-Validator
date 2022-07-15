@@ -1055,11 +1055,12 @@ class RedfishObject(RedfishProperty):
                 if n == 'Actions':
                     new_type = item.Type.catalog.getTypeInCatalog('ActionInfo.ActionInfo')
                     for act in item.Value.values():
-                        uri = act.get('@Redfish.ActionInfo')
-                        if isinstance(uri, str):
-                            my_link = RedfishObject(new_type, 'ActionInfo', item).populate({'@odata.id': uri})
-                            my_link.InAnnotation = True
-                            links.append(my_link)
+                        if isinstance(act, dict):
+                            uri = act.get('@Redfish.ActionInfo')
+                            if isinstance(uri, str):
+                                my_link = RedfishObject(new_type, 'ActionInfo', item).populate({'@odata.id': uri})
+                                my_link.InAnnotation = True
+                                links.append(my_link)
                 if item.Type.IsNav:
                     if isinstance(item.Value, list):
                         for num, val in enumerate(item.Value):
