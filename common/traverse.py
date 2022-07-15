@@ -56,6 +56,11 @@ class rfService():
             proxies = {}
             if self.config['serv_http_proxy'] != '': proxies['http'] = self.config['serv_http_proxy']
             if self.config['serv_https_proxy'] != '': proxies['https'] = self.config['serv_https_proxy']
+        self.ext_proxies=None
+        if self.config['ext_http_proxy'] != '' or self.config['ext_https_proxy'] != '':
+            proxies = {}
+            if self.config['ext_http_proxy'] != '': proxies['http'] = self.config['ext_http_proxy']
+            if self.config['ext_https_proxy'] != '': proxies['https'] = self.config['ext_https_proxy']
         self.context = rf.redfish_client(base_url=rhost, username=user, password=passwd, timeout=self.config['timeout'], proxies=proxies)
         self.context.login( auth = self.config['authtype'].lower() )
 
@@ -160,7 +165,7 @@ class rfService():
             startTick = datetime.now()
             mockup_file_path = os.path.join(config['mockup'], URLDest.replace('/redfish/v1/', '', 1).strip('/'), 'index.json')
             if not inService:
-                req = requests.get(URLDest, proxies=self.context._proxies)
+                req = requests.get(URLDest, proxies=self.ext_proxies)
                 content = req.json if not isXML else req.text
                 response = rf.rest.v1.StaticRestResponse(Status=req.status_code, Headers={x:req.headers[x] for x in req.headers}, Content=req.text)
             elif config['mockup'] != '' and os.path.isfile(mockup_file_path):
