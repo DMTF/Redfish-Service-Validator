@@ -1,18 +1,22 @@
-Copyright 2017-2021 _DMTF_. All rights reserved.
+Copyright 2017-2022 DMTF.  All rights reserved.
 
 # Redfish Service Validator
 
 ## About
 
-The `Redfish Service Validator` is a python3 tool for checking conformance of any "device" with a _Redfish_ service interface against _Redfish_ CSDL schema.  The tool is designed to be device agnostic and is driven based on the _Redfish_ specifications and schema intended to be supported by the device.
+The Redfish Service Validator is a Python3 tool for checking conformance of any "device" with a Redfish interface against Redfish CSDL schema.
+The tool is designed to be device-agnostic and is driven based on the Redfish specifications and schema intended to be supported by the device.
 
-## Introduction
+## Installation
 
-The `Redfish Service Validator` is an open source framework for checking conformance of any generic device with _Redfish_ interface enabled against the _DMTF_ defined _Redfish_ schema and specifications. The tool is designed to be device agnostic and is driven purely based on the _Redfish_ specifications intended to be supported by the device.
+The Redfish Service Validator can be installed by cloning the Git repository:
 
-## Pre-requisites
+    git clone https://github.com/DMTF/Redfish-Service-Validator.git
 
-The `Redfish Service Validator` is based on Python 3 and the client system is required to have the Python framework installed before the tool can be installed and executed on the system. Additionally, the following packages are required to be installed and accessible from the python environment:
+## Requirements
+
+External modules:
+
 * beautifulsoup4  - https://pypi.python.org/pypi/beautifulsoup4
 * requests  - https://github.com/kennethreitz/requests (Documentation is available at http://docs.python-requests.org/)
 * lxml - https://pypi.python.org/pypi/lxml
@@ -21,115 +25,119 @@ You may install the prerequisites by running:
 
     pip3 install -r requirements.txt
 
-If you have a previous beautifulsoup4 installation, please use the following command:
+If you have a previous beautifulsoup4 installation, use the following command:
 
     pip3 install beautifulsoup4 --upgrade
 
-There is no dependency based on Windows or Linux OS. The result logs are generated in HTML format and an appropriate browser (Chrome, Firefox, IE, etc.) is required to view the logs on the client system.
+There is no dependency based on Windows or Linux OS.
+The result logs are generated in HTML format and an appropriate browser, such as Chrome, Firefox, or Edge, is required to view the logs on the client system.
 
-## Installation
+## Usage
 
-Place the RedfishServiceValidator folder into the desired directory.  Create the following subdirectories in the tool root directory: "config", "logs", "SchemaFiles".  Place the example config.ini file in the "config" directory.  Place the CSDL Schema files to be used by the tool in the root of the schema directory, or the directory given in config.ini.
+Example usage without providing a configuration file:
 
-## Execution Steps
+    python RedfishServiceValidator.py -u root -p root -r https://192.168.1.1
 
-The `Redfish Service Validator` is designed to execute as a purely command line interface tool with no intermediate inputs expected during tool execution. However, the tool requires various inputs regarding system details, _DMTF_ schema files etc. which are consumed by the tool during execution to generate the conformance report logs. Below are the step by step instructions on setting up the tool for execution on any identified _Redfish_ device for conformance test:
-
-An example command line to run:
+Example usage with a configuration file:
 
     python RedfishServiceValidator.py -c config/example.ini
 
-Modify the `config/example.ini` file to enter the system details, under the below sections. At a minimum, `ip` should be modified.
+The following sections describe the arguments and configuration file options.
+The file `config/example.ini` can be used as a template configuration file.
+At a minimum, the `ip`, `username`, and `password` options must be modified.
 
 ### [Tool]
 
-Variable   | Type   | Definition
---         |--      |--
-Version    | string | Internal config version (optional)
-Copyright  | string | _DMTF_ copyright (optional)
-verbose    | int    | level of verbosity (0-3) 
+| Variable   | CLI Argument  | Type    | Definition |
+| :---       | :---          | :---    | :---       |
+| `verbose`  | `-v`          | integer | Verbosity of tool in stdout | 
 
 ### [Host]
 
-Variable         | Type    | Definition
---               |--       |--
-ip               | string  | Host of testing system, formatted as https:// ip : port (can use http as well)
-username         | string  | Username for Basic authentication
-password         | string  | Password for Basic authentication (removed from logs)
-description      | string  | Description of system being tested (optional)
-forceauth        | boolean | Force authentication even on http servers
-authtype         | string  | Authorization type (Basic | Session | Token | None)
-token            | string  | Token string for Token authentication
-ext_http_proxy   | string | URL of the HTTP proxy for accessing external sites
-ext_https_proxy  | string | URL of the HTTPS proxy for accessing external sites
-serv_http_proxy  | string | URL of the HTTP proxy for accessing the service
-serv_https_proxy | string | URL of the HTTPS proxy for accessing the service
+| Variable           | CLI Argument         | Type    | Definition |
+| :---               | :---                 | :---    | :---       |
+| `ip`               | `-r`                 | string  | The address of the Redfish service (with scheme); example: 'https://123.45.6.7:8000' |
+| `username`         | `-u`                 | string  | The username for authentication |
+| `password`         | `-p`                 | string  | The password for authentication |
+| `description`      | `--description`      | string  | The description of the system for identifying logs; if none is given, a value is produced from information in the service root |
+| `forceauth`        | `--forceauth`        | boolean | Force authentication on unsecure connections |
+| `authtype`         | `--authtype`         | string  | Authorization type; 'None', 'Basic', 'Session', or 'Token' |
+| `token`            | `--token`            | string  | Token when 'authtype' is 'Token' |
+| `ext_http_proxy`   | `--ext_http_proxy`   | string  | URL of the HTTP proxy for accessing external sites
+| `ext_https_proxy`  | `--ext_https_proxy`  | string  | URL of the HTTPS proxy for accessing external sites
+| `serv_http_proxy`  | `--serv_http_proxy`  | string  | URL of the HTTP proxy for accessing the service
+| `serv_https_proxy` | `--serv_https_proxy` | string  | URL of the HTTPS proxy for accessing the service
 
 ### [Validator]
 
-Variable        | Type    | Definition
---              |--       |--
-payload         | string  | Option to test a specific payload or resource tree (see below)
-logdir          | string  | Place to save logs and run configs
-oemcheck        | boolean | Whether to check Oem items on service
-uricheck        | boolean | Allow URI checking on services below RedfishVersion 1.6.0
-debugging       | boolean | Whether to print debug to log
-schema_directory| string  | Where schema is located/saved on system
-mockup          | string  | Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage
+| Variable           | CLI Argument         | Type    | Definition |
+| :---               | :---                 | :---    | :---       |
+| `payload`          | `--payload`          | string  | The mode to validate payloads ('Tree', 'Single', 'SingleFile', or 'TreeFile') followed by resource/filepath; see below |
+| `logdir`           | `--logdir`           | string  | The directory for generated report files; default: 'logs'
+| `oemcheck`         | `--nooemcheck`       | boolean | Whether to check OEM items on service |
+| `uricheck`         | `--uricheck`         | boolean | Allow URI checking on services below RedfishVersion 1.6.0 |
+| `debugging`        | `--debugging`        | boolean | Output debug statements to text log, otherwise it only uses INFO |
+| `schema_directory` | `--schema_directory` | string  | Directory for local schema files |
+| `mockup`           | `--mockup`           | string  | Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage |
 
-### Payload options
+### Payload Option
 
-The payload option takes two parameters as "option uri"
+The `payload` option takes two parameters as strings.
 
-(Single, SingleFile, Tree, TreeFile)
-How to test the payload URI given.  Single tests will only give a report on a single resource, while Tree will report on every link from that resource
+The first parameter specifies how to test the payload URI given, which can be 'Single', 'SingleFile', 'Tree', or 'TreeFile'.
+'Single' and 'SingleFile' will test and give a report on a single resource.
+'Tree' and 'TreeFile' will test and give a report on the resource and every link from that resource.
 
-([Filename], [uri])
+The second parameter specifies a URI of the target payload to test or a filename of a local file to test.
 
-URI of the target payload, or filename of a local file.
+For example, `--payload Single /redfish/v1/AccountService` will perform validation of the URI `/redfish/v1/AccountService` and no other resources.
 
-## Execution flow
+## Execution Flow
 
-1. `Redfish Service Validator` starts with the Service root Resource Schema by querying the service with the service root URI and getting all the device information, the resources supported and their links. Once the response of the Service root query is verified against its schema, the tool traverses through all the collections and Navigation properties returned by the service.
-    * From the Metadata, collect all XML specified possible from the service, and store them in a tool-specified directory
-2. For each navigation property/Collection of resource returned, it does following operations:
-    * Reads all the Navigation/collection of resources from the respective resource collection schema file.
-    * Reads the schema file related to the particular resource, collects all the information about individual properties from the resource schema file and stores them into a dictionary
-    * Queries the service with the individual resource uri and validates all the properties returned against the properties collected from the schema file using a GET method making sure all the Mandatory properties are supported
-3. Step 2 repeats until all of the URIs and resources are covered.
+1. The Redfish Service Validator starts by querying the service root resource from the target service and collections information about the service.
+    * Collects all CSDL from the service.
+2. For each resource found, it performs the following:
+    * Reads all the URIs referenced in the resource.
+    * Reads the schema file related to the particular resource and builds a model of expected properties.
+    * Tests each property in the resource against the model built from the schema.
+3. Step 2 repeats until all resources are covered.
 
-Upon validation of a resource, the following types of tests may occur:
-* Upon reaching any resource, validate its @odata entries inside of its payload with regex.  If it fails, return a "failPayloadError".
-* Attempt to initiate a Resource object, which requires an @odata.type and Schema of a valid JSON payload, otherwise return a "problemResource" or "exceptionResource" and terminate, otherwise "passGet"
-* With the Resource initiated, begin to validate each Property available based on its Schema definition (sans annotations, additional props, is Case-Sensitive):
-    * Check whether a Property is at first able to be nulled or is mandatory, and pass based on its Requirement or Nullability
-    * For collections, validate each property inside of itself, and expects a list rather than a single Property, otherwise validate normally:
-        * For basic types such as Int, Bool, DateTime, GUID, String, etc, check appropriate types, regex and ranges.
-        * For Complex types, validate each property inside of the Complex, including annotations and additional properties
-        * For Enum types, check and see if the given value exists in Schema's defined EnumType (Case-Sensitive)
-        * For Entity types, check if the link given by @odata.id sends the client to an appropriate resource by the correct type, by performing a GET
-* After reaching completion, perform the same routine with all Annotations available in the payload.
-* If any unvalidated entries exist in the payload, determine whether or not additional properties are legitimate for this resource, otherwise throw a "failAdditional" error. 
- 
+When validating a resource, the following types of tests may occur for each property:
+
+* Verify `@odata` properties against known patterns, such as `@odata.id`.
+* Check if the property is defined in the resource's schema.
+* Check if the value of the property matches the expected type, such as integer, string, boolean, array, or object.
+* Check if the property is mandatory.
+* Check if the property is allowed to be `null`.
+* For string properties with a regular expression, check if the value passes the regular expression.
+* For enumerations, check if the value is within the enumeration list.
+* For numeric properties with defined ranges, check if the value is within the specified range.
+* For object properties, check the properties inside the object againt the object's schema definition.
+* For links, check that the URI referenced matches the expected resource type.
+
 ## Conformance Logs - Summary and Detailed Conformance Report
 
-The `Redfish Service Validator` generates an html report under the “logs” folder, named as ConformanceHtmlLog_MM_DD_YYYY_HHMMSS.html, along with a text and config file.  The report gives the detailed view of the individual properties checked, with the Pass/Fail/Skip/Warning status for each resource checked for conformance.
+The Redfish Service Validator generates an HTML report under the 'logs' folder and is named as 'ConformanceHtmlLog_MM_DD_YYYY_HHMMSS.html', along with a text and config file.
+The report gives the detailed view of the individual properties checked, with pass, fail, skip, or warning status for each resource checked for conformance.
 
-Additionally, there is a verbose log file that may be referenced to diagnose tool or schema problems when the HTML log is insufficient. 
+Additionally, there is a verbose text log file that may be referenced to diagnose tool or schema problems when the HTML log is insufficient. 
 
 ## The Test Status
 
 The test result for each GET operation will be reported as follows:
-* PASS: If the operation is successful and returns a success code (E.g. 200, 204)
+
+* PASS: If the operation is successful and returns a success code, such as `200 OK`.
 * FAIL: If the operation failed for reasons mentioned in GET method execution, or some configuration.
 * SKIP: If the property or method being checked is not mandatory is not supported by the service.
 
 ## Limitations
 
-`Redfish Service Validator` covers all the GET execution on the service. Below are certain points which are not in this scope.
-* Patch/Post/Skip/Top/Head is not covered as part of `Redfish Service Validator` due to dependency on internal factor of the service.
-* `Redfish Service Validator` does not cover testing of multiple service at once. To execute this, we have to re-run the tool by running it separately.
-* Tool doesn't support @odata.context which use complex $entity path
+The Redfish Service Validator only performs GET operations on the service.
+Below are certain items that are not in scope for the tool.
+
+* Other HTTP methods, such as PATCH, are not covered.
+* Wuery parameters, such as $top and $skip, are not covered.
+* Multiple services are not tested simultaneously.
 
 ## Building a Standalone Windows Executable
 
