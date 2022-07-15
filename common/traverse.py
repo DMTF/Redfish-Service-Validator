@@ -58,9 +58,9 @@ class rfService():
             if self.config['serv_https_proxy'] != '': proxies['https'] = self.config['serv_https_proxy']
         self.ext_proxies=None
         if self.config['ext_http_proxy'] != '' or self.config['ext_https_proxy'] != '':
-            proxies = {}
-            if self.config['ext_http_proxy'] != '': proxies['http'] = self.config['ext_http_proxy']
-            if self.config['ext_https_proxy'] != '': proxies['https'] = self.config['ext_https_proxy']
+            self.ext_proxies = {}
+            if self.config['ext_http_proxy'] != '': self.ext_proxies['http'] = self.config['ext_http_proxy']
+            if self.config['ext_https_proxy'] != '': self.ext_proxies['https'] = self.config['ext_https_proxy']
         self.context = rf.redfish_client(base_url=rhost, username=user, password=passwd, timeout=self.config['timeout'], proxies=proxies)
         self.context.login( auth = self.config['authtype'].lower() )
 
