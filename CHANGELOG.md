@@ -1,5 +1,10 @@
 # Change Log
 
+## [2.1.7] - 2022-07-15
+- Added check to on URIs for validation for external reference to ensure it does not go through the Redfish library
+- Added scrollbars to the 'Edit Config' window
+- Added check to ensure an action is shown in the response as an object before trying to discover if it has action info
+
 ## [2.1.6] - 2022-05-19
 - Added shebang statements at the beginning of the tool in order to execute it directly
 - Added support for verifying the data type of '@odata.count' annotations
