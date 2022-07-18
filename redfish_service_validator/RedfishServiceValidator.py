@@ -8,6 +8,7 @@ import argparse
 import logging
 import json
 from datetime import datetime
+import traceback
 
 tool_version = '2.1.7'
 
@@ -143,6 +144,7 @@ def main(argslist=None, configfile=None):
     try:
         currentService = traverse.rfService(vars(args))
     except Exception as ex:
+        traceback.print_exc()
         my_logger.verbose1('Exception caught while creating Service', exc_info=1)
         my_logger.error("Service could not be started: {}".format(repr(ex)))
         my_logger.error("Try running the Redfish Protocol Validator to ensure the service meets basic protocol conformance")
