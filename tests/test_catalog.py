@@ -11,7 +11,7 @@ import pprint
 
 sys.path.append('../')
 
-import common.catalog as catalog
+import redfish_service_validator.catalog as catalog
 
 class TestCatalog(unittest.TestCase):
     def test_fuzzy(self):

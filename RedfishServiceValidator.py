@@ -104,10 +104,10 @@ def main(argslist=None, configfile=None):
         return 1, None, 'Configuration Incomplete'
 
     if configfile:
-        from common.config import convert_config_to_args
+        from redfish_service_validator.config import convert_config_to_args
         convert_config_to_args(args, configfile)
     else:
-        from common.config import convert_args_to_config
+        from redfish_service_validator.config import convert_args_to_config
         my_logger.info('Writing config file to log directory')
         configfilename = datetime.strftime(startTick, os.path.join(logpath, "ConfigFile_%m_%d_%Y_%H%M%S.ini"))
         my_config = convert_args_to_config(args)
@@ -141,7 +141,7 @@ def main(argslist=None, configfile=None):
         schema_pack.my_logger.addHandler(file_handler)
         schema_pack.setup_schema_pack('latest', args.schema_directory, args.ext_http_proxy, args.ext_https_proxy)
 
-    import common.traverse as traverse
+    import redfish_service_validator.traverse as traverse
     try:
         currentService = traverse.rfService(vars(args))
     except Exception as ex:
@@ -180,7 +180,7 @@ def main(argslist=None, configfile=None):
             my_logger.error('File not found for payload: {}'.format(ppath))
             return 1, None, 'File not found for payload: {}'.format(ppath)
     try:
-        from validateResource import validateSingleURI, validateURITree
+        from redfish_service_validator.validateResource import validateSingleURI, validateURITree
         if 'single' in pmode:
             success, counts, results, xlinks, topobj = validateSingleURI(currentService, ppath, 'Target', expectedJson=jsonData)
         elif 'tree' in pmode:
@@ -233,7 +233,7 @@ def main(argslist=None, configfile=None):
     my_logger.info("\n".join('{}: {}   '.format(x, y) for x, y in sorted(finalCounts.items())))
 
     # dump cache info to debug log
-    import common.schema as schema
+    import redfish_service_validator.schema as schema
     my_logger.debug('getSchemaDetails() -> {}'.format(schema.getSchemaDetails.cache_info()))
     my_logger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
 

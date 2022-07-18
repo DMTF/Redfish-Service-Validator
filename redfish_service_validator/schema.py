@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from functools import lru_cache
 import os.path
 
-from common.helper import getType, getNamespace, getNamespaceUnversioned, getVersion, splitVersionString
+from redfish_service_validator.helper import getType, getNamespace, getNamespaceUnversioned, getVersion, splitVersionString
 
 import logging
 my_logger = logging.getLogger(__name__)

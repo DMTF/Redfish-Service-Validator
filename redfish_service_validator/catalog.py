@@ -7,7 +7,7 @@ from os import path
 
 from bs4 import BeautifulSoup
 
-from common.helper import (
+from redfish_service_validator.helper import (
     getNamespace,
     getNamespaceUnversioned,
     getType,

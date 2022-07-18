@@ -20,7 +20,7 @@ from tkinter import filedialog as tkFileDialog
 import traceback
 import webbrowser
 
-import common.RedfishLogo as logo
+import redfish_service_validator.RedfishLogo as logo
 import RedfishServiceValidator as rsv
 
 g_config_file_name = "config/config.ini"

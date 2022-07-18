@@ -1,8 +1,8 @@
 
 from collections import Counter, OrderedDict
-from common.catalog import REDFISH_ABSENT, MissingSchemaError, ExcerptTypes, get_fuzzy_property
+from redfish_service_validator.catalog import REDFISH_ABSENT, MissingSchemaError, ExcerptTypes, get_fuzzy_property
 
-from common.helper import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance
+from redfish_service_validator.helper import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance
 
 import logging
 
