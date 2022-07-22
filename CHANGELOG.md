@@ -3,6 +3,9 @@
 ## [2.1.8] - 2022-07-22
 - Modified project for PyPI publication
 
+## [2.1.8] - 2022-07-22
+- Modified project for PyPI publication
+
 ## [2.1.7] - 2022-07-15
 - Added check to on URIs for validation for external reference to ensure it does not go through the Redfish library
 - Added scrollbars to the 'Edit Config' window
