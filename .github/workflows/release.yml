@@ -70,16 +70,6 @@ jobs:
         git add CHANGELOG.md setup.py redfish_service_validator/RedfishServiceValidator.py
         git commit -s -m "${{github.event.inputs.version}} versioning"
         git push origin master
-    - name: Build Windows GUI executable
-      uses: JackMcKew/pyinstaller-action-windows@main
-      with:
-        path: .
-    - name: Package the Windows GUI executable
-      run: |
-        mkdir Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
-        cp dist/windows/RedfishServiceValidator.exe Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
-        cp README.md  Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
-        zip -r Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
     - name: Make the release
       id: create_release
       uses: actions/create-release@v1
@@ -94,15 +84,6 @@ jobs:
           ${{env.CHANGES}}
         draft: false
         prerelease: false
-    - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-      with:
-        upload_url: ${{steps.create_release.outputs.upload_url}}
-        asset_path: Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip
-        asset_name: Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip
-        asset_content_type: application/zip
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
@@ -116,6 +97,24 @@ jobs:
         TWINE_USERNAME: ${{secrets.PYPI_USERNAME}}
         TWINE_PASSWORD: ${{secrets.PYPI_PASSWORD}}
       run: |
-        rm -rf dist
         python setup.py sdist bdist_wheel
         twine upload dist/*
+    - name: Build Windows GUI executable
+      uses: JackMcKew/pyinstaller-action-windows@main
+      with:
+        path: .
+    - name: Package the Windows GUI executable
+      run: |
+        mkdir Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
+        cp dist/windows/RedfishServiceValidator.exe Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
+        cp README.md  Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
+        zip -r Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      with:
+        upload_url: ${{steps.create_release.outputs.upload_url}}
+        asset_path: Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip
+        asset_name: Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip
+        asset_content_type: application/zip
