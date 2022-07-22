@@ -9,9 +9,17 @@ The tool is designed to be device-agnostic and is driven based on the Redfish sp
 
 ## Installation
 
-The Redfish Service Validator can be installed by cloning the Git repository:
+
+From PyPI:
+
+    pip install redfish_service_validator
+
+From GitHub:
 
     git clone https://github.com/DMTF/Redfish-Service-Validator.git
+    cd Redfish-Service-Validator
+    python setup.py sdist
+    pip install dist/redfish_service_validator-x.x.x.tar.gz
 
 ## Requirements
 
@@ -36,11 +44,11 @@ The result logs are generated in HTML format and an appropriate browser, such as
 
 Example usage without providing a configuration file:
 
-    python RedfishServiceValidator.py -u root -p root -r https://192.168.1.1
+    rf_service_validator -u root -p root -r https://192.168.1.1
 
 Example usage with a configuration file:
 
-    python RedfishServiceValidator.py -c config/example.ini
+    rf_service_validator -c config/example.ini
 
 The following sections describe the arguments and configuration file options.
 The file `config/example.ini` can be used as a template configuration file.

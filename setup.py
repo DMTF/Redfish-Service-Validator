@@ -1,7 +1,7 @@
 # Copyright Notice:
 # Copyright 2022 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link:
-# https://github.com/DMTF/Redfish-Protocol-Validator/blob/master/LICENSE.md
+# https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 from setuptools import setup
 from codecs import open
