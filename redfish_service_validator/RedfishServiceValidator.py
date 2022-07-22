@@ -10,7 +10,7 @@ import json
 from datetime import datetime
 import traceback
 
-tool_version = '2.1.7'
+tool_version = '2.1.8'
 
 # Set up the custom debug levels
 VERBOSE1=logging.INFO-1
