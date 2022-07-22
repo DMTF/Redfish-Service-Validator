@@ -8,7 +8,7 @@ from io import StringIO
 
 import redfish_service_validator.traverse as traverse
 import redfish_service_validator.catalog as catalog
-from validateRedfish import checkPropertyConformance, displayValue
+from redfish_service_validator.validateRedfish import checkPropertyConformance, displayValue
 from redfish_service_validator.helper import getNamespace, getType, createContext, checkPayloadConformance, navigateJsonFragment, create_entry
 
 my_logger = logging.getLogger()

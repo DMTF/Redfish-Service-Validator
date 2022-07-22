@@ -207,7 +207,7 @@ def main(argslist=None, configfile=None):
     nowTick = datetime.now()
     my_logger.info('\nElapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
 
-    import tohtml
+    from redfish_service_validator import tohtml
     error_lines, finalCounts = tohtml.count_errors(results)
 
     for line in error_lines:
