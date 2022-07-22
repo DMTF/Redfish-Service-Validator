@@ -5,7 +5,7 @@
 import os
 import time
 from collections import Counter, OrderedDict, defaultdict
-import common.schema as schema
+import redfish_service_validator.schema as schema
 
 EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
 EDMX_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edmx"

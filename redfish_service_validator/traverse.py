@@ -11,9 +11,9 @@ import os
 
 import redfish as rf
 import requests
-import common.catalog as catalog
-from common.helper import navigateJsonFragment, splitVersionString
-from common.metadata import Metadata
+import redfish_service_validator.catalog as catalog
+from redfish_service_validator.helper import navigateJsonFragment, splitVersionString
+from redfish_service_validator.metadata import Metadata
 
 import logging
 my_logger = logging.getLogger(__name__)

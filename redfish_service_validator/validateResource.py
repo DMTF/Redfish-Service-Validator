@@ -6,10 +6,10 @@ import logging
 from collections import Counter, OrderedDict
 from io import StringIO
 
-import common.traverse as traverse
-import common.catalog as catalog
-from validateRedfish import checkPropertyConformance, displayValue
-from common.helper import getNamespace, getType, createContext, checkPayloadConformance, navigateJsonFragment, create_entry
+import redfish_service_validator.traverse as traverse
+import redfish_service_validator.catalog as catalog
+from redfish_service_validator.validateRedfish import checkPropertyConformance, displayValue
+from redfish_service_validator.helper import getNamespace, getType, createContext, checkPayloadConformance, navigateJsonFragment, create_entry
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)

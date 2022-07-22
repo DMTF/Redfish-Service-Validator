@@ -3,13 +3,13 @@
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
 if __name__ != '__main__':
-    from common.helper import getType
+    from redfish_service_validator.helper import getType
 else:
     import argparse
     from bs4 import BeautifulSoup
     import os, csv
-import common.RedfishLogo as logo
-from common.helper import LOG_ENTRY
+import redfish_service_validator.RedfishLogo as logo
+from redfish_service_validator.helper import LOG_ENTRY
 from types import SimpleNamespace
 from collections import Counter
 import json
