@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.1.9] - 2022-07-28
+- Fixed import statement in schema pack module
+
 ## [2.1.8] - 2022-07-22
 - Modified project for PyPI publication
 
