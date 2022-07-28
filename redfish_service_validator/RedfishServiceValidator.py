@@ -134,7 +134,7 @@ def main(argslist=None, configfile=None):
     schemadir = args.schema_directory
 
     if not os.path.isdir(schemadir):
-        import schema_pack
+        from redfish_service_validator import schema_pack
         my_logger.info('Downloading initial schemas from online')
         my_logger.info('The tool will, by default, attempt to download and store XML files to relieve traffic from DMTF/service')
         schema_pack.my_logger.addHandler(file_handler)
