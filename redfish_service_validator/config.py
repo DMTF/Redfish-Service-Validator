@@ -4,6 +4,7 @@
 
 import configparser
 import logging
+import json
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
@@ -55,7 +56,6 @@ def convert_config_to_args(args, config):
                     else:
                         setattr(args, option, my_config[section][option])
     my_config_dict = config_parse_to_dict(my_config)
-    import json
     print(json.dumps(my_config_dict, indent=4))
         
 
