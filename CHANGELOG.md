@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.2.0] - 2022-08-05
+- Removed conditional import statements
+
 ## [2.1.9] - 2022-07-28
 - Fixed import statement in schema pack module
 
