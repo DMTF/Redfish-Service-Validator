@@ -9,6 +9,12 @@ import logging
 import json
 from datetime import datetime
 import traceback
+from redfish_service_validator.config import convert_config_to_args, convert_args_to_config
+from redfish_service_validator.validateResource import validateSingleURI, validateURITree
+import redfish_service_validator.schema as schema
+from redfish_service_validator import tohtml, schema_pack, traverse
+from urllib.parse import urlparse, urlunparse
+from collections import Counter
 
 tool_version = '2.1.9'
 
@@ -103,17 +109,14 @@ def main(argslist=None, configfile=None):
         return 1, None, 'Configuration Incomplete'
 
     if configfile:
-        from redfish_service_validator.config import convert_config_to_args
         convert_config_to_args(args, configfile)
     else:
-        from redfish_service_validator.config import convert_args_to_config
         my_logger.info('Writing config file to log directory')
         configfilename = datetime.strftime(startTick, os.path.join(logpath, "ConfigFile_%m_%d_%Y_%H%M%S.ini"))
         my_config = convert_args_to_config(args)
         with open(configfilename, 'w') as f:
             my_config.write(f)
 
-    from urllib.parse import urlparse, urlunparse
     scheme, netloc, path, params, query, fragment = urlparse(args.ip)
     if scheme not in ['http', 'https', 'http+unix']:
         my_logger.error('IP is missing http or https or http+unix')
@@ -134,13 +137,11 @@ def main(argslist=None, configfile=None):
     schemadir = args.schema_directory
 
     if not os.path.isdir(schemadir):
-        from redfish_service_validator import schema_pack
         my_logger.info('Downloading initial schemas from online')
         my_logger.info('The tool will, by default, attempt to download and store XML files to relieve traffic from DMTF/service')
         schema_pack.my_logger.addHandler(file_handler)
         schema_pack.setup_schema_pack('latest', args.schema_directory, args.ext_http_proxy, args.ext_https_proxy)
 
-    import redfish_service_validator.traverse as traverse
     try:
         currentService = traverse.rfService(vars(args))
     except Exception as ex:
@@ -180,7 +181,6 @@ def main(argslist=None, configfile=None):
             my_logger.error('File not found for payload: {}'.format(ppath))
             return 1, None, 'File not found for payload: {}'.format(ppath)
     try:
-        from redfish_service_validator.validateResource import validateSingleURI, validateURITree
         if 'single' in pmode:
             success, counts, results, xlinks, topobj = validateSingleURI(currentService, ppath, 'Target', expectedJson=jsonData)
         elif 'tree' in pmode:
@@ -202,12 +202,10 @@ def main(argslist=None, configfile=None):
     if len(metadata.get_missing_namespaces()) > 0:
         my_logger.error('Metadata is missing Namespaces that are referenced by the service.')
 
-    from collections import Counter
     finalCounts = Counter()
     nowTick = datetime.now()
     my_logger.info('\nElapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
 
-    from redfish_service_validator import tohtml
     error_lines, finalCounts = tohtml.count_errors(results)
 
     for line in error_lines:
@@ -233,7 +231,6 @@ def main(argslist=None, configfile=None):
     my_logger.info("\n".join('{}: {}   '.format(x, y) for x, y in sorted(finalCounts.items())))
 
     # dump cache info to debug log
-    import redfish_service_validator.schema as schema
     my_logger.debug('getSchemaDetails() -> {}'.format(schema.getSchemaDetails.cache_info()))
     my_logger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
 
