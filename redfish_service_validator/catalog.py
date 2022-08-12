@@ -1071,6 +1071,8 @@ class RedfishObject(RedfishProperty):
                         links.append(item)
                 elif item.Type.getBaseType()[0] == 'complex':
                     for sub in item.Collection:
+                        if sub.Value is None:
+                            continue
                         InAnnotation = sub.Name in ['@Redfish.Settings', '@Redfish.ActionInfo', '@Redfish.CollectionCapabilities']
                         my_links = sub.getLinks()
                         for item in my_links:
