@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.2.1] - 2022-08-12
+- Corrected link traversal logic when objects or arrays of objects are 'null'
+
 ## [2.2.0] - 2022-08-05
 - Removed conditional import statements
 
