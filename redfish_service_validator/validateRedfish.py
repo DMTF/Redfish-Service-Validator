@@ -109,10 +109,13 @@ def validateEntity(service, prop, val, parentURI=""):
     # check if the entity is truly what it's supposed to be
     # if not autoexpand, we must grab the resource
     if not autoExpand:
-        success, data, _, delay = service.callResourceURI(uri)
-        status = _.status
+        success, data, response, delay = service.callResourceURI(uri)
+        if success and response is not None:
+            status = response.status
+        else:
+            status = -1
     else:
-        success, data, _, delay = True, val, None, 0
+        success, data, response, delay = True, val, None, 0
         status = 200
 
     generics = ['Resource.ItemOrCollection', 'Resource.ResourceCollection', 'Resource.Item', 'Resource.Resource']
