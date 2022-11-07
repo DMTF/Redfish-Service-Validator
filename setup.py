@@ -11,7 +11,7 @@ with open("README.md", "r", "utf-8") as f:
 
 setup(
     name="redfish_service_validator",
-    version="2.2.1",
+    version="2.2.2",
     description="Redfish Service Validator",
     long_description=long_description,
     long_description_content_type="text/markdown",

@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.2.2] - 2022-11-07
+- Removed certificate checks when downloading schema files referenced by the service
+
 ## [2.2.1] - 2022-08-12
 - Corrected link traversal logic when objects or arrays of objects are 'null'
 
