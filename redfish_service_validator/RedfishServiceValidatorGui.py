@@ -19,7 +19,7 @@ import traceback
 import webbrowser
 
 import redfish_service_validator.RedfishLogo as logo
-import RedfishServiceValidator as rsv
+import redfish_service_validator.RedfishServiceValidator as rsv
 
 g_config_file_name = "config/config.ini"
 
