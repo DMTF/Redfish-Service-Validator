@@ -203,7 +203,7 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
                 my_logger.warning('{} not defined in schema Complex {} {} (check version, spelling and casing)'
                                 .format(key, prop_name, sub_obj.Type))
                 subCounts['unverifiedAdditional.complex'] += 1
-                subMsgs[key] = (displayValue(item), '-', '-', 'FAIL')
+                subMsgs[key] = (displayValue(item), '-', '-', 'Additional')
             
             fuzz = get_fuzzy_property(key, sub_obj.properties)
             if fuzz != key and fuzz in sub_obj.properties:
