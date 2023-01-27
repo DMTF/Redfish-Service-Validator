@@ -142,11 +142,14 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         my_uris = redfish_obj.Type.getUris()
         if odata_id is not None and redfish_obj.Populated and len(my_uris) > 0:
             if redfish_obj.HasValidUri:
+                counts['passRedfishUri'] += 1
                 if service.config['strict_uri']:
-                    if not redfish_obj.HasValidURIStrict:
-                        import pdb; pdb.set_trace()
-                else:
-                    counts['passRedfishUri'] += 1
+                    if not redfish_obj.HasValidUriStrict:
+                        counts['failRedfishUriStrict'] += 1
+                        messages['@odata.id'].result = 'FAIL'
+                        my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
+                    else:
+                        counts['passRedfishUri'] += 1
             else:
                 if '/Oem/' in odata_id:
                     counts['warnRedfishUri'] += 1

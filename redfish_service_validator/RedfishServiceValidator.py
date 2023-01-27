@@ -75,7 +75,7 @@ def main(argslist=None, configfile=None):
     argget.add_argument('--uricheck', action="store_true", help='Allow URI checking on services below RedfishVersion 1.6.0')
     argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='Directory for local schema files')
     argget.add_argument('--mockup', type=str, default='', help='Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage')
-    argget.add_argument('--strict_uri', action="store_true", help='Strict URI checks')
+    argget.add_argument('--no_strict_uri', action="store_false", dest='strict_uri', help='Disable Strict URI checks')
 
     # parse...
     args = argget.parse_args(argslist)
