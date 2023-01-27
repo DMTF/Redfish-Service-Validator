@@ -137,12 +137,16 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                 counts['badOdataIdResolution'] += 1
         else:
             my_logger.warning('No parent found with which to test @odata.id of ReferenceableMember')
-
+    
     if service.config['uricheck']:
         my_uris = redfish_obj.Type.getUris()
         if odata_id is not None and redfish_obj.Populated and len(my_uris) > 0:
             if redfish_obj.HasValidUri:
-                counts['passRedfishUri'] += 1
+                if service.config['strict_uri']:
+                    if not redfish_obj.HasValidURIStrict:
+                        import pdb; pdb.set_trace()
+                else:
+                    counts['passRedfishUri'] += 1
             else:
                 if '/Oem/' in odata_id:
                     counts['warnRedfishUri'] += 1
@@ -152,6 +156,8 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                     counts['failRedfishUri'] += 1
                     messages['@odata.id'].result = 'FAIL'
                     my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
+
+
 
     if response and response.getheader('Allow'):
         allowed_responses = [x.strip().upper() for x in response.getheader('Allow').split(',')]
@@ -389,8 +395,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
             my_link_type = link.Type.fulltype
             success, my_data, _, _ = service.callResourceURI(link_destination)
             # Using None instead of refparent simply because the parent is not where the link comes from
-            returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name,
-                    my_link_type, my_data, None, allLinks)
+            returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, my_link_type, my_data, None, allLinks)
             success, linkCounts, linkResults, xlinks, xobj = returnVal
             # refLinks.update(xlinks)
 

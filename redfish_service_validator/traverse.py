@@ -94,7 +94,7 @@ class rfService():
         else:
             self.catalog.flags['ignore_uri_checks'] = False
             self.config['uricheck'] = True
-        
+
         self.service_root = data
 
         self.active = True
