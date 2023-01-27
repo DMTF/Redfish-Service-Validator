@@ -135,6 +135,14 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
             elif payload_resolve != me['payload']:
                 my_logger.error('@odata.id of ReferenceableMember does not point to the correct object: {}'.format(odata_id))
                 counts['badOdataIdResolution'] += 1
+            _, end_fragment = tuple(odata_id.split('#', 1))
+            my_member_id = me['payload'].get('MemberId')
+            if not my_member_id:
+                my_logger.error('ReferenceableMember MemberId does not exist...')
+                counts['badMemberId'] += 1
+            elif my_member_id not in end_fragment.split('/'):
+                my_logger.error('ReferenceableMember MemberId does not match id: {} {}'.format(my_member_id, odata_id))
+                counts['badMemberId'] += 1
         else:
             my_logger.warning('No parent found with which to test @odata.id of ReferenceableMember')
     
@@ -143,13 +151,10 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if odata_id is not None and redfish_obj.Populated and len(my_uris) > 0:
             if redfish_obj.HasValidUri:
                 counts['passRedfishUri'] += 1
-                if service.config['strict_uri']:
-                    if not redfish_obj.HasValidUriStrict:
-                        counts['failRedfishUriStrict'] += 1
-                        messages['@odata.id'].result = 'FAIL'
-                        my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
-                    else:
-                        counts['passRedfishUri'] += 1
+                if not redfish_obj.HasValidUriStrict:
+                    counts['failRedfishUriStrict'] += 1
+                    messages['@odata.id'].result = 'FAIL'
+                    my_logger.error('URI {} does not match object IDs of resource chain'.format(odata_id, redfish_obj.Type))
             else:
                 if '/Oem/' in odata_id:
                     counts['warnRedfishUri'] += 1
