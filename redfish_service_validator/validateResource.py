@@ -124,6 +124,15 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
     # verify odata_id properly resolves to its parent if holding fragment
     odata_id = me['payload'].get('@odata.id')
+    if odata_id is None:
+        # Do not error for namespace.type MessageRegistry.MessageRegistry, etc 
+        if any(['{}.{}'.format(x, x) in redfish_obj.Type.getTypeTree() for x in ['MessageRegistry', 'AttributeRegistry', 'PrivilegeRegistry']]):
+            my_logger.debug('No @odata.id was found in this resource, but not needed')
+        else:
+            my_logger.error('No @odata.id was found in this resource')
+            messages['@odata.id'] = create_entry('@odata.id', '-', '-', 'DNE', 'FAIL')
+            counts['errorMissingOdataId'] += 1
+
     if odata_id is not None and '#' in odata_id:
         if parent is not None:
             payload_resolve = navigateJsonFragment(parent.payload, URI)
