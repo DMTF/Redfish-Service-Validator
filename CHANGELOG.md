@@ -1,5 +1,9 @@
 # Change Log
 
+## [2.2.3] - 2023-01-27
+- Added checking for the presence of '@odata.id' at the root of resources and referenceable members
+- Corrected return code from the script to show failures
+
 ## [2.2.2] - 2022-11-07
 - Removed certificate checks when downloading schema files referenced by the service
 
