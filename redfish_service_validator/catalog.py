@@ -645,6 +645,11 @@ class RedfishProperty(object):
         self.Type = my_type
         self.HasSchema = self.Type != REDFISH_ABSENT
         self.Populated = False
+        self.Value = None
+        self.IsValid = False # Needs consistency, should be @property 
+        self.InAnnotation = False 
+        self.SchemaExists = False
+        self.Exists = REDFISH_ABSENT
         self.parent = parent
         self.added_pattern = None
 
@@ -799,6 +804,11 @@ class RedfishObject(RedfishProperty):
 
     def __init__(self, redfish_type: RedfishType, name="Object", parent=None):
         super().__init__(redfish_type, name, parent)
+        self.payload = None
+        self.Collection = None
+        self.IsValid = False
+        self.HasValidUri = False
+        self.HasValidUriStrict = False
         self.properties = {}
         for prop, typ in redfish_type.getProperties().items():
             try:
@@ -960,9 +970,6 @@ class RedfishObject(RedfishProperty):
                                     rsc_type, rsc_value, odata_value = rsc
                                     my_str = re.sub('\{|Id\}|', '', section)
                                     sub_obj.HasValidUriStrict = sub_obj.HasValidUriStrict and rsc_type == my_str and rsc_value == odata_value
-
-                            if sub_obj.HasValidUriStrict:
-                                break
 
             # TODO: Oem support is able, but it is tempermental for Actions and Additional properties
             #if 'Resource.OemObject' in sub_obj.Type.getTypeTree():
