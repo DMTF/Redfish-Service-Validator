@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.2.4] - 2023-02-05
+- Added validation of the last segment of the URI to ensure it matches the Id property or MemberId property where appropriate
+
 ## [2.2.3] - 2023-01-27
 - Added checking for the presence of '@odata.id' at the root of resources and referenceable members
 - Corrected return code from the script to show failures
