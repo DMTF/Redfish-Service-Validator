@@ -160,7 +160,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if odata_id is not None and redfish_obj.Populated and len(my_uris) > 0:
             if redfish_obj.HasValidUri:
                 counts['passRedfishUri'] += 1
-                if not redfish_obj.HasValidUriStrict:
+                if not redfish_obj.HasValidUriStrict and redfish_obj.payload.get('Id') is not None:
                     counts['failRedfishUriStrict'] += 1
                     messages['@odata.id'].result = 'FAIL'
                     my_logger.error('URI {} does not match object ID of resource'.format(odata_id, redfish_obj.Type))

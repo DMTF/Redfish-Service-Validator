@@ -962,9 +962,7 @@ class RedfishObject(RedfishProperty):
                             schema_uri_end = schema_uri.rsplit('/')[-1]
                             # if our Uri is expecting an Id, then check if they match, otherwise we are already passing
                             if re.match(URI_ID_REGEX, schema_uri_end):
-                                if my_id is None:
-                                    my_logger.warning('Cannot perform check on URI, expected Id is missing.')
-                                else:
+                                if my_id is not None:
                                     sub_obj.HasValidUriStrict = my_id == my_uri_id
                             break
 

@@ -113,10 +113,15 @@ class TestCatalog(unittest.TestCase):
         my_catalog = catalog.SchemaCatalog('./tests/testdata/schemas/')
         my_schema_doc = my_catalog.getSchemaDocByClass("Example.v1_0_0.Example")
         my_type = my_schema_doc.getTypeInSchemaDoc("Example.v1_0_0.Example")
-        print(my_type.getCapabilities())
-        print(my_type.CanUpdate)
-        print(my_type.CanInsert)
-        print(my_type.CanDelete)
+        my_capabilities = my_type.getCapabilities()
+
+        self.assertTrue(my_capabilities['CanUpdate'])
+        self.assertFalse(my_capabilities['CanInsert'])
+        self.assertFalse(my_capabilities['CanDelete'])
+
+        self.assertTrue(my_type.CanUpdate)
+        self.assertFalse(my_type.CanInsert)
+        self.assertFalse(my_type.CanDelete)
     
     def test_expected_uris(self):
         print('\nTesting expected Uris')
@@ -124,20 +129,25 @@ class TestCatalog(unittest.TestCase):
         my_schema_doc = my_catalog.getSchemaDocByClass("Example.v1_0_0.Example")
         my_type = my_schema_doc.getTypeInSchemaDoc("Example.v1_0_0.Example")
         object = catalog.RedfishObject( my_type )
+
         arr = object.Type.getUris()
         self.assertEqual(len(arr), 3)
+
+
         object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Example",
-            "Id": None,
+            "Id": "Example",
             "Description": None
             })
         self.assertTrue(object.HasValidUri)
+
         object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Examples",
-            "Id": None,
+            "Id": "Examples",
             "Description": None
             })
         self.assertFalse(object.HasValidUri)
+
         object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Examples/FunnyId",
             "Id": 'FunnyId',
@@ -145,6 +155,7 @@ class TestCatalog(unittest.TestCase):
             })
         self.assertTrue(object.HasValidUri)
         self.assertTrue(object.HasValidUriStrict)
+
         object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Examples/SubObject/FunnyId",
             "Id": 'FunnyId',
@@ -152,12 +163,14 @@ class TestCatalog(unittest.TestCase):
             })
         self.assertTrue(object.HasValidUri)
         self.assertTrue(object.HasValidUriStrict)
+
         object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Examples/SubObject/FunnyId",
             "Description": None
             })
         self.assertTrue(object.HasValidUri)
         self.assertTrue(object.HasValidUriStrict)
+
         object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Examples/WrongId",
             "Id": 'FunnyId',
@@ -165,12 +178,14 @@ class TestCatalog(unittest.TestCase):
             })
         self.assertTrue(object.HasValidUri)
         self.assertFalse(object.HasValidUriStrict)
+
         object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Examples/NoId",
             "Id": None,
             "Description": None
             })
         self.assertTrue(object.HasValidUri)
+        self.assertTrue(object.HasValidUriStrict)
 
 
 
