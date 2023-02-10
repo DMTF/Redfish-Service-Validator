@@ -423,7 +423,8 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     excerptPass = True
     if isCollection and prop.Value is None:
         # illegal for a collection to be null
-        if 'HttpHeaders' in str(prop.Type.fulltype) and getType(str(prop.Type.fulltype)) == 'EventDestination':
+        if 'EventDestination.v1_0_0.HttpHeaderProperty' == str(prop.Type.fulltype):
+            # HttpHeaders in EventDestination has non-conformant details in the long description we need to allow to not break existing implementations
             my_logger.info('Value HttpHeaders can be Null')
             propNullable = True
             propValueList = []
@@ -471,7 +472,8 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         for n, sub_obj in enumerate(prop.Collection):
             try:
                 if sub_obj.Value is None:
-                    if prop.Type.IsNullable:
+                    if prop.Type.IsNullable or 'EventDestination.v1_0_0.HttpHeaderProperty' == str(prop.Type.fulltype):
+                        # HttpHeaders in EventDestination has non-conformant details in the long description we need to allow to not break existing implementations
                         counts['pass'] += 1
                         result_str = 'PASS'
                     else:
