@@ -50,6 +50,7 @@
           <Collection>
             <String>/redfish/v1/Example</String>
             <String>/redfish/v1/Examples/{ExampleId}</String>
+            <String>/redfish/v1/Examples/SubObject/{ExampleId}</String>
           </Collection>
         </Annotation>
       </EntityType>

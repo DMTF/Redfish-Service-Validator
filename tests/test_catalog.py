@@ -125,7 +125,7 @@ class TestCatalog(unittest.TestCase):
         my_type = my_schema_doc.getTypeInSchemaDoc("Example.v1_0_0.Example")
         object = catalog.RedfishObject( my_type )
         arr = object.Type.getUris()
-        self.assertEqual(len(arr), 2)
+        self.assertEqual(len(arr), 3)
         object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Example",
             "Id": None,
@@ -140,6 +140,13 @@ class TestCatalog(unittest.TestCase):
         self.assertFalse(object.HasValidUri)
         object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Examples/FunnyId",
+            "Id": 'FunnyId',
+            "Description": None
+            })
+        self.assertTrue(object.HasValidUri)
+        self.assertTrue(object.HasValidUriStrict)
+        object = catalog.RedfishObject( my_type ).populate({
+            "@odata.id": "/redfish/v1/Examples/SubObject/FunnyId",
             "Id": 'FunnyId',
             "Description": None
             })

@@ -923,10 +923,10 @@ class RedfishObject(RedfishProperty):
 
             # Validate our Uri
             sub_obj.HasValidUri = True
-            my_uris = sub_obj.Type.getUris()
+            allowable_uris = sub_obj.Type.getUris()
             # If we have expected URIs and @odata.id
             # And we AREN'T a navigation property
-            if not sub_obj.Type.catalog.flags['ignore_uri_checks'] and len(my_uris) and '@odata.id' in sub_payload:
+            if not sub_obj.Type.catalog.flags['ignore_uri_checks'] and len(allowable_uris) and '@odata.id' in sub_payload:
                 # Strip our URI and warn if that's the case
                 my_odata_id = sub_payload['@odata.id']
                 if my_odata_id != '/redfish/v1/' and my_odata_id.endswith('/'):
@@ -935,10 +935,10 @@ class RedfishObject(RedfishProperty):
 
                 # Initial check if our URI matches our format at all
                 # Setup REGEX...
-                my_uri_regex = "^{}$".format("|".join(my_uris))
+                my_uri_regex = "^{}$".format("|".join(allowable_uris))
                 my_uri_regex = re.sub(URI_ID_REGEX, VALID_ID_REGEX, my_uri_regex)
                 sub_obj.HasValidUri = re.fullmatch(my_uri_regex, my_odata_id) is not None
-                sub_obj.HasValidUriStrict = False
+                sub_obj.HasValidUriStrict = sub_obj.HasValidUri
 
                 if 'Resource.Resource' in sub_obj.Type.getTypeTree():
                     if '#' in my_odata_id:
@@ -950,26 +950,19 @@ class RedfishObject(RedfishProperty):
                 # iterate through our resource chain, if possible, to check IDs matching
                 # this won't check NavigationProperties but the Resources will
                 if sub_obj.HasValidUri and not sub_obj.Type.IsNav:
-                    my_object = sub_obj.parent
-
                     # pair our type, Id value, and odata.id value
                     my_odata_split = my_odata_id.split('/')
-                    my_id_chain = [(sub_obj.Type.Type, sub_payload.get('Id'), my_odata_split.pop())]
-                    while my_object: 
-                        my_id_chain.append( (my_object.Type.Type, my_object.payload.get('Id'), my_odata_split.pop() ))
-                        my_object = my_object.parent
+                    my_type, my_id, my_uri_id = sub_obj.Type.Type, sub_payload.get('Id'), my_odata_split[-1]
 
-                    for my_uri in my_uris:
+                    for schema_uri in allowable_uris:
                         # regex URI check to confirm which URI 
-                        my_uri_regex = re.sub(URI_ID_REGEX, VALID_ID_REGEX, "^{}$".format(my_uri))
+                        my_uri_regex = re.sub(URI_ID_REGEX, VALID_ID_REGEX, "^{}$".format(schema_uri))
                         if re.fullmatch(my_uri_regex, my_odata_id):
-                            sub_obj.HasValidUriStrict = True
-                            # pair our uri pieces with their types
-                            for section, rsc in zip(my_uri.split('/')[::-1], my_id_chain):
-                                if re.match(URI_ID_REGEX, section):
-                                    rsc_type, rsc_value, odata_value = rsc
-                                    my_str = re.sub('\{|Id\}|', '', section)
-                                    sub_obj.HasValidUriStrict = sub_obj.HasValidUriStrict and rsc_type == my_str and rsc_value == odata_value
+                            # pair our uri with the current resource
+                            schema_uri_end = schema_uri.rsplit('/')[-1]
+                            if re.match(URI_ID_REGEX, schema_uri_end):
+                                sub_obj.HasValidUriStrict = my_id == my_uri_id
+                            break
 
             # TODO: Oem support is able, but it is tempermental for Actions and Additional properties
             #if 'Resource.OemObject' in sub_obj.Type.getTypeTree():
