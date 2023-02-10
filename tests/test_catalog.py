@@ -153,6 +153,12 @@ class TestCatalog(unittest.TestCase):
         self.assertTrue(object.HasValidUri)
         self.assertTrue(object.HasValidUriStrict)
         object = catalog.RedfishObject( my_type ).populate({
+            "@odata.id": "/redfish/v1/Examples/SubObject/FunnyId",
+            "Description": None
+            })
+        self.assertTrue(object.HasValidUri)
+        self.assertTrue(object.HasValidUriStrict)
+        object = catalog.RedfishObject( my_type ).populate({
             "@odata.id": "/redfish/v1/Examples/WrongId",
             "Id": 'FunnyId',
             "Description": None

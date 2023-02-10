@@ -947,7 +947,7 @@ class RedfishObject(RedfishProperty):
                     if '#' not in my_odata_id:
                         my_logger.warning('No fragment in URI, but ReferenceableMembers require it {}'.format(my_odata_id))
 
-                # iterate through our resource chain, if possible, to check IDs matching
+                # check that our ID is matching
                 # this won't check NavigationProperties but the Resources will
                 if sub_obj.HasValidUri and not sub_obj.Type.IsNav:
                     # pair our type, Id value, and odata.id value
@@ -960,8 +960,12 @@ class RedfishObject(RedfishProperty):
                         if re.fullmatch(my_uri_regex, my_odata_id):
                             # pair our uri with the current resource
                             schema_uri_end = schema_uri.rsplit('/')[-1]
+                            # if our Uri is expecting an Id, then check if they match, otherwise we are already passing
                             if re.match(URI_ID_REGEX, schema_uri_end):
-                                sub_obj.HasValidUriStrict = my_id == my_uri_id
+                                if my_id is None:
+                                    my_logger.warning('Cannot perform check on URI, expected Id is missing.')
+                                else:
+                                    sub_obj.HasValidUriStrict = my_id == my_uri_id
                             break
 
             # TODO: Oem support is able, but it is tempermental for Actions and Additional properties
