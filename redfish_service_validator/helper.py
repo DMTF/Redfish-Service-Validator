@@ -155,7 +155,7 @@ def checkPayloadConformance(jsondata, uri):
             if not paramPass:
                 my_logger.error("{} {}: Expected format is /path/to/uri, but received: {}".format(uri, key, decoded[key]))
             else:
-                if uri != '' and decoded[key] != uri:
+                if uri != '' and decoded[key] != uri and not (uri == "/redfish/v1/" and decoded[key] == "/redfish/v1"):
                     my_logger.warning("{} {}: Expected @odata.id to match URI link {}".format(uri, key, decoded[key]))
         elif odata_name == 'odata.count':
             paramPass = isinstance(decoded[key], int)
