@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.2.5] - 2023-02-13
+- Made fixes to 'Id' property validation with the URI of the resource
+
 ## [2.2.4] - 2023-02-05
 - Added validation of the last segment of the URI to ensure it matches the Id property or MemberId property where appropriate
 
