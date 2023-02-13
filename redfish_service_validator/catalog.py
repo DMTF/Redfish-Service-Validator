@@ -923,6 +923,7 @@ class RedfishObject(RedfishProperty):
 
             # Validate our Uri
             sub_obj.HasValidUri = True
+            sub_obj.HasValidUriStrict = True
             allowable_uris = sub_obj.Type.getUris()
             # If we have expected URIs and @odata.id
             # And we AREN'T a navigation property
