@@ -163,7 +163,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                 if not redfish_obj.HasValidUriStrict and redfish_obj.payload.get('Id') is not None:
                     counts['failRedfishUriStrict'] += 1
                     messages['@odata.id'].result = 'FAIL'
-                    my_logger.error('URI {} does not match object ID of resource'.format(odata_id, redfish_obj.Type))
+                    my_logger.error('The Id property does not match the last segment of the URI {}'.format(odata_id))
             else:
                 if '/Oem/' in odata_id:
                     counts['warnRedfishUri'] += 1
