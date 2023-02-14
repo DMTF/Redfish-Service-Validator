@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.2.6] - 2023-02-14
+- Additional fixes to 'Id' property validation with the URI of the resource
+
 ## [2.2.5] - 2023-02-13
 - Made fixes to 'Id' property validation with the URI of the resource
 
