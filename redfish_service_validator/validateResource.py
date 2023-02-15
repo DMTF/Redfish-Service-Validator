@@ -302,7 +302,11 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
 
     refLinks = []
 
+    if inAnnotation and service.config['uricheck']:
+        service.catalog.flags['ignore_uri_checks'] = True
     validateSuccess, counts, results, links, thisobj = validateSingleURI(service, URI, uriName, expectedType, expectedJson, parent)
+    if inAnnotation and service.config['uricheck']:
+        service.catalog.flags['ignore_uri_checks'] = False
 
     # If successful and a MessageRegistryFile...
     if validateSuccess and 'MessageRegistryFile.MessageRegistryFile' in thisobj.Type.getTypeTree():
