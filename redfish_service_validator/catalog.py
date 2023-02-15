@@ -1079,6 +1079,6 @@ class RedfishObject(RedfishProperty):
                         InAnnotation = sub.Name in ['@Redfish.Settings', '@Redfish.ActionInfo', '@Redfish.CollectionCapabilities']
                         my_links = sub.getLinks()
                         for item in my_links:
-                            item.InAnnotation = True
+                            item.InAnnotation = InAnnotation
                         links.extend(my_links)
         return links
