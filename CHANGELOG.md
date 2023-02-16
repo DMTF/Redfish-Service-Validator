@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.2.7] - 2023-02-16
+- Corrected URI checking for resources referenced by payload annotations
+
 ## [2.2.6] - 2023-02-14
 - Additional fixes to 'Id' property validation with the URI of the resource
 
