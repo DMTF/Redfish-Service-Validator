@@ -385,7 +385,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}, counts
 
     # Parameter Passes
-    paramPass = propMandatoryPass = propNullablePass = deprecatedPass = nullValid = True
+    paramPass = propMandatoryPass = propNullablePass = deprecatedPassOrSinceVersion = nullValid = True
 
     if prop.Type.IsMandatory:
         propMandatoryPass = True if prop.Exists else False
@@ -399,7 +399,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
     if prop.Type.Deprecated is not None and not prop.Type.IsMandatory:
-        deprecatedPass = False
+        deprecatedPassOrSinceVersion = False
         counts['warnDeprecated'] += 1
         my_logger.warning('{}: The given property is deprecated: {}'.format(prop_name, prop.Type.Deprecated.get('String', '')))
 
@@ -408,7 +408,8 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             revision_tag = tag_item.find('PropertyValue', attrs={ 'EnumMember': 'Redfish.RevisionKind/Deprecated', 'Property': 'Kind'})
             if revision_tag and not prop.Type.IsMandatory:
                 desc_tag = tag_item.find('PropertyValue', attrs={'Property': 'Description'})
-                deprecatedPass = False
+                version_tag = tag_item.find('PropertyValue', attrs={'Property': 'Version'})
+                deprecatedPassOrSinceVersion = version_tag.attrs.get('String', False) if version_tag else False
                 counts['warnDeprecated'] += 1
                 if desc_tag:
                     my_logger.warning('{}: The given property is deprecated: {}'.format(prop_name, desc_tag.attrs.get('String', '')))
@@ -541,8 +542,10 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             my_logger.verbose1("\tSuccess")
             counts['pass'] += 1
             result_str = 'PASS'
-            if not deprecatedPass:
+            if deprecatedPassOrSinceVersion is False:
                 result_str = 'Deprecated'
+            if isinstance(deprecatedPassOrSinceVersion, str):
+                result_str = 'Deprecated/{}'.format(deprecatedPassOrSinceVersion)
             if not nullValid:
                 counts['invalidPropertyValue'] += 1
                 result_str = 'WARN'
