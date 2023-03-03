@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.2.8] - 2023-03-03
+- Added deprecated version info to results
+
 ## [2.2.7] - 2023-02-16
 - Corrected URI checking for resources referenced by payload annotations
 
