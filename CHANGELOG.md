@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.2.9] - 2023-03-10
+- Added handling of cases where a payload annotation's definition cannot be located in schema files
+
 ## [2.2.8] - 2023-03-03
 - Added deprecated version info to results
 
