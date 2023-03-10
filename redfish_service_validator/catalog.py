@@ -1022,7 +1022,7 @@ class RedfishObject(RedfishProperty):
                     my_logger.verbose1(('Adding Additional', key, my_odata_type, sub_obj.Type))
                     sub_obj.properties[key] = object.populate(sub_payload[key])
                 except:
-                    my_logger.warning("Unable to locate the definition of the annotation '@{}'.".format(fullItem))
+                    my_logger.error("Unable to locate the definition of the annotation '@{}'.".format(fullItem))
 
             evals.append(sub_obj)
         if not isinstance(payload, list):
