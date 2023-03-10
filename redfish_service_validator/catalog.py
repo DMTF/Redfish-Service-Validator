@@ -1013,13 +1013,16 @@ class RedfishObject(RedfishProperty):
                 if getNamespace(fullItem) not in allowed_annotations:
                     my_logger.warning("getAnnotations: {} is not an allowed annotation namespace, please check spelling/capitalization.".format(fullItem))
                     continue
-                type_obj = sub_obj.Type.catalog.getSchemaInCatalog(fullItem).terms[getType(fullItem)]
-                if type_obj.getBaseType()[0] == 'complex':
-                    object = RedfishObject(type_obj, name=key, parent=self)
-                else:
-                    object = RedfishProperty(type_obj, name=key, parent=self)
-                my_logger.verbose1(('Adding Additional', key, my_odata_type, sub_obj.Type))
-                sub_obj.properties[key] = object.populate(sub_payload[key])
+                try:
+                    type_obj = sub_obj.Type.catalog.getSchemaInCatalog(fullItem).terms[getType(fullItem)]
+                    if type_obj.getBaseType()[0] == 'complex':
+                        object = RedfishObject(type_obj, name=key, parent=self)
+                    else:
+                        object = RedfishProperty(type_obj, name=key, parent=self)
+                    my_logger.verbose1(('Adding Additional', key, my_odata_type, sub_obj.Type))
+                    sub_obj.properties[key] = object.populate(sub_payload[key])
+                except:
+                    my_logger.error("Unable to locate the definition of the annotation '@{}'.".format(fullItem))
 
             evals.append(sub_obj)
         if not isinstance(payload, list):
