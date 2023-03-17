@@ -42,12 +42,17 @@ def validateExcerpt(prop, val):
     return True
 
 
-def validateAction(act_name, actionDecoded, all_actions):
+def validateAction(act_fulltype, actionDecoded, all_actions):
     actionMessages, actionCounts = OrderedDict(), Counter()
-    act_name, act_type = getNamespace(act_name.strip('#')), getType(act_name)
+    act_namespace, act_type = getNamespace(act_fulltype.strip('#')), getType(act_fulltype)
     actPass = False
     if act_type not in all_actions:
+        my_logger.error('Action {} does not exist in Namespace {}'.format(act_type, act_namespace))
         actionCounts['errorActionBadName'] += 1
+        actionMessages[act_fulltype] = (
+                'Action', '-',
+                'Yes' if actionDecoded != REDFISH_ABSENT else 'No',
+                'FAIL')
     else:
         my_act = all_actions[act_type]
         actOptional = my_act.find('annotation', {'term': 'Redfish.Required'}) is not None
@@ -55,21 +60,21 @@ def validateAction(act_name, actionDecoded, all_actions):
             if actOptional:
                 actPass = True
             else:
-                my_logger.error('{}: Mandatory action missing'.format(act_name))
+                my_logger.error('{}: Mandatory action missing'.format(act_namespace))
                 actionCounts['failMandatoryAction'] += 1
         if actionDecoded != REDFISH_ABSENT:
             # validate target
             target = actionDecoded.get('target')
             if target is None:
-                my_logger.error('{}: target for action is missing'.format(act_name))
+                my_logger.error('{}: target for action is missing'.format(act_namespace))
             elif not isinstance(target, str):
-                my_logger.error('{}: target for action is malformed'.format(act_name))
+                my_logger.error('{}: target for action is malformed'.format(act_namespace))
                 # check for unexpected properties
             for ap_name in actionDecoded:
                 expected = ['target', 'title', '@Redfish.ActionInfo', '@Redfish.OperationApplyTimeSupport']
                 if ap_name not in expected and '@Redfish.AllowableValues' not in ap_name:
                     my_logger.error('{}: Property "{}" is not allowed in actions property. \
-                        Allowed properties are "{}", "{}", "{}", "{}" and "{}"'.format(act_name, ap_name, *expected, '*@Redfish.AllowableValues'))
+                        Allowed properties are "{}", "{}", "{}", "{}" and "{}"'.format(act_namespace, ap_name, *expected, '*@Redfish.AllowableValues'))
             actPass = True
         if actOptional and actPass:
             actionCounts['optionalAction'] += 1
@@ -78,9 +83,9 @@ def validateAction(act_name, actionDecoded, all_actions):
         else:
             actionCounts['failAction'] += 1
             
-        actionMessages[act_name] = (
+        actionMessages[act_fulltype] = (
                 'Action', '-',
-                'Yes' if actionDecoded != 'n/a' else 'No',
+                'Yes' if actionDecoded != REDFISH_ABSENT else 'No',
                 'Optional' if actOptional else 'PASS' if actPass else 'FAIL')
     return actionMessages, actionCounts
 
@@ -218,8 +223,8 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
                 subCounts.update(new_counts)
                 subCounts['invalidNamedProperty.complex'] += 1
 
-
     successPayload, odataMessages = checkPayloadConformance(sub_obj.Value, '')
+
     if not successPayload:
         odataMessages['failPayloadError.complex'] += 1
         my_logger.error('{}: complex payload error, @odata property non-conformant'.format(str(sub_obj.Name)))
@@ -227,6 +232,8 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
     if prop_name == 'Actions':
         actionMessages, actionCounts = OrderedDict(), Counter()
 
+        # Get our actions from the object itself to test
+        # Action Namespace.Type, Action Object
         my_actions = [(x.strip('#'), y) for x, y in sub_obj.Value.items() if x != 'Oem']
         if 'Oem' in sub_obj.Value.items():
             if oem_check:
