@@ -759,7 +759,7 @@ class RedfishProperty(object):
 
         elif my_type == "Edm.Duration":
             return RedfishProperty.validate_string(
-                val, r"-?P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?")
+                val, r"P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?")
 
         elif my_type == "Edm.Guid":
             return RedfishProperty.validate_string(
