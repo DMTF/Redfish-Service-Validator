@@ -1,5 +1,9 @@
 # Change Log
 
+## [2.3.0] - 2023-03-17
+- Corrected the regex pattern for duration properties to not allow for negative durations
+- Added validation of action name in responses against the action definitions in schema
+
 ## [2.2.9] - 2023-03-10
 - Added handling of cases where a payload annotation's definition cannot be located in schema files
 
