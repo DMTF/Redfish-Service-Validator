@@ -13,6 +13,7 @@ from redfish_service_validator.helper import LOG_ENTRY
 from types import SimpleNamespace
 from collections import Counter
 import json
+import re
 
 # hack in tagnames into module namespace
 tag = SimpleNamespace(**{tagName: lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)\
@@ -29,7 +30,7 @@ def count_errors(results):
         for countType in sorted(innerCounts.keys()):
             if innerCounts.get(countType) == 0:
                 continue
-            if any(x in countType for x in ['problem', 'fail', 'bad', 'exception', 'err.']):
+            if re.search(r"^error|problem|fail|bad|exception|err[.]", countType):
                 counters_all_pass = False
                 error_lines.append('{} {} errors in {}'.format(innerCounts[countType], countType, results[item]['uri']))
             innerCounts[countType] += 0
