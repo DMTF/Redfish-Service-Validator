@@ -865,6 +865,7 @@ class RedfishObject(RedfishProperty):
                 continue
 
             # Cast types if they're below their parent or are OemObjects
+            # Don't cast objects with odata.type that matches their current object type
             already_typed = False
             my_odata_type = sub_payload.get('@odata.type')
             if my_odata_type is not None and str(sub_obj.Type) == my_odata_type.strip('#'):
@@ -872,7 +873,7 @@ class RedfishObject(RedfishProperty):
             if sub_obj.Type.IsNav:
                 already_typed = True
 
-            # we can only cast if we have an odata type and valid schema
+            # If our item is an OemObject type and hasn't been casted to a type, then cast it
             if 'Resource.OemObject' in sub_obj.Type.getTypeTree() and not casted:
                 my_logger.verbose1(('Morphing OemObject', my_odata_type, sub_obj.Type))
                 if my_odata_type:
@@ -886,40 +887,40 @@ class RedfishObject(RedfishProperty):
                         my_logger.warning("Couldn't get schema for object (?), skipping OemObject {} : {}".format(sub_obj.Name, e))
                     evals.append(sub_obj)
                     continue
-            # or if we're a Resource or unversioned or v1_0_0 type
+            # Otherwise, if we're not casted, or we don't have an odata type, then cast it
             elif not casted and not already_typed:
                 my_ns, my_ns_unversioned = sub_obj.Type.Namespace, getNamespaceUnversioned(sub_obj.Type.Namespace)
-                try:
-                    min_version = min([tuple(splitVersionString(x.Namespace)) for x in sub_obj.Type.getTypeTree() if not x.IsPropertyType and my_ns_unversioned in x.Namespace])
-                    min_version = 'v' + '_'.join([str(x) for x in min_version])
-                except:
-                    my_logger.debug('Issue getting minimum version', exc_info=1)
-                    min_version = 'v1_0_0'
-                if my_ns in [my_ns_unversioned, my_ns_unversioned + '.v1_0_0', '.'.join([my_ns_unversioned, min_version])] or my_odata_type:
+                # if we have an odata type, use it as our upper limit
+                if my_odata_type:
+                    my_limit = getNamespace(my_odata_type).strip('#')
+                else:
                     my_limit = 'v9_9_9'
-                    if my_odata_type:
-                        my_limit = getNamespace(my_odata_type).strip('#')
-                    if sub_obj.parent and my_ns_unversioned not in 'Resource': # we always cast Resource objects
-                        parent = sub_obj
-                        while parent.parent and parent.parent.Type.Namespace.startswith(my_ns_unversioned + '.'):
-                            parent = parent.parent
-                            my_limit = parent.Type.Namespace
-                    my_type = sub_obj.Type.Type
-                    # get type order from bottom up of schema, check if my_type in that schema
-                    for top_ns, schema in reversed(list(sub_obj.Type.catalog.getSchemaDocByClass(my_ns).classes.items())):
-                        if my_type in schema.my_types:
-                            if splitVersionString(top_ns) <= splitVersionString(my_limit):
-                                my_ns = top_ns
-                                break
-                    # ISSUE: We can't cast under v1_0_0, get the next best Type
-                    if my_ns == my_ns_unversioned:
-                        my_ns = top_ns
-                    if my_ns not in sub_obj.Type.Namespace:
-                        my_logger.verbose1(('Morphing Complex', my_ns, my_type, my_limit))
-                        new_type_obj = sub_obj.Type.catalog.getSchemaDocByClass(my_ns).getTypeInSchemaDoc('.'.join([my_ns, my_type]))
-                        sub_obj = RedfishObject(new_type_obj, sub_obj.Name, sub_obj.parent).populate(sub_payload, check=check, casted=True)
-                        evals.append(sub_obj)
-                        continue
+                # If our item is not a Resource.Resource type, determine its parent's version limit for later...
+                # NOTE: Resource items always seem to be cast to highest type, not determined by its parent's type
+                #       not sure where this is backed up in documentation
+                if sub_obj.parent and my_ns_unversioned not in ['Resource']:
+                    parent = sub_obj
+                    while parent.parent and parent.parent.Type.Namespace.startswith(my_ns_unversioned + '.'):
+                        parent = parent.parent
+                        my_limit = parent.Type.Namespace
+                my_type = sub_obj.Type.Type
+                top_ns = my_ns
+                # get type order from bottom up of SchemaDoc
+                for top_ns, schema in reversed(list(sub_obj.Type.catalog.getSchemaDocByClass(my_ns).classes.items())):
+                    # if our object type is in schema... check for limit
+                    if my_type in schema.my_types:
+                        if splitVersionString(top_ns) <= splitVersionString(my_limit):
+                            my_ns = top_ns
+                            break
+                # ISSUE: We can't cast under v1_0_0, get the next best Type
+                if my_ns == my_ns_unversioned:
+                    my_ns = top_ns
+                if my_ns not in sub_obj.Type.Namespace:
+                    my_logger.verbose1(('Morphing Complex', my_ns, my_type, my_limit))
+                    new_type_obj = sub_obj.Type.catalog.getSchemaDocByClass(my_ns).getTypeInSchemaDoc('.'.join([my_ns, my_type]))
+                    sub_obj = RedfishObject(new_type_obj, sub_obj.Name, sub_obj.parent).populate(sub_payload, check=check, casted=True)
+                    evals.append(sub_obj)
+                    continue
 
             # Validate our Uri
             sub_obj.HasValidUri = True
