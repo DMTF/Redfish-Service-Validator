@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.3.1] - 2023-04-21
+- Corrected object mapping logic to handle cases where a common base definition is used for multiple object definitions
+
 ## [2.3.0] - 2023-03-17
 - Corrected the regex pattern for duration properties to not allow for negative durations
 - Added validation of action name in responses against the action definitions in schema
