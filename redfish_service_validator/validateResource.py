@@ -230,7 +230,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         except Exception as ex:
             my_logger.verbose1('Exception caught while validating single URI', exc_info=1)
             my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
-            propMessages[prop_name] = create_entry(prop_name, '', '', prop.Exists, 'exception')
+            messages[prop_name] = create_entry(prop_name, '', '', prop.Exists, 'exception')
             counts['exceptionPropCheck'] += 1
 
     SchemaFullType, jsonData = me['fulltype'], me['payload']

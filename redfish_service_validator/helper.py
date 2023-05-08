@@ -6,6 +6,7 @@ import re
 import logging
 from types import SimpleNamespace
 
+# TODO: Replace logger with custom logger with custom verbose levels, remove verbose1 and verbose2 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
 

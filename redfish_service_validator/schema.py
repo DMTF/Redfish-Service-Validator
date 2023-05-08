@@ -13,6 +13,7 @@ from redfish_service_validator.helper import getType, getNamespace, getNamespace
 import logging
 my_logger = logging.getLogger(__name__)
 
+# TODO: In metadata.py, use catalog.py instead of schema.py.  Remove file schema.py.
 
 def storeSchemaToLocal(xml_data, origin, service):
     """storeSchemaToLocal

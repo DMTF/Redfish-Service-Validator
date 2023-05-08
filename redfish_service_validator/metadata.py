@@ -7,6 +7,8 @@ import time
 from collections import Counter, OrderedDict, defaultdict
 import redfish_service_validator.schema as schema
 
+# TODO: Use catalog.py instead of schema.py, remove uses of schema.py
+
 EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
 EDMX_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edmx"
 EDM_TAGS = ['Action', 'Annotation', 'Collection', 'ComplexType', 'EntityContainer', 'EntityType', 'EnumType', 'Key',

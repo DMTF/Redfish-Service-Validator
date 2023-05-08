@@ -1,6 +1,6 @@
 
 from collections import Counter, OrderedDict
-from redfish_service_validator.catalog import REDFISH_ABSENT, MissingSchemaError, ExcerptTypes, get_fuzzy_property
+from redfish_service_validator.catalog import REDFISH_ABSENT, MissingSchemaError, ExcerptTypes, get_fuzzy_property, RedfishObject, RedfishObjectCollection, RedfishType
 
 from redfish_service_validator.helper import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance
 
@@ -11,7 +11,7 @@ my_logger.setLevel(logging.DEBUG)
 
 def validateExcerpt(prop, val):
     # check Navprop if it's NEUTRAL or CONTAINS
-    base, _ = prop.Type.getBaseType()
+    base = prop.Type.getBaseType()
 
     if base == 'entity':
         my_excerpt_type, my_excerpt_tags = prop.Type.excerptType, prop.Type.excerptTags
@@ -269,7 +269,7 @@ def displayType(propTypeObject, is_collection=False):
     :param is_collection: For collections: True if these types are for the collection; False if for a member
     :return: the simplified type to display
     """
-    propRealType, propCollection = propTypeObject.getBaseType()
+    propRealType, propCollection = propTypeObject.getBaseType(), propTypeObject.isCollection()
     propType = propTypeObject.fulltype
     # Edm.* and other explicit types
     if propRealType == 'Edm.Boolean' or propRealType == 'Boolean':
@@ -426,7 +426,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
     # propCollectionType = PropertyDict.get('isCollection')
-    propRealType, isCollection = prop.Type.getBaseType()
+    propRealType, isCollection = prop.Type.getBaseType(), prop.Type.isCollection()
 
     excerptPass = True
     if isCollection and prop.Value is None:
@@ -457,12 +457,11 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         elif not isinstance(prop.Value, list):
             my_logger.error('{}: property is expected to contain an array'.format(prop_name))
             counts['failInvalidArray'] += 1
-            return {prop_name: ( '-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')}, counts
+            resultList[prop_name] = ('-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')
+            propValueList = [prop.Value]
         else:
             propValueList = prop.Value
-            resultList[prop_name] = ('Array (size: {})'.format(len(prop.Value)), 
-                                displayType(prop.Type, is_collection=True),
-                                'Yes' if prop.Exists else 'No', '...')
+            resultList[prop_name] = ('Array (size: {})'.format(len(prop.Value)), displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', '...')
     else:
         # not a collection
         propValueList = [prop.Value]
@@ -473,11 +472,14 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             my_logger.error("{}: Mandatory prop does not exist".format(prop_name))
             counts['failMandatoryExist'] += 1
             result_str = 'FAIL'
-        resultList[prop_name] = (
-                        '[JSON Object]', displayType(prop.Type),
-                        'Yes' if prop.Exists else 'No',
-                        result_str)
-        for n, sub_obj in enumerate(prop.Collection):
+        resultList[prop_name] = ('[JSON Object]', displayType(prop.Type), 'Yes' if prop.Exists else 'No', result_str)
+
+        if isinstance(prop, RedfishObjectCollection):
+            object_list = prop.collection
+        else:
+            object_list = [prop]
+        
+        for n, sub_obj in enumerate(object_list):
             try:
                 if sub_obj.Value is None:
                     if prop.Type.IsNullable or 'EventDestination.v1_0_0.HttpHeaderProperty' == str(prop.Type.fulltype):
@@ -488,7 +490,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                         my_logger.error('{}: Property is null but is not Nullable'.format(prop_name))
                         counts['failNullable'] += 1
                         result_str = 'FAIL'
-                    if len(prop.Collection) == 1:
+                    if isinstance(prop, RedfishObject):
                         resultList['{}.[Value]'.format(prop_name)] = ('[null]', displayType(prop.Type),
                                                                       'Yes' if prop.Exists else 'No', result_str)
                     else:
@@ -498,7 +500,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                     subMsgs, subCounts = validateComplex(service, sub_obj, prop_name, oem_check)
                     if isCollection:
                         subMsgs = {'{}[{}].{}'.format(prop_name,n,x):y for x,y in subMsgs.items()}
-                    elif len(prop.Collection) == 1:
+                    elif isinstance(prop, RedfishObject):
                         subMsgs = {'{}.{}'.format(prop_name,x):y for x,y in subMsgs.items()}
                     else:
                         subMsgs = {'{}.{}#{}'.format(prop_name,x,n):y for x,y in subMsgs.items()}
@@ -533,9 +535,18 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 else:
                     propNullablePass = False
             
-            prop = prop.populate(val, check=True)
-
-            paramPass = prop.IsValid
+            if isinstance(prop.Type, str) and 'Edm.' in prop.Type:
+                try:
+                    paramPass = prop.Exists and prop.validate_basic(val, prop.Type)
+                except ValueError as e:
+                    my_logger.error('{}: {}'.format(prop.Name, e))  # log this
+                    paramPass = False
+            elif isinstance(prop.Type, RedfishType):
+                try:
+                    paramPass = prop.Type.validate(prop.Value, prop.added_pattern)
+                except ValueError as e:
+                    my_logger.error('{}: {}'.format(prop.Name, e))  # log this
+                    paramPass = False
 
             if propRealType == 'entity':
                 paramPass = validateEntity(service, prop, val)
