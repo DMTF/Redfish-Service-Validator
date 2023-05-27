@@ -312,7 +312,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
     if validateSuccess and 'MessageRegistryFile.MessageRegistryFile' in thisobj.Type.getTypeTree():
         # thisobj['Location'].Collection[0]['Uri'].Exists
         if 'Location' in thisobj:
-            for sub_obj in thisobj['Location'].Collection:
+            for sub_obj in thisobj['Location'].collection:
                 if 'Uri' in sub_obj:
                     links.append(sub_obj)
 
