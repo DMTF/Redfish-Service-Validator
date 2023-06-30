@@ -13,6 +13,7 @@ from redfish_service_validator.helper import (
     getType,
     getVersion,
     splitVersionString,
+    stripCollection
 )
 
 includeTuple = namedtuple("include", ["Namespace", "Uri"])
@@ -124,9 +125,7 @@ class SchemaCatalog:
         :return: Schema Document
         :rtype: SchemaDoc
         """
-        if 'Collection(' in typename:
-            typename = typename.replace('Collection(', "").replace(')', "")
-        typename = getNamespaceUnversioned(typename)
+        typename = getNamespaceUnversioned(stripCollection(typename))
         typename = self.alias.get(typename, typename)
         if typename in self.catalog_by_class:
             return self.catalog_by_class[typename][0]
@@ -242,8 +241,7 @@ class SchemaDoc:
         if isinstance(currentType, RedfishType):
             currentType = currentType.fulltype
 
-        if 'Collection(' in currentType:
-            currentType = currentType.replace('Collection(', "").replace(')', "")
+        currentType = stripCollection(currentType)
 
         pnamespace, ptype = getNamespace(currentType), getType(currentType)
         pnamespace = self.catalog.alias.get(pnamespace, pnamespace)
@@ -363,11 +361,16 @@ class RedfishType:
             self.IsPropertyType = False
             self.IsNav = False
             self.fulltype = self.owner.class_name + '.' + soup['Name']
-        self.Namespace, self.Type = getNamespace(self.fulltype), getType(self.fulltype)
+
+        if 'Collection(' in self.fulltype:
+            my_fulltype = self.fulltype.replace('Collection(', "").replace(')', "")
+            self.Namespace, self.Type = getNamespace(my_fulltype), getType(my_fulltype)
+        else:
+            self.Namespace, self.Type = getNamespace(self.fulltype), getType(self.fulltype)
 
         self.tags = {}
         for tag in self.type_soup.find_all(recursive=False):
-            if(tag.get('Term')):
+            if tag.get('Term'):
                 self.tags[tag['Term']] = tag.attrs
                 if (tag.get('Term') == 'Redfish.Revisions'):
                     self.tags[tag['Term']] = tag.find_all('Record')
@@ -395,7 +398,6 @@ class RedfishType:
         self.Excerpt = self.excerptType != ExcerptTypes.NEUTRAL
 
         self.property_pattern = None
-
 
         # get properties
         prop_tags = self.type_soup.find_all( ["NavigationProperty", "Property"], recursive=False)
@@ -595,7 +597,7 @@ class RedfishType:
             else:
                 return True
         if val is None:
-            if self.IsNullable:
+            if not self.IsNullable:
                 raise ValueError("Should not be null")
             else:
                 return True
@@ -657,9 +659,10 @@ class RedfishProperty(object):
         self.Populated = False
         self.Value = None
         self.IsValid = False
-        self.InAnnotation = False 
+        self.IsCollection = False
+        self.InAnnotation = False
         self.SchemaExists = False
-        self.Exists = REDFISH_ABSENT
+        self.Exists = False
         self.parent = parent
         self.added_pattern = None
 
@@ -667,6 +670,7 @@ class RedfishProperty(object):
         eval_prop = copy.copy(self)
         eval_prop.Populated = True
         eval_prop.Value = val
+        eval_prop.IsCollection = isinstance(val, list)
         eval_prop.InAnnotation = False
         eval_prop.SchemaExists = True
         eval_prop.Exists = val != REDFISH_ABSENT
@@ -743,17 +747,10 @@ class RedfishProperty(object):
     @staticmethod
     def validate_basic(val, my_type, validPattern=None, min=None, max=None):
         if "Collection(" in my_type:
-            if not isinstance(val, list):
-                raise ValueError("Collection is not list")
-            my_collection_type = my_type.replace("Collection(", "").replace(")", "")
-            paramPass = True
-            for cnt, item in enumerate(val):
-                try:
-                    paramPass = paramPass and RedfishProperty.validate_basic(item, my_collection_type, validPattern, min, max)
-                except ValueError as e:
-                    paramPass = False
-                    raise ValueError('{} invalid'.format(cnt))
-            return paramPass
+            my_type = my_type.replace("Collection(", "").replace(")", "")
+
+        if isinstance(val, list):
+            return all([RedfishProperty.validate_basic(sub_val, my_type, validPattern, min, max) for sub_val in val])
 
         elif my_type == "Edm.Boolean":
             if not isinstance(val, bool):
@@ -813,6 +810,7 @@ class RedfishObject(RedfishProperty):
         super().__init__(redfish_type, name, parent)
         self.payload = None
         self.IsValid = False
+        self.IsCollection = False
         self.HasValidUri = False
         self.HasValidUriStrict = False
         self.properties = {}
@@ -828,10 +826,16 @@ class RedfishObject(RedfishProperty):
                 my_logger.warning('Schema not found for {}'.format(typ))
 
     def populate(self, payload, check=False, casted=False):
-        if isinstance(payload, list):
-            return RedfishObjectCollection(self.Type, "Collection", self.parent).populate(payload)
+        """
+        Return a populated object, or list of objects
+        """
         populated_object = super().populate(payload)
         populated_object.payload = payload
+
+        if isinstance(payload, list):
+            populated_object.IsCollection = True
+            populated_object.Value = [self.populate(sub_item, check, casted) for sub_item in payload]
+            return populated_object
 
         # todo: redesign objects to have consistent variables, not only when populated
         # if populated, should probably just use another python class?
@@ -892,8 +896,10 @@ class RedfishObject(RedfishProperty):
                 while parent.parent and parent.parent.Type.Namespace.startswith(my_ns_unversioned + '.'):
                     parent = parent.parent
                     my_limit = parent.Type.Namespace
+
             my_type = populated_object.Type.Type
             top_ns = my_ns
+
             # get type order from bottom up of SchemaDoc
             for top_ns, schema in reversed(list(populated_object.Type.catalog.getSchemaDocByClass(my_ns).classes.items())):
                 # if our object type is in schema... check for limit
@@ -1030,72 +1036,36 @@ class RedfishObject(RedfishProperty):
         links = []
         # if we're populated...
         if self.Populated:
-            for n, item in self.properties.items():
+            for n, property in self.properties.items():
                 # if we don't exist or our type is Basic
-                if not item.Exists: continue
-                if not isinstance(item.Type, RedfishType): continue
-                if n == 'Actions':
-                    new_type = item.Type.catalog.getTypeInCatalog('ActionInfo.ActionInfo')
-                    for act in item.Value.values():
-                        if isinstance(act, dict):
-                            uri = act.get('@Redfish.ActionInfo')
-                            if isinstance(uri, str):
-                                my_link = RedfishObject(new_type, 'ActionInfo', item).populate({'@odata.id': uri})
-                                my_link.InAnnotation = True
-                                links.append(my_link)
-                if item.Type.IsNav:
-                    if isinstance(item.Value, list):
-                        for num, val in enumerate(item.Value):
-                            new_link = item.populate(val)
-                            new_link.Name = new_link.Name + '#{}'.format(num)
-                            links.append(new_link)
-                    else:
-                        links.append(item)
-                elif item.Type.getBaseType() == 'complex':
-                    if item.Value is None:
-                        continue
-                    InAnnotation = item.Name in ['@Redfish.Settings', '@Redfish.ActionInfo', '@Redfish.CollectionCapabilities']
-                    my_links = item.getLinks()
-                    for sub_item in my_links:
-                        sub_item.InAnnotation = InAnnotation
-                    links.extend(my_links)
+                if not isinstance(property, list):
+                    property = [property]
+                for item in property:
+                    if not item.Exists: continue
+                    if not isinstance(item.Type, RedfishType): continue
+                    if n == 'Actions':
+                        new_type = item.Type.catalog.getTypeInCatalog('ActionInfo.ActionInfo')
+                        for act in item.Value.values():
+                            if isinstance(act, dict):
+                                uri = act.get('@Redfish.ActionInfo')
+                                if isinstance(uri, str):
+                                    my_link = RedfishObject(new_type, 'ActionInfo', item).populate({'@odata.id': uri})
+                                    my_link.InAnnotation = True
+                                    links.append(my_link)
+                    if item.Type.IsNav:
+                        if isinstance(item.Value, list):
+                            for num, val in enumerate(item.Value):
+                                new_link = item.populate(val)
+                                new_link.Name = new_link.Name + '#{}'.format(num)
+                                links.append(new_link)
+                        else:
+                            links.append(item)
+                    elif item.Type.getBaseType() == 'complex':
+                        if item.Value is None:
+                            continue
+                        InAnnotation = item.Name in ['@Redfish.Settings', '@Redfish.ActionInfo', '@Redfish.CollectionCapabilities']
+                        my_links = item.getLinks()
+                        for sub_item in my_links:
+                            sub_item.InAnnotation = InAnnotation
+                        links.extend(my_links)
         return links
-
-
-class RedfishObjectCollection(RedfishObject):
-    """Represents Redfish as they are represented as Resource/ComplexTypes
-
-    Can be indexed with []
-    Can be populated with Data
-    If Populated, can be grabbed for Links
-    Can get json representation of type properties with as_json
-    """
-    def __getitem__(self, index):
-        return self.collection[index]
-
-    def __contains__(self, item):
-        if self.Populated:
-            return item in self.collection
-        else:
-            return item in self.properties
-    
-    def __iter__(self):
-        return self.collection.__iter__
-
-    def __init__(self, redfish_type: RedfishType, name="Collection", parent=None):
-        super().__init__(redfish_type, name, parent)
-        self.collection = []
-    
-    def populate(self, collection):
-        new_collection = super().populate(collection[0] if len(collection) else None)
-        new_collection.Value = collection
-        base_object = RedfishObject(self.Type, "Object", self.parent)
-        for payload in collection:
-            new_collection.collection.append(base_object.populate(payload))
-        return new_collection
-    
-    def getLinks(self):
-        all_links = []
-        for item in self.collection:
-            all_links.extend(item.getLinks())
-        return all_links

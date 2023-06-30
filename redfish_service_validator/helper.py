@@ -48,6 +48,15 @@ def splitVersionString(v_string):
     return tuple([int(v) for v in payload_split])
 
 
+def stripCollection(typename):
+    """
+    Remove "Collection()" from a type string
+    """
+    if 'Collection(' in typename:
+        typename = typename.replace('Collection(', "").replace(')', "")
+    return typename
+
+
 def navigateJsonFragment(decoded, URILink):
     if '#' in URILink:
         URIfragless, frag = tuple(URILink.rsplit('#', 1))

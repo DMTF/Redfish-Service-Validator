@@ -103,6 +103,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                 my_type = my_type.fulltype
             redfish_schema = service.catalog.getSchemaDocByClass(my_type)
             redfish_type = redfish_schema.getTypeInSchemaDoc(my_type)
+
             redfish_obj = catalog.RedfishObject(redfish_type, 'Object', parent=parent).populate(me['payload']) if redfish_type else None
 
         if redfish_obj:
@@ -174,8 +175,6 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                     messages['@odata.id'].result = 'FAIL'
                     my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
 
-
-
     if response and response.getheader('Allow'):
         allowed_responses = [x.strip().upper() for x in response.getheader('Allow').split(',')]
         if not redfish_obj.Type.CanInsert and 'POST' in allowed_responses:
@@ -230,7 +229,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         except Exception as ex:
             my_logger.verbose1('Exception caught while validating single URI', exc_info=1)
             my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
-            messages[prop_name] = create_entry(prop_name, '', '', prop.Exists, 'exception')
+            messages[prop_name] = create_entry(prop_name, '', '', '...', 'exception')
             counts['exceptionPropCheck'] += 1
 
     SchemaFullType, jsonData = me['fulltype'], me['payload']
@@ -312,7 +311,11 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
     if validateSuccess and 'MessageRegistryFile.MessageRegistryFile' in thisobj.Type.getTypeTree():
         # thisobj['Location'].Collection[0]['Uri'].Exists
         if 'Location' in thisobj:
-            for sub_obj in thisobj['Location'].collection:
+            if thisobj['Location'].IsCollection:
+                val_list = thisobj['Location'].Value
+            else:
+                val_list = [thisobj['Location'].Value]
+            for sub_obj in val_list:
                 if 'Uri' in sub_obj:
                     links.append(sub_obj)
 

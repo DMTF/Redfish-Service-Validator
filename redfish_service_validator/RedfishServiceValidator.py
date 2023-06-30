@@ -244,5 +244,8 @@ def main(argslist=None, configfile=None):
 
 
 if __name__ == '__main__':
-    status_code, lastResultsPage, exit_string = main()
-    sys.exit(status_code)
+    try:
+        status_code, lastResultsPage, exit_string = main()
+        sys.exit(status_code)
+    except Exception as e:
+        my_logger.exception("Program finished prematurely: %s", e)
