@@ -42,7 +42,7 @@ standard_out = logging.StreamHandler(sys.stdout)
 standard_out.setLevel(logging.INFO)
 my_logger.addHandler(standard_out)
 
-def main(argslist=None, configfile=None):
+def validate(argslist=None, configfile=None):
     """Main command
 
     Args:
@@ -242,7 +242,12 @@ def main(argslist=None, configfile=None):
 
     return status_code, lastResultsPage, 'Validation done'
 
+def main():
+    """
+    Entry point for the program.
+    """
+    status_code, _, _ = validate()
+    return status_code
 
 if __name__ == '__main__':
-    status_code, lastResultsPage, exit_string = main()
-    sys.exit(status_code)
+    sys.exit(main())
