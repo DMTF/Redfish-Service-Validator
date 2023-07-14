@@ -75,7 +75,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if expectedJson is None:
             ret = service.callResourceURI(URI)
             success, me['payload'], response, me['rtime'] = ret
-            me['rcode'] = response.status
+            me['rcode'] = response.status if response else -1
         else:
             success, me['payload'], me['rcode'], me['rtime'] = True, expectedJson, -1, 0
             response = None

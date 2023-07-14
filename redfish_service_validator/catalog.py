@@ -565,7 +565,7 @@ class RedfishType:
             return type_obj.getBaseType()
         return 'none'
     
-    def isCollection(self):
+    def IsCollection(self):
         tree = [self.fulltype]
         my_type = self.parent_type
         while my_type:
@@ -638,8 +638,8 @@ class RedfishType:
     def as_json(self):
         return self.createObject().as_json()
     
-    def createObject(self):
-        return RedfishObject(self)
+    def createObject(self, name='Object'):
+        return RedfishObject(self, name)
                 
 
 class RedfishProperty(object):
@@ -833,9 +833,28 @@ class RedfishObject(RedfishProperty):
         populated_object.payload = payload
 
         if isinstance(payload, list):
+            populated_object.IsValid = populated_object.Type.IsCollection()
+            if not populated_object.IsValid:
+                my_logger.error("This object's type {} should be a Collection, but it's of type {}...".format(populated_object.Name, populated_object.Type))
+                return populated_object
             populated_object.IsCollection = True
-            populated_object.Value = [self.populate(sub_item, check, casted) for sub_item in payload]
+
+            my_new_type = stripCollection(populated_object.Type.fulltype)
+
+            new_type_obj = populated_object.Type.catalog.getSchemaDocByClass(getNamespace(my_new_type)).getTypeInSchemaDoc(my_new_type)
+
+            new_rf_object = RedfishObject(new_type_obj, populated_object.Name, populated_object.parent)
+
+            populated_object.Value = [new_rf_object.populate(sub_item, check, casted) for sub_item in payload]
             return populated_object
+        else:
+            if populated_object.Type.IsCollection():
+                if payload in [REDFISH_ABSENT, None]:
+                    populated_object.Value = payload
+                    return populated_object
+                else:
+                    my_logger.error("This object {} should be a list, but it's of type {}...".format(populated_object.Name, type(payload).__name__))
+                    return populated_object
 
         # todo: redesign objects to have consistent variables, not only when populated
         # if populated, should probably just use another python class?
@@ -852,7 +871,7 @@ class RedfishObject(RedfishProperty):
         # Only valid if we are a dictionary...
         # todo: see above None/REDFISH_ABSENT block
         if not populated_object.IsValid:
-            my_logger.error("This complex object {} should be a dictionary or None, but it's of type {}...".format(populated_object.Name, str(type(payload))))
+            my_logger.error("This complex object {} should be a dictionary or None, but it's of type {}...".format(populated_object.Name, type(payload).__name__))
             populated_object.HasValidUri = True
             populated_object.HasValidUriStrict = False
             populated_object.properties = {x: y.populate(REDFISH_ABSENT) for x, y in populated_object.properties.items()}
@@ -911,6 +930,7 @@ class RedfishObject(RedfishProperty):
             if my_ns == my_ns_unversioned:
                 my_ns = top_ns
             if my_ns not in populated_object.Type.Namespace:
+                # NOTE: This returns a Type object without IsPropertyType
                 my_logger.verbose1(('Morphing Complex', my_ns, my_type, my_limit))
                 new_type_obj = populated_object.Type.catalog.getSchemaDocByClass(my_ns).getTypeInSchemaDoc('.'.join([my_ns, my_type]))
                 populated_object = RedfishObject(new_type_obj, populated_object.Name, populated_object.parent).populate(sub_payload, check=check, casted=True)

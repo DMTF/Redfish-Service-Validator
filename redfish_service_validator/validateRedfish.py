@@ -2,7 +2,7 @@
 from collections import Counter, OrderedDict
 from redfish_service_validator.catalog import REDFISH_ABSENT, MissingSchemaError, ExcerptTypes, get_fuzzy_property, RedfishObject, RedfishType
 
-from redfish_service_validator.helper import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance
+from redfish_service_validator.helper import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance, stripCollection
 
 import logging
 
@@ -15,7 +15,12 @@ def validateExcerpt(prop, val):
 
     if base == 'entity':
         my_excerpt_type, my_excerpt_tags = prop.Type.excerptType, prop.Type.excerptTags
-        my_props = prop.Type.createObject().populate(val).properties
+
+        my_new_type = stripCollection(prop.Type.fulltype)
+
+        new_type_obj = prop.Type.catalog.getSchemaDocByClass(getNamespace(my_new_type)).getTypeInSchemaDoc(my_new_type)
+
+        my_props = new_type_obj.createObject(prop.Name).populate(val).properties
 
         for name, innerprop in my_props.items():
             if not innerprop.HasSchema:
@@ -269,7 +274,7 @@ def displayType(propTypeObject, is_collection=False):
     :param is_collection: For collections: True if these types are for the collection; False if for a member
     :return: the simplified type to display
     """
-    propRealType, propCollection = propTypeObject.getBaseType(), propTypeObject.isCollection()
+    propRealType, propCollection = propTypeObject.getBaseType(), propTypeObject.IsCollection()
     propType = propTypeObject.fulltype
     # Edm.* and other explicit types
     if propRealType == 'Edm.Boolean' or propRealType == 'Boolean':
@@ -427,7 +432,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
     # propCollectionType = PropertyDict.get('isCollection')
-    propRealType, isCollection = prop.Type.getBaseType(), prop.Type.isCollection()
+    propRealType, isCollection = prop.Type.getBaseType(), prop.Type.IsCollection()
 
     excerptPass = True
     if isCollection and prop.Value is None:
@@ -447,7 +452,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
         my_logger.verbose1("\tis Collection")
-        if prop.Value == 'n/a':
+        if prop.Value == REDFISH_ABSENT:
             resultList[prop_name] = ('Array (absent) {}'.format(len(prop.Value)),
                                 displayType(prop.Type, is_collection=True),
                                 'Yes' if prop.Exists else 'No', 'PASS' if propMandatoryPass else 'FAIL')
@@ -457,6 +462,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             my_logger.error('{}: property is expected to contain an array'.format(prop_name))
             counts['failInvalidArray'] += 1
             resultList[prop_name] = ('-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')
+            return resultList, counts
         else:
             resultList[prop_name] = ('Array (size: {})'.format(len(prop.Value)), displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', '...')
 
