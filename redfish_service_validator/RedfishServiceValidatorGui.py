@@ -324,7 +324,7 @@ class RSVGui:
         # Launch the validator
         try:
             rsv_config = self.build_config_parser( False )
-            status_code, last_results_page, exit_string = rsv.main(configfile = rsv_config )
+            status_code, last_results_page, exit_string = rsv.validate( configfile = rsv_config )
             if last_results_page is not None:
                 webbrowser.open_new( last_results_page )
             else:

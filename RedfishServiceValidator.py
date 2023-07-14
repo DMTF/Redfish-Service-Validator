@@ -7,5 +7,4 @@ from redfish_service_validator.RedfishServiceValidator import main
 import sys
 
 if __name__ == '__main__':
-    status_code, lastResultsPage, exit_string = main()
-    sys.exit(status_code)
+    sys.exit(main())
