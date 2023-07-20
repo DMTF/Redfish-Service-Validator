@@ -26,6 +26,7 @@ URI_ID_REGEX = '\{[A-Za-z0-9]*Id\}'
 
 VALID_ID_REGEX = '([A-Za-z0-9.!#$&-;=?\[\]_~])+'
 
+
 # Excerpt definitions
 class ExcerptTypes(Enum):
     NEUTRAL = auto()
@@ -33,13 +34,16 @@ class ExcerptTypes(Enum):
     ALLOWED = auto()
     EXCLUSIVE = auto()
 
+
 excerpt_info_by_type = {
     'Redfish.ExcerptCopy': ExcerptTypes.CONTAINS,
     'Redfish.Excerpt': ExcerptTypes.ALLOWED,
     'Redfish.ExcerptCopyOnly': ExcerptTypes.EXCLUSIVE
 }
 
+
 allowed_annotations = ['odata', 'Redfish', 'Privileges', 'Message']
+
 
 def get_fuzzy_property(prop_name: str, jsondata: dict, allPropList=[]):
     """
@@ -81,6 +85,7 @@ class SchemaCatalog:
     
     From Catalog, you can get any Schema by it's filename, or its classes
     """
+    # TODO: Generate documents on demand, not all at once
 
     def __init__(self, filepath: str, metadata: object = None):
         """Init
@@ -364,9 +369,9 @@ class RedfishType:
 
         if 'Collection(' in self.fulltype:
             my_fulltype = self.fulltype.replace('Collection(', "").replace(')', "")
-            self.Namespace, self.Type = getNamespace(my_fulltype), getType(my_fulltype)
+            self.Namespace, self.TypeName = getNamespace(my_fulltype), getType(my_fulltype)
         else:
-            self.Namespace, self.Type = getNamespace(self.fulltype), getType(self.fulltype)
+            self.Namespace, self.TypeName = getNamespace(self.fulltype), getType(self.fulltype)
 
         self.tags = {}
         for tag in self.type_soup.find_all(recursive=False):
@@ -379,7 +384,7 @@ class RedfishType:
 
         self.IsMandatory = self.tags.get('Redfish.Required') is not None
         self.IsNullable = self.type_soup.get("Nullable", "true") not in ["false", False, "False"]
-        self.AutoExpand = self.tags.get('OData.AutoExpand', None) is not None or self.tags.get('OData.AutoExpand'.lower(), None) is not None
+        self.AutoExpand = (self.tags.get('OData.AutoExpand') or self.tags.get('OData.AutoExpand'.lower())) is not None
         self.Deprecated = self.tags.get('Redfish.Deprecated')
         self.Revisions = self.tags.get('Redfish.Revisions')
         self.Excerpt = False
@@ -421,7 +426,8 @@ class RedfishType:
             HasAdditional = ( False if additionalElement is None else (
                     True if additionalElement.get("Bool", False) in ["True", "true", True]
                     else False))
-            if HasAdditional: return True
+            if HasAdditional:  
+                return True
         return False
 
     @property
@@ -576,6 +582,11 @@ class RedfishType:
                 tree.append(my_type)
                 break
         return any([re.match(r'Collection(.*)', typ) for typ in tree])
+    
+    def getCollectionType(self):
+        my_new_type = stripCollection(self.fulltype)
+        new_type_obj = self.catalog.getSchemaDocByClass(getNamespace(my_new_type)).getTypeInSchemaDoc(my_new_type)
+        return new_type_obj
 
     def getProperties(self):
         """
@@ -661,6 +672,7 @@ class RedfishProperty(object):
         self.IsValid = False
         self.IsCollection = False
         self.InAnnotation = False
+        self.IsAutoExpanded = False
         self.SchemaExists = False
         self.Exists = False
         self.parent = parent
@@ -676,6 +688,20 @@ class RedfishProperty(object):
         eval_prop.Exists = val != REDFISH_ABSENT
 
         eval_prop.IsValid = True
+
+        if isinstance(eval_prop.Type, str):
+            is_type_collection = 'Collection(' in eval_prop.Type
+        elif isinstance(eval_prop.Type, RedfishType):
+            is_type_collection = eval_prop.Type.IsCollection()
+        else:
+            raise ValueError('Type is not String or RedfishType')
+        if eval_prop.IsCollection and not is_type_collection:
+            my_logger.error('Property {} should not be a List'.format(self.Name))
+            eval_prop.IsValid = False
+        elif not eval_prop.IsCollection and is_type_collection and val not in [None, REDFISH_ABSENT]:
+            my_logger.error('Collection Property {} is not a List'.format(self.Name))
+            eval_prop.IsValid = False
+
         if isinstance(eval_prop.Type, str) and 'Edm.' in eval_prop.Type and check:
             try:
                 eval_prop.IsValid = eval_prop.Exists and RedfishProperty.validate_basic(eval_prop.Value, eval_prop.Type)
@@ -809,8 +835,6 @@ class RedfishObject(RedfishProperty):
     def __init__(self, redfish_type: RedfishType, name="Object", parent=None):
         super().__init__(redfish_type, name, parent)
         self.payload = None
-        self.IsValid = False
-        self.IsCollection = False
         self.HasValidUri = False
         self.HasValidUriStrict = False
         self.properties = {}
@@ -916,7 +940,7 @@ class RedfishObject(RedfishProperty):
                     parent = parent.parent
                     my_limit = parent.Type.Namespace
 
-            my_type = populated_object.Type.Type
+            my_type = populated_object.Type.TypeName
             top_ns = my_ns
 
             # get type order from bottom up of SchemaDoc
@@ -968,7 +992,7 @@ class RedfishObject(RedfishProperty):
             if populated_object.HasValidUri and not populated_object.Type.IsNav:
                 # pair our type, Id value, and odata.id value
                 my_odata_split = my_odata_id.split('/')
-                my_type, my_id, my_uri_id = populated_object.Type.Type, sub_payload.get('Id'), my_odata_split[-1]
+                my_type, my_id, my_uri_id = populated_object.Type.TypeName, sub_payload.get('Id'), my_odata_split[-1]
 
                 for schema_uri in allowable_uris:
                     # regex URI check to confirm which URI 
@@ -1075,8 +1099,12 @@ class RedfishObject(RedfishProperty):
                     if item.Type.IsNav:
                         if isinstance(item.Value, list):
                             for num, val in enumerate(item.Value):
-                                new_link = item.populate(val)
+                                # TODO: Along with example Excerpt and RedfishObject, replace following code with hypothetical RedfishType.getCollectionType
+                                new_type_obj = item.Type.getCollectionType()
+                                new_link = RedfishObject(new_type_obj, item.Name, item.parent).populate(val)
                                 new_link.Name = new_link.Name + '#{}'.format(num)
+                                if item.Type.AutoExpand:
+                                    new_link.IsAutoExpanded = True
                                 links.append(new_link)
                         else:
                             links.append(item)

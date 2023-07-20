@@ -99,7 +99,7 @@ def validateEntity(service, prop, val, parentURI=""):
     """
     Validates an entity based on its uri given
     """
-    name, val, autoExpand = prop.Name, val, prop.Type.AutoExpand
+    name, val, autoExpand = prop.Name, val, prop.IsAutoExpanded
     excerptType = prop.Type.excerptType if prop.Type.Excerpt else ExcerptTypes.NEUTRAL
     my_logger.debug('validateEntity: name = {}'.format(name))
 
@@ -435,6 +435,11 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     propRealType, isCollection = prop.Type.getBaseType(), prop.Type.IsCollection()
 
     excerptPass = True
+    if not isCollection and isinstance(prop.Value, list): 
+        my_logger.error('{}: Value of property is an array but is not a Collection'.format(prop_name))
+        counts['failInvalidArray'] += 1
+        return {prop_name: ( '-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')}, counts
+
     if isCollection and prop.Value is None:
         # illegal for a collection to be null
         if 'EventDestination.v1_0_0.HttpHeaderProperty' == str(prop.Type.fulltype):
@@ -473,6 +478,9 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             my_logger.error("{}: Mandatory prop does not exist".format(prop_name))
             counts['failMandatoryExist'] += 1
             result_str = 'FAIL'
+
+        if not prop.Exists:
+            return resultList, counts
 
         if prop.IsCollection:
             resultList[prop_name] = ('Array (size: {})'.format(len(prop.Value)), displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', result_str)
@@ -590,7 +598,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                     result_str = 'errorExcerpt'
 
             resultList[sub_item] = (
-                    displayValue(val, sub_item if prop.Type.AutoExpand else None), displayType(prop.Type),
+                    displayValue(val, sub_item if prop.IsAutoExpanded else None), displayType(prop.Type),
                     'Yes' if prop.Exists else 'No', result_str)
 
         return resultList, counts

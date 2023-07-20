@@ -341,7 +341,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
 
             if link.Type.Excerpt:
                 continue
-            if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']) and not link.Type.AutoExpand:
+            if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']) and not link.IsAutoExpanded:
                 refLinks.append((link, thisobj))
                 continue
             if link_destination in allLinks:
@@ -364,7 +364,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                     counts['repeat'] += 1
                     continue
 
-            if link.Type is not None and link.Type.AutoExpand:
+            if link.Type is not None and link.IsAutoExpanded:
                 returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, link.Type, link.Value, thisobj, allLinks, link.InAnnotation)
             else:
                 returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=parent, allLinks=allLinks, inAnnotation=link.InAnnotation)
@@ -410,7 +410,6 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 counts['reflink'] += 1
             else:
                 continue
-
 
             my_link_type = link.Type.fulltype
             success, my_data, _, _ = service.callResourceURI(link_destination)
