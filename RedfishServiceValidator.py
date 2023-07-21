@@ -8,7 +8,6 @@ import sys
 
 if __name__ == '__main__':
     try:
-        status_code, lastResultsPage, exit_string = main()
-        sys.exit(status_code)
+        sys.exit(main())
     except Exception as e:
         my_logger.exception("Program finished prematurely: %s", e)

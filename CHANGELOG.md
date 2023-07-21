@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.3.2] - 2023-07-14
+- Corrected the usage of return values for script entry points
+
 ## [2.3.1] - 2023-04-21
 - Corrected object mapping logic to handle cases where a common base definition is used for multiple object definitions
 
