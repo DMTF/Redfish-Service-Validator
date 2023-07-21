@@ -127,7 +127,6 @@ class Metadata(object):
             logger.debug('Metadata: bad_schema_uris = {}'.format(self.bad_schema_uris))
             logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
             for ref in self.service_refs:
-                print(ref)
                 name, uri = self.service_refs[ref]
                 success, soup, origin = getSchemaDetails(service, name, uri)
                 self.schema_store[name] = soup

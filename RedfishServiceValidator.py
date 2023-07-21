@@ -11,3 +11,4 @@ if __name__ == '__main__':
         sys.exit(main())
     except Exception as e:
         my_logger.exception("Program finished prematurely: %s", e)
+        raise
