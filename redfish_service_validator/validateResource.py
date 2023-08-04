@@ -391,6 +391,12 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 results[uriName]['errors'] += '\n' + errmsg
                 counts['errorMissingRefOdata'] += 1
                 continue
+            elif not isinstance(link_destination, str):
+                errmsg = 'URI for NavigationProperty is not a string {} {} {}'.format(link_destination, link.Name, link.parent)
+                my_logger.error(errmsg)
+                results[uriName]['errors'] += '\n' + errmsg
+                counts['errorInvalidReferenceObject'] += 1
+                continue
             elif link_destination.split('#')[0].endswith('/'):
                 # (elegantly) add warn message to resource html
                 warnmsg = 'Referenced URI acquired ends in slash: {}'.format(link_destination)
