@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.3.3] - 2023-08-04
+- Added check to ensure the '@odata.id' value is a string before trying to follow the link
+
 ## [2.3.2] - 2023-07-14
 - Corrected the usage of return values for script entry points
 
