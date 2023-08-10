@@ -673,6 +673,7 @@ class RedfishProperty(object):
         self.IsCollection = False
         self.InAnnotation = False
         self.IsAutoExpanded = False
+        self.IsExcerpt = False
         self.SchemaExists = False
         self.Exists = False
         self.parent = parent
@@ -1105,6 +1106,8 @@ class RedfishObject(RedfishProperty):
                                 new_link.Name = new_link.Name + '#{}'.format(num)
                                 if item.Type.AutoExpand:
                                     new_link.IsAutoExpanded = True
+                                if item.Type.Excerpt:
+                                    new_link.IsExcerpt = True
                                 links.append(new_link)
                         else:
                             links.append(item)

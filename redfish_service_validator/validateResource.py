@@ -339,7 +339,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 continue
             link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
 
-            if link.Type.Excerpt:
+            if link.IsExcerpt or link.Type.Excerpt:
                 continue
             if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']) and not link.IsAutoExpanded:
                 refLinks.append((link, thisobj))
@@ -386,7 +386,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 my_logger.warning('Link is None, does it exist?')
                 continue
             link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
-            if link.Type.Excerpt:
+            if link.IsExcerpt or link.Type.Excerpt:
                 continue
             elif link_destination is None:
                 errmsg = 'Referenced URI for NavigationProperty is missing {} {} {}'.format(link_destination, link.Name, link.parent)
