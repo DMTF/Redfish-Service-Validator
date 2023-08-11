@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.3.4] - 2023-08-11
+- Corrected array testing to show errors when array properties are not represented as arrays and vice versa
+
 ## [2.3.3] - 2023-08-04
 - Added check to ensure the '@odata.id' value is a string before trying to follow the link
 
