@@ -6,6 +6,7 @@ import re
 import logging
 from types import SimpleNamespace
 
+# TODO: Replace logger with custom logger with custom verbose levels, remove verbose1 and verbose2 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
 
@@ -45,6 +46,15 @@ def splitVersionString(v_string):
     if len(payload_split) != 3:
         return tuple([0, 0, 0])
     return tuple([int(v) for v in payload_split])
+
+
+def stripCollection(typename):
+    """
+    Remove "Collection()" from a type string
+    """
+    if 'Collection(' in typename:
+        typename = typename.replace('Collection(', "").replace(')', "")
+    return typename
 
 
 def navigateJsonFragment(decoded, URILink):

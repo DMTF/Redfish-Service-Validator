@@ -3,8 +3,12 @@
 # License: BSD 3-Clause License. For full text see link:
 # https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
 
-from redfish_service_validator.RedfishServiceValidator import main
+from redfish_service_validator.RedfishServiceValidator import main, my_logger
 import sys
 
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:
+        my_logger.exception("Program finished prematurely: %s", e)
+        raise

@@ -9,11 +9,11 @@ import logging
 import json
 from datetime import datetime
 import traceback
+from redfish_service_validator.metadata import getSchemaDetails
 from redfish_service_validator.config import convert_config_to_args, convert_args_to_config
 from redfish_service_validator.validateResource import validateSingleURI, validateURITree
-import redfish_service_validator.schema as schema
 from redfish_service_validator import tohtml, schema_pack, traverse
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 from collections import Counter
 
 tool_version = '2.3.3'
@@ -231,7 +231,7 @@ def validate(argslist=None, configfile=None):
     my_logger.info("\n".join('{}: {}   '.format(x, y) for x, y in sorted(finalCounts.items())))
 
     # dump cache info to debug log
-    my_logger.debug('getSchemaDetails() -> {}'.format(schema.getSchemaDetails.cache_info()))
+    my_logger.debug('getSchemaDetails() -> {}'.format(getSchemaDetails.cache_info()))
     my_logger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
 
     if not success:
@@ -250,4 +250,8 @@ def main():
     return status_code
 
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:
+        my_logger.exception("Program finished prematurely: %s", e)
+        raise
