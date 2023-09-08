@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.3.5] - 2023-09-08
+- Made change to allow for action names to be annotated
+
 ## [2.3.4] - 2023-08-11
 - Corrected array testing to show errors when array properties are not represented as arrays and vice versa
 
