@@ -254,6 +254,8 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
         #         my_actions.append((new_act_name, REDFISH_ABSENT))
 
         for act_name, actionDecoded in my_actions:
+            if '@' in act_name:
+                continue
             act_schema = sub_obj.Type.catalog.getSchemaDocByClass(getNamespace(act_name))
             act_class = act_schema.classes.get(getNamespace(act_name))
 
