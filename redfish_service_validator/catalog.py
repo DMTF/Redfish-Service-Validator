@@ -581,7 +581,7 @@ class RedfishType:
             else:
                 tree.append(my_type)
                 break
-        return any([re.match(r'Collection(.*)', typ) for typ in tree])
+        return any([re.match(r'Collection\((.*)', typ) for typ in tree])
     
     def getCollectionType(self):
         my_new_type = stripCollection(self.fulltype)
