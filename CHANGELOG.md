@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.3.6] - 2023-09-22
+- Updated regex used to determine if a property is an array to not collide with the collection capabilities term
+
 ## [2.3.5] - 2023-09-08
 - Made change to allow for action names to be annotated
 
