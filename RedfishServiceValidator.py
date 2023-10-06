@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2022 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link:
-# https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
+# https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 from redfish_service_validator.RedfishServiceValidator import main, my_logger
 import sys

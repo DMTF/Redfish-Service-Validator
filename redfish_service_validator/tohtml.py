@@ -1,6 +1,6 @@
 # Copyright Notice:
 # Copyright 2016-2019 DMTF. All rights reserved.
-# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
+# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 if __name__ != '__main__':
     from redfish_service_validator.helper import getType
