@@ -116,7 +116,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         raise  # re-raise exception
     except Exception as e:
         my_logger.verbose1('Exception caught while creating ResourceObj', exc_info=1)
-        my_logger.error('Unable to gather property info for URI {}: {}'.format(URI, repr(e)))
+        my_logger.error('Unable to gather property info from schema for URI {}; check its schema definition for schema errors: {}'.format(URI, repr(e)))
         counts['exceptionResource'] += 1
         me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
         return False, counts, results, None, None
