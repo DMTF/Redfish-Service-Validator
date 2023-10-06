@@ -1101,14 +1101,17 @@ class RedfishObject(RedfishProperty):
                         if isinstance(item.Value, list):
                             for num, val in enumerate(item.Value):
                                 # TODO: Along with example Excerpt and RedfishObject, replace following code with hypothetical RedfishType.getCollectionType
-                                new_type_obj = item.Type.getCollectionType()
-                                new_link = RedfishObject(new_type_obj, item.Name, item.parent).populate(val)
-                                new_link.Name = new_link.Name + '#{}'.format(num)
-                                if item.Type.AutoExpand:
-                                    new_link.IsAutoExpanded = True
-                                if item.Type.Excerpt:
-                                    new_link.IsExcerpt = True
-                                links.append(new_link)
+                                try:
+                                    new_type_obj = item.Type.getCollectionType()
+                                    new_link = RedfishObject(new_type_obj, item.Name, item.parent).populate(val)
+                                    new_link.Name = new_link.Name + '#{}'.format(num)
+                                    if item.Type.AutoExpand:
+                                        new_link.IsAutoExpanded = True
+                                    if item.Type.Excerpt:
+                                        new_link.IsExcerpt = True
+                                    links.append(new_link)
+                                except Exception as e:
+                                    my_logger.error('Unable to build definition for URI {}; check its schema definition or the schema making the reference to the URI for schema errors: {}'.format(val, repr(e)))
                         else:
                             links.append(item)
                     elif item.Type.getBaseType() == 'complex':
