@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.3.7] - 2023-10-06
+- Added exception handling when traversing links if the schema definition for the link is invalid
+
 ## [2.3.6] - 2023-09-22
 - Updated regex used to determine if a property is an array to not collide with the collection capabilities term
 
