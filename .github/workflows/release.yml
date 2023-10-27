@@ -70,20 +70,6 @@ jobs:
         git add CHANGELOG.md setup.py redfish_service_validator/RedfishServiceValidator.py
         git commit -s -m "${{github.event.inputs.version}} versioning"
         git push origin main
-    - name: Make the release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-      with:
-        tag_name: ${{github.event.inputs.version}}
-        release_name: ${{github.event.inputs.version}}
-        body: |
-          Changes since last release:
-          
-          ${{env.CHANGES}}
-        draft: false
-        prerelease: false
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
@@ -109,12 +95,8 @@ jobs:
         cp dist/windows/RedfishServiceValidator.exe Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
         cp README.md  Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
         zip -r Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
-    - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
+    - name: Make the release
       env:
         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-      with:
-        upload_url: ${{steps.create_release.outputs.upload_url}}
-        asset_path: Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip
-        asset_name: Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip
-        asset_content_type: application/zip
+      run: |
+        gh release create ${{github.event.inputs.version}} -t ${{github.event.inputs.version}} -n "Changes since last release:"$'\n\n'"$CHANGES" *.zip 
