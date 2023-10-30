@@ -536,13 +536,18 @@ class RedfishType:
         """
         tree = [self]
         my_type = self.parent_type
+        my_logger.error("560DEBUG: getTypeTree ENTRANCE, my_type '{}'".format(my_type))
         while my_type:
             if 'Edm.' not in my_type:
+                my_logger.error("560DEBUG: getTypeTree Looking up parent '{}'".format(my_type))
                 type_obj = self.owner.parent_doc.catalog.getSchemaDocByClass(my_type).getTypeInSchemaDoc(my_type)
                 tree.append(type_obj)
+                my_logger.error("560DEBUG: getTypeTree Found parent '{}'".format(type_obj.parent_type))
                 my_type = type_obj.parent_type
             else:
+                my_logger.error("560DEBUG: getTypeTree EXIT 1, '{}'".format(tree + [my_type]))
                 return tree + [my_type]
+        my_logger.error("560DEBUG: getTypeTree EXIT 2, '{}'".format(tree))
         return tree
 
     def getBaseType(self):
@@ -839,6 +844,7 @@ class RedfishObject(RedfishProperty):
         self.HasValidUri = False
         self.HasValidUriStrict = False
         self.properties = {}
+        my_logger.error("560DEBUG: RedfishObject, redfish_type '{}', name '{}', parent '{}'".format(redfish_type, name, parent))
         for prop, typ in redfish_type.getProperties().items():
             try:
                 base = typ.getBaseType()
@@ -854,6 +860,7 @@ class RedfishObject(RedfishProperty):
         """
         Return a populated object, or list of objects
         """
+        my_logger.error("560DEBUG: populate, payload '{}', check '{}', casted '{}'".format(payload, check, casted))
         populated_object = super().populate(payload)
         populated_object.payload = payload
 
