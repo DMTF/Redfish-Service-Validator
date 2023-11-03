@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.3.8] - 2023-11-03
+- Added breakout condition when tracing a definition's type tree to prevent hangs due to invalid schemas with type loops
+
 ## [2.3.7] - 2023-10-06
 - Added exception handling when traversing links if the schema definition for the link is invalid
 
