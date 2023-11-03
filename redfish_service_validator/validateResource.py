@@ -48,7 +48,6 @@ def get_my_capture(this_logger, handler):
 def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=None, parent=None):
     # rs-assertion: 9.4.1
     # Initial startup here
-    my_logger.error("560DEBUG: validateSingleURI, URI '{}', uriName '{}'".format(URI, uriName))
     my_logger.verbose1("\n*** %s, %s", uriName, URI)
     my_logger.info("\n*** %s", URI)
     my_logger.verbose1("\n*** {}, {}".format(expectedType, expectedJson is not None))
@@ -296,7 +295,6 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
     #   valid links come from getAllLinks, includes info such as expected values, etc
     #   as long as it is able to pass that info, should not crash
     # If this is our first called URI
-    my_logger.error("560DEBUG: validateURITree, URI '{}', uriName '{}'".format(URI, uriName))
     top = allLinks is None
     if top: allLinks = set()
     allLinks.add(URI)
