@@ -83,6 +83,8 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if not success:
             my_logger.error('URI did not return resource {}'.format(URI))
             counts['failGet'] += 1
+            # Failure to connect to the scheme is an important error that must be included in FAILS
+            counts['fails'] += 1
             me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
             return False, counts, results, None, None
 
@@ -118,6 +120,8 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         my_logger.verbose1('Exception caught while creating ResourceObj', exc_info=1)
         my_logger.error('Unable to gather property info from schema for URI {}; check its schema definition for schema errors: {}'.format(URI, repr(e)))
         counts['exceptionResource'] += 1
+        # ExceptionResource is an important error that must be included in FAILS
+        counts['fails'] += 1
         me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
         return False, counts, results, None, None
 
@@ -285,6 +289,14 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     # Get all links available
 
     my_logger.debug(redfish_obj.getLinks())
+
+    # Count of occurrences of fail, warn, invalid and deprecated in result of tests to FAILS / WARNINGS
+    for value in messages.values():
+        if "FAIL" in value.result: counts['fails'] += 1
+        if "WARN" in value.result or "INVALID" in value.result or "Deprecated" in value.result: counts['warnings'] += 1
+    
+    # Additional analysis of whether failMandatoryExist occurred in the scheme and adding the number of failMandatoryExist to FAILS
+    if 'failMandatoryExist' in counts.keys(): counts['fails'] += counts['failMandatoryExist']
 
     return True, counts, results, redfish_obj.getLinks(), redfish_obj
 

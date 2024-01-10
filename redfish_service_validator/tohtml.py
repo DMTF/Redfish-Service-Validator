@@ -38,6 +38,7 @@ def count_errors(results):
         if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
             error_messages_present = True
         if results[item]['warns'] is not None and len(results[item]['warns']) > 0:
+            if "warningPresent" in innerCounts: innerCounts['warnings'] += 1
             innerCounts['warningPresent'] = 1
         if counters_all_pass and error_messages_present:
             innerCounts['failErrorPresent'] = 1
