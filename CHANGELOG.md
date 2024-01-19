@@ -1,5 +1,9 @@
 # Change Log
 
+## [2.3.9] - 2024-01-19
+- Minor changes to fix Python 3.12 warnings with usage of raw strings
+- Added warning and failure totals
+
 ## [2.3.8] - 2023-11-03
 - Added breakout condition when tracing a definition's type tree to prevent hangs due to invalid schemas with type loops
 
