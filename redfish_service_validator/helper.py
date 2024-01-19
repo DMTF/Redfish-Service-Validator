@@ -34,7 +34,7 @@ def splitVersionString(v_string):
 
     :return: tuple of integers
     """
-    if(re.match('([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', v_string) is not None):
+    if(re.match(r'([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', v_string) is not None):
         new_string = getVersion(v_string)
         if new_string is not None:
             v_string = new_string
@@ -161,7 +161,7 @@ def checkPayloadConformance(jsondata, uri):
         if odata_name == 'odata.id':
             paramPass = isinstance(decoded[key], str)
             paramPass = re.match(
-                '(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
+                r'(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
             if not paramPass:
                 my_logger.error("{} {}: Expected format is /path/to/uri, but received: {}".format(uri, key, decoded[key]))
             else:
@@ -174,7 +174,7 @@ def checkPayloadConformance(jsondata, uri):
         elif odata_name == 'odata.context':
             paramPass = isinstance(decoded[key], str)
             paramPass = re.match(
-                '/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                r'/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
             if not paramPass:
                 my_logger.warning("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
                 info[key] = (decoded[key], 'odata', 'Exists', 'WARN')
@@ -182,7 +182,7 @@ def checkPayloadConformance(jsondata, uri):
         elif odata_name == 'odata.type':
             paramPass = isinstance(decoded[key], str)
             paramPass = re.match(
-                '#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                r'#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
             if not paramPass:
                 my_logger.error("{} {}: Expected format is #Namespace.Type, but received: {}".format(uri, key, decoded[key]))
         else:

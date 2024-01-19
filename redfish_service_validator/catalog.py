@@ -22,9 +22,9 @@ my_logger = logging.getLogger(__name__)
 
 REDFISH_ABSENT = "n/a"
 
-URI_ID_REGEX = '\{[A-Za-z0-9]*Id\}'
+URI_ID_REGEX = r'\{[A-Za-z0-9]*Id\}'
 
-VALID_ID_REGEX = '([A-Za-z0-9.!#$&-;=?\[\]_~])+'
+VALID_ID_REGEX = r'([A-Za-z0-9.!#$&-;=?\[\]_~])+'
 
 
 # Excerpt definitions
