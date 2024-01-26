@@ -905,6 +905,7 @@ class RedfishObject(RedfishProperty):
             populated_object.HasValidUri = True
             populated_object.HasValidUriStrict = False
             populated_object.properties = {x: y.populate(REDFISH_ABSENT) for x, y in populated_object.properties.items()}
+            return populated_object
 
         # Cast types if they're below their parent or are OemObjects
         # Don't cast objects with odata.type that matches their current object type
