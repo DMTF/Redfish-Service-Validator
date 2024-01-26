@@ -16,7 +16,7 @@ from redfish_service_validator import tohtml, schema_pack, traverse
 from urllib.parse import urlparse
 from collections import Counter
 
-tool_version = '2.3.9'
+tool_version = '2.4.0'
 
 # Set up the custom debug levels
 VERBOSE1=logging.INFO-1

@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.4.0] - 2024-01-26
+- Added missing break out of object schema mapping if discovered property is not an object
+
 ## [2.3.9] - 2024-01-19
 - Minor changes to fix Python 3.12 warnings with usage of raw strings
 - Added warning and failure totals
