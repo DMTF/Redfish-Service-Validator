@@ -87,6 +87,7 @@ At a minimum, the `ip`, `username`, and `password` options must be modified.
 | `debugging`        | `--debugging`        | boolean | Output debug statements to text log, otherwise it only uses INFO |
 | `schema_directory` | `--schema_directory` | string  | Directory for local schema files |
 | `mockup`           | `--mockup`           | string  | Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage |
+| `collectionlimit`  | `--collectionlimit`  | string  | Sets a limit to links gathered from collections by type, e.g. `ComputerSystem 20` limits ComputerSystemCollection to 20 links |
 
 ### Payload Option
 

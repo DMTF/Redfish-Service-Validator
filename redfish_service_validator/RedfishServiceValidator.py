@@ -75,6 +75,7 @@ def main(argslist=None, configfile=None):
     argget.add_argument('--uricheck', action="store_true", help='Allow URI checking on services below RedfishVersion 1.6.0')
     argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='Directory for local schema files')
     argget.add_argument('--mockup', type=str, default='', help='Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage')
+    argget.add_argument('--collectionlimit', type=str, default=['LogEntry', '20'], help='apply a limit to collections (format: RESOURCE1 COUNT1 RESOURCE2 COUNT2...)', nargs='+')
 
     # parse...
     args = argget.parse_args(argslist)
@@ -125,6 +126,10 @@ def main(argslist=None, configfile=None):
     if netloc == '':
         my_logger.error('IP is missing ip/host')
         return 1, None, 'IP Incomplete'
+
+    if len(args.collectionlimit) % 2 != 0:
+        my_logger.error('Collection Limit requires two arguments per entry (ResourceType Count)')
+        return 1, None, 'Collection Limit Incomplete'
 
     # start printing config details, remove redundant/private info from print
     my_logger.info('Target URI: ' + args.ip)

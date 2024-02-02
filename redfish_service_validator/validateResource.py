@@ -319,8 +319,14 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
     # If successful...
     if validateSuccess:
         # Bring Registries to Front if possible
-        log_entries = [x for x in links if 'LogEntry' in x.Type.fulltype]
-        links = [x for x in links if 'LogEntry' not in x.Type.fulltype] + log_entries[:15] # Pare down logentries
+        for link_type in service.config['collectionlimit']:
+            link_limit = service.config['collectionlimit'][link_type]
+            applicable_links = [x for x in links if link_type in x.Type.Type]
+            trimmed_links = applicable_links[link_limit:]
+            for link in trimmed_links:
+                link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
+                my_logger.verbose1('Removing link via limit: {} {}'.format(link_type, link_destination))
+                allLinks.add(link_destination)
 
         for link in sorted(links, key=lambda x: (x.Type.fulltype != 'Registries.Registries')):
             if link is None or link.Value is None:
