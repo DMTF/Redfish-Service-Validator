@@ -1,6 +1,6 @@
 # Copyright Notice:
 # Copyright 2016-2019 DMTF. All rights reserved.
-# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
+# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 """
 Redfish Service Validator GUI
@@ -324,7 +324,7 @@ class RSVGui:
         # Launch the validator
         try:
             rsv_config = self.build_config_parser( False )
-            status_code, last_results_page, exit_string = rsv.main(configfile = rsv_config )
+            status_code, last_results_page, exit_string = rsv.validate( configfile = rsv_config )
             if last_results_page is not None:
                 webbrowser.open_new( last_results_page )
             else:

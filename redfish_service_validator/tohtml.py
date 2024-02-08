@@ -1,6 +1,6 @@
 # Copyright Notice:
 # Copyright 2016-2019 DMTF. All rights reserved.
-# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
+# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 if __name__ != '__main__':
     from redfish_service_validator.helper import getType
@@ -38,6 +38,7 @@ def count_errors(results):
         if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
             error_messages_present = True
         if results[item]['warns'] is not None and len(results[item]['warns']) > 0:
+            if "warningPresent" in innerCounts: innerCounts['warnings'] += 1
             innerCounts['warningPresent'] = 1
         if counters_all_pass and error_messages_present:
             innerCounts['failErrorPresent'] = 1

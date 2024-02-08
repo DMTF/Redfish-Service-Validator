@@ -1,5 +1,33 @@
 # Change Log
 
+## [2.4.0] - 2024-01-26
+- Added missing break out of object schema mapping if discovered property is not an object
+
+## [2.3.9] - 2024-01-19
+- Minor changes to fix Python 3.12 warnings with usage of raw strings
+- Added warning and failure totals
+
+## [2.3.8] - 2023-11-03
+- Added breakout condition when tracing a definition's type tree to prevent hangs due to invalid schemas with type loops
+
+## [2.3.7] - 2023-10-06
+- Added exception handling when traversing links if the schema definition for the link is invalid
+
+## [2.3.6] - 2023-09-22
+- Updated regex used to determine if a property is an array to not collide with the collection capabilities term
+
+## [2.3.5] - 2023-09-08
+- Made change to allow for action names to be annotated
+
+## [2.3.4] - 2023-08-11
+- Corrected array testing to show errors when array properties are not represented as arrays and vice versa
+
+## [2.3.3] - 2023-08-04
+- Added check to ensure the '@odata.id' value is a string before trying to follow the link
+
+## [2.3.2] - 2023-07-14
+- Corrected the usage of return values for script entry points
+
 ## [2.3.1] - 2023-04-21
 - Corrected object mapping logic to handle cases where a common base definition is used for multiple object definitions
 

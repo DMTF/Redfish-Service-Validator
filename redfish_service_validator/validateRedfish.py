@@ -1,8 +1,8 @@
 
 from collections import Counter, OrderedDict
-from redfish_service_validator.catalog import REDFISH_ABSENT, MissingSchemaError, ExcerptTypes, get_fuzzy_property
+from redfish_service_validator.catalog import REDFISH_ABSENT, MissingSchemaError, ExcerptTypes, get_fuzzy_property, RedfishObject, RedfishType
 
-from redfish_service_validator.helper import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance
+from redfish_service_validator.helper import getNamespace, getNamespaceUnversioned, getType, checkPayloadConformance, stripCollection
 
 import logging
 
@@ -11,11 +11,16 @@ my_logger.setLevel(logging.DEBUG)
 
 def validateExcerpt(prop, val):
     # check Navprop if it's NEUTRAL or CONTAINS
-    base, _ = prop.Type.getBaseType()
+    base = prop.Type.getBaseType()
 
     if base == 'entity':
         my_excerpt_type, my_excerpt_tags = prop.Type.excerptType, prop.Type.excerptTags
-        my_props = prop.Type.createObject().populate(val).properties
+
+        my_new_type = stripCollection(prop.Type.fulltype)
+
+        new_type_obj = prop.Type.catalog.getSchemaDocByClass(getNamespace(my_new_type)).getTypeInSchemaDoc(my_new_type)
+
+        my_props = new_type_obj.createObject(prop.Name).populate(val).properties
 
         for name, innerprop in my_props.items():
             if not innerprop.HasSchema:
@@ -94,7 +99,7 @@ def validateEntity(service, prop, val, parentURI=""):
     """
     Validates an entity based on its uri given
     """
-    name, val, autoExpand = prop.Name, val, prop.Type.AutoExpand
+    name, val, autoExpand = prop.Name, val, prop.IsAutoExpanded
     excerptType = prop.Type.excerptType if prop.Type.Excerpt else ExcerptTypes.NEUTRAL
     my_logger.debug('validateEntity: name = {}'.format(name))
 
@@ -249,6 +254,8 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
         #         my_actions.append((new_act_name, REDFISH_ABSENT))
 
         for act_name, actionDecoded in my_actions:
+            if '@' in act_name:
+                continue
             act_schema = sub_obj.Type.catalog.getSchemaDocByClass(getNamespace(act_name))
             act_class = act_schema.classes.get(getNamespace(act_name))
 
@@ -269,7 +276,7 @@ def displayType(propTypeObject, is_collection=False):
     :param is_collection: For collections: True if these types are for the collection; False if for a member
     :return: the simplified type to display
     """
-    propRealType, propCollection = propTypeObject.getBaseType()
+    propRealType, propCollection = propTypeObject.getBaseType(), propTypeObject.IsCollection()
     propType = propTypeObject.fulltype
     # Edm.* and other explicit types
     if propRealType == 'Edm.Boolean' or propRealType == 'Boolean':
@@ -369,6 +376,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     my_logger.verbose1(prop_name)
     my_logger.verbose1("\tvalue: {} {}".format(prop.Value, type(prop.Value)))
 
+    # Basic Validation of all properties
     prop_name = '.'.join([x for x in (parent_name, prop_name) if x])
 
     propNullable = prop.Type.IsNullable
@@ -426,16 +434,20 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
     # propCollectionType = PropertyDict.get('isCollection')
-    propRealType, isCollection = prop.Type.getBaseType()
+    propRealType, isCollection = prop.Type.getBaseType(), prop.Type.IsCollection()
 
     excerptPass = True
+    if not isCollection and isinstance(prop.Value, list): 
+        my_logger.error('{}: Value of property is an array but is not a Collection'.format(prop_name))
+        counts['failInvalidArray'] += 1
+        return {prop_name: ( '-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')}, counts
+
     if isCollection and prop.Value is None:
         # illegal for a collection to be null
         if 'EventDestination.v1_0_0.HttpHeaderProperty' == str(prop.Type.fulltype):
             # HttpHeaders in EventDestination has non-conformant details in the long description we need to allow to not break existing implementations
             my_logger.info('Value HttpHeaders can be Null')
             propNullable = True
-            propValueList = []
             resultList[prop_name] = ('Array (size: null)', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', '...')
         else:
             my_logger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'.format(prop_name))
@@ -447,37 +459,37 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         # rs-assumption: check @odata.count property
         # rs-assumption: check @odata.link property
         my_logger.verbose1("\tis Collection")
-        if prop.Value == 'n/a':
-            propValueList = []
+        if prop.Value == REDFISH_ABSENT:
             resultList[prop_name] = ('Array (absent) {}'.format(len(prop.Value)),
                                 displayType(prop.Type, is_collection=True),
                                 'Yes' if prop.Exists else 'No', 'PASS' if propMandatoryPass else 'FAIL')
-            my_logger.error("{}: Mandatory prop does not exist".format(prop_name))
-            counts['failMandatoryExist'] += 1
         elif not isinstance(prop.Value, list):
             my_logger.error('{}: property is expected to contain an array'.format(prop_name))
             counts['failInvalidArray'] += 1
-            return {prop_name: ( '-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')}, counts
+            resultList[prop_name] = ('-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')
+            return resultList, counts
         else:
-            propValueList = prop.Value
-            resultList[prop_name] = ('Array (size: {})'.format(len(prop.Value)), 
-                                displayType(prop.Type, is_collection=True),
-                                'Yes' if prop.Exists else 'No', '...')
-    else:
-        # not a collection
-        propValueList = [prop.Value]
+            resultList[prop_name] = ('Array (size: {})'.format(len(prop.Value)), displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', '...')
 
+    # If we're validating a complex object
     if propRealType == 'complex':
         result_str = 'complex'
         if prop.Type.IsMandatory and not prop.Exists:
             my_logger.error("{}: Mandatory prop does not exist".format(prop_name))
             counts['failMandatoryExist'] += 1
             result_str = 'FAIL'
-        resultList[prop_name] = (
-                        '[JSON Object]', displayType(prop.Type),
-                        'Yes' if prop.Exists else 'No',
-                        result_str)
-        for n, sub_obj in enumerate(prop.Collection):
+
+        if not prop.Exists:
+            return resultList, counts
+
+        if prop.IsCollection:
+            resultList[prop_name] = ('Array (size: {})'.format(len(prop.Value)), displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', result_str)
+            object_list = prop.Value
+        else:
+            resultList[prop_name] = ('[JSON Object]', displayType(prop.Type), 'Yes' if prop.Exists else 'No', result_str)
+            object_list = [prop]
+    
+        for n, sub_obj in enumerate(object_list):
             try:
                 if sub_obj.Value is None:
                     if prop.Type.IsNullable or 'EventDestination.v1_0_0.HttpHeaderProperty' == str(prop.Type.fulltype):
@@ -488,20 +500,19 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                         my_logger.error('{}: Property is null but is not Nullable'.format(prop_name))
                         counts['failNullable'] += 1
                         result_str = 'FAIL'
-                    if len(prop.Collection) == 1:
+                    if isinstance(prop, RedfishObject):
                         resultList['{}.[Value]'.format(prop_name)] = ('[null]', displayType(prop.Type),
-                                                                      'Yes' if prop.Exists else 'No', result_str)
+                                                                        'Yes' if prop.Exists else 'No', result_str)
                     else:
-                        resultList['{}.[Value]#{}'.format(prop_name,n)] = ('[null]', displayType(prop.Type),
-                                                                           'Yes' if prop.Exists else 'No', result_str)
+                        resultList['{}.[Value]#{}'.format(prop_name, n)] = ('[null]', displayType(prop.Type), 'Yes' if prop.Exists else 'No', result_str)
                 else:
                     subMsgs, subCounts = validateComplex(service, sub_obj, prop_name, oem_check)
                     if isCollection:
-                        subMsgs = {'{}[{}].{}'.format(prop_name,n,x):y for x,y in subMsgs.items()}
-                    elif len(prop.Collection) == 1:
-                        subMsgs = {'{}.{}'.format(prop_name,x):y for x,y in subMsgs.items()}
+                        subMsgs = {'{}[{}].{}'.format(prop_name, n, x): y for x, y in subMsgs.items()}
+                    elif isinstance(prop, RedfishObject):
+                        subMsgs = {'{}.{}'.format(prop_name, x): y for x, y in subMsgs.items()}
                     else:
-                        subMsgs = {'{}.{}#{}'.format(prop_name,x,n):y for x,y in subMsgs.items()}
+                        subMsgs = {'{}.{}#{}'.format(prop_name, x, n): y for x, y in subMsgs.items()}
                     resultList.update(subMsgs)
                     counts.update(subCounts)
             except Exception as ex:
@@ -509,74 +520,85 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
                 counts['exceptionPropCheck'] += 1
         return resultList, counts
-    
-    # all other types...
-    for cnt, val in enumerate(propValueList):
-        appendStr = (('[' + str(cnt) + ']') if isCollection else '')
-        sub_item = prop_name + appendStr
 
-        excerptPass = validateExcerpt(prop, val)
+    # Everything else...
+    else:
+        propValueList = prop.Value if prop.IsCollection else [prop.Value]
+        for cnt, val in enumerate(propValueList):
+            appendStr = (('[' + str(cnt) + ']') if prop.IsCollection else '')
+            sub_item = prop_name + appendStr
 
-        if isinstance(val, str):
-            if val == '' and prop.Type.Permissions == 'OData.Permission/Read':
-                my_logger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
-                nullValid = False
-            if val.lower() == 'null':
-                my_logger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item))
-                nullValid = False
+            excerptPass = validateExcerpt(prop, val)
 
-        if prop.Exists:
-            paramPass = propNullablePass = True
-            if val is None:
-                if propNullable:
-                    my_logger.debug('Property {} is nullable and is null, so Nullable checking passes'.format(sub_item))
-                else:
-                    propNullablePass = False
-            
-            prop = prop.populate(val, check=True)
+            if isinstance(val, str):
+                if val == '' and prop.Type.Permissions == 'OData.Permission/Read':
+                    my_logger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item))
+                    nullValid = False
+                if val.lower() == 'null':
+                    my_logger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item))
+                    nullValid = False
 
-            paramPass = prop.IsValid
+            if prop.Exists:
+                paramPass = propNullablePass = True
+                if val is None:
+                    if propNullable:
+                        my_logger.debug('Property {} is nullable and is null, so Nullable checking passes'.format(sub_item))
+                    else:
+                        propNullablePass = False
+                
+                if isinstance(prop.Type, str) and 'Edm.' in prop.Type:
+                    try:
+                        paramPass = prop.Exists and prop.validate_basic(val, prop.Type)
+                    except ValueError as e:
+                        my_logger.error('{}: {}'.format(prop.Name, e))  # log this
+                        paramPass = False
+                elif isinstance(prop.Type, RedfishType):
+                    try:
+                        paramPass = prop.Type.validate(val, prop.added_pattern)
+                    except ValueError as e:
+                        my_logger.error('{}: {}'.format(prop.Name, e))  # log this
+                        paramPass = False
 
-            if propRealType == 'entity':
-                paramPass = validateEntity(service, prop, val)
-            
+                if propRealType == 'entity':
+                    paramPass = validateEntity(service, prop, val)
+                
 
 
-        # Render our result
-        my_type = prop.Type.fulltype
+            # Render our result
+            my_type = prop.Type.fulltype
 
-        if all([paramPass, propMandatoryPass, propNullablePass, excerptPass]):
-            my_logger.verbose1("\tSuccess")
-            counts['pass'] += 1
-            result_str = 'PASS'
-            if deprecatedPassOrSinceVersion is False:
-                result_str = 'Deprecated'
-            if isinstance(deprecatedPassOrSinceVersion, str):
-                result_str = 'Deprecated/{}'.format(deprecatedPassOrSinceVersion)
-            if not nullValid:
-                counts['invalidPropertyValue'] += 1
-                result_str = 'WARN'
-        else:
-            my_logger.verbose1("\tFAIL")
-            counts['err.' + str(my_type)] += 1
-            result_str = 'FAIL'
-            if not paramPass:
-                if prop.Type.IsMandatory:
-                    counts['failMandatoryProp'] += 1
-                else:
-                    counts['failProp'] += 1
-            elif not propMandatoryPass:
-                my_logger.error("{}: Mandatory prop does not exist".format(sub_item))
-                counts['failMandatoryExist'] += 1
-            elif not propNullablePass:
-                my_logger.error('{}: Property is null but is not Nullable'.format(sub_item))
-                counts['failNullable'] += 1
-            elif not excerptPass:
-                counts['errorExcerpt'] += 1
-                result_str = 'errorExcerpt'
+            if all([paramPass, propMandatoryPass, propNullablePass, excerptPass]):
+                my_logger.verbose1("\tSuccess")
+                counts['pass'] += 1
+                result_str = 'PASS'
+                if deprecatedPassOrSinceVersion is False:
+                    result_str = 'Deprecated'
+                if isinstance(deprecatedPassOrSinceVersion, str):
+                    result_str = 'Deprecated/{}'.format(deprecatedPassOrSinceVersion)
+                if not nullValid:
+                    counts['invalidPropertyValue'] += 1
+                    result_str = 'WARN'
+            else:
+                my_logger.verbose1("\tFAIL")
+                counts['err.' + str(my_type)] += 1
+                result_str = 'FAIL'
+                if not paramPass:
+                    if prop.Type.IsMandatory:
+                        counts['failMandatoryProp'] += 1
+                    else:
+                        counts['failProp'] += 1
+                elif not propMandatoryPass:
+                    my_logger.error("{}: Mandatory prop does not exist".format(sub_item))
+                    counts['failMandatoryExist'] += 1
+                elif not propNullablePass:
+                    my_logger.error('{}: Property is null but is not Nullable'.format(sub_item))
+                    counts['failNullable'] += 1
+                elif not excerptPass:
+                    counts['errorExcerpt'] += 1
+                    result_str = 'errorExcerpt'
 
-        resultList[sub_item] = (
-                displayValue(val, sub_item if prop.Type.AutoExpand else None), displayType(prop.Type),
-                'Yes' if prop.Exists else 'No', result_str)
+            resultList[sub_item] = (
+                    displayValue(val, sub_item if prop.IsAutoExpanded else None), displayType(prop.Type),
+                    'Yes' if prop.Exists else 'No', result_str)
 
-    return resultList, counts
+        return resultList, counts

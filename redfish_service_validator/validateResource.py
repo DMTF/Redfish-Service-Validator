@@ -1,6 +1,6 @@
 # Copyright Notice:
 # Copyright 2016-2021 DMTF. All rights reserved.
-# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
+# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 import logging
 from collections import Counter, OrderedDict
@@ -75,7 +75,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if expectedJson is None:
             ret = service.callResourceURI(URI)
             success, me['payload'], response, me['rtime'] = ret
-            me['rcode'] = response.status
+            me['rcode'] = response.status if response else -1
         else:
             success, me['payload'], me['rcode'], me['rtime'] = True, expectedJson, -1, 0
             response = None
@@ -83,6 +83,8 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if not success:
             my_logger.error('URI did not return resource {}'.format(URI))
             counts['failGet'] += 1
+            # Failure to connect to the scheme is an important error that must be included in FAILS
+            counts['fails'] += 1
             me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
             return False, counts, results, None, None
 
@@ -103,6 +105,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                 my_type = my_type.fulltype
             redfish_schema = service.catalog.getSchemaDocByClass(my_type)
             redfish_type = redfish_schema.getTypeInSchemaDoc(my_type)
+
             redfish_obj = catalog.RedfishObject(redfish_type, 'Object', parent=parent).populate(me['payload']) if redfish_type else None
 
         if redfish_obj:
@@ -115,8 +118,10 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         raise  # re-raise exception
     except Exception as e:
         my_logger.verbose1('Exception caught while creating ResourceObj', exc_info=1)
-        my_logger.error('Unable to gather property info for URI {}: {}'.format(URI, repr(e)))
+        my_logger.error('Unable to gather property info from schema for URI {}; check its schema definition for schema errors: {}'.format(URI, repr(e)))
         counts['exceptionResource'] += 1
+        # ExceptionResource is an important error that must be included in FAILS
+        counts['fails'] += 1
         me['warns'], me['errors'] = get_my_capture(my_logger, whandler), get_my_capture(my_logger, ehandler)
         return False, counts, results, None, None
 
@@ -174,8 +179,6 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
                     messages['@odata.id'].result = 'FAIL'
                     my_logger.error('URI {} does not match the following required URIs in Schema of {}'.format(odata_id, redfish_obj.Type))
 
-
-
     if response and response.getheader('Allow'):
         allowed_responses = [x.strip().upper() for x in response.getheader('Allow').split(',')]
         if not redfish_obj.Type.CanInsert and 'POST' in allowed_responses:
@@ -230,7 +233,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         except Exception as ex:
             my_logger.verbose1('Exception caught while validating single URI', exc_info=1)
             my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)))
-            propMessages[prop_name] = create_entry(prop_name, '', '', prop.Exists, 'exception')
+            messages[prop_name] = create_entry(prop_name, '', '', '...', 'exception')
             counts['exceptionPropCheck'] += 1
 
     SchemaFullType, jsonData = me['fulltype'], me['payload']
@@ -287,6 +290,14 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
     my_logger.debug(redfish_obj.getLinks())
 
+    # Count of occurrences of fail, warn, invalid and deprecated in result of tests to FAILS / WARNINGS
+    for value in messages.values():
+        if "FAIL" in value.result: counts['fails'] += 1
+        if "WARN" in value.result or "INVALID" in value.result or "Deprecated" in value.result: counts['warnings'] += 1
+    
+    # Additional analysis of whether failMandatoryExist occurred in the scheme and adding the number of failMandatoryExist to FAILS
+    if 'failMandatoryExist' in counts.keys(): counts['fails'] += counts['failMandatoryExist']
+
     return True, counts, results, redfish_obj.getLinks(), redfish_obj
 
 
@@ -312,7 +323,11 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
     if validateSuccess and 'MessageRegistryFile.MessageRegistryFile' in thisobj.Type.getTypeTree():
         # thisobj['Location'].Collection[0]['Uri'].Exists
         if 'Location' in thisobj:
-            for sub_obj in thisobj['Location'].Collection:
+            if thisobj['Location'].IsCollection:
+                val_list = thisobj['Location'].Value
+            else:
+                val_list = [thisobj['Location'].Value]
+            for sub_obj in val_list:
                 if 'Uri' in sub_obj:
                     links.append(sub_obj)
 
@@ -342,9 +357,9 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 continue
             link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
 
-            if link.Type.Excerpt:
+            if link.IsExcerpt or link.Type.Excerpt:
                 continue
-            if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']) and not link.Type.AutoExpand:
+            if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']) and not link.IsAutoExpanded:
                 refLinks.append((link, thisobj))
                 continue
             if link_destination in allLinks:
@@ -367,7 +382,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                     counts['repeat'] += 1
                     continue
 
-            if link.Type is not None and link.Type.AutoExpand:
+            if link.Type is not None and link.IsAutoExpanded:
                 returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, link.Type, link.Value, thisobj, allLinks, link.InAnnotation)
             else:
                 returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=parent, allLinks=allLinks, inAnnotation=link.InAnnotation)
@@ -389,13 +404,19 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 my_logger.warning('Link is None, does it exist?')
                 continue
             link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
-            if link.Type.Excerpt:
+            if link.IsExcerpt or link.Type.Excerpt:
                 continue
             elif link_destination is None:
                 errmsg = 'Referenced URI for NavigationProperty is missing {} {} {}'.format(link_destination, link.Name, link.parent)
                 my_logger.error(errmsg)
                 results[uriName]['errors'] += '\n' + errmsg
                 counts['errorMissingRefOdata'] += 1
+                continue
+            elif not isinstance(link_destination, str):
+                errmsg = 'URI for NavigationProperty is not a string {} {} {}'.format(link_destination, link.Name, link.parent)
+                my_logger.error(errmsg)
+                results[uriName]['errors'] += '\n' + errmsg
+                counts['errorInvalidReferenceObject'] += 1
                 continue
             elif link_destination.split('#')[0].endswith('/'):
                 # (elegantly) add warn message to resource html
@@ -413,7 +434,6 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 counts['reflink'] += 1
             else:
                 continue
-
 
             my_link_type = link.Type.fulltype
             success, my_data, _, _ = service.callResourceURI(link_destination)

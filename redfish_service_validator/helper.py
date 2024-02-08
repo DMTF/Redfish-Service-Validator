@@ -1,11 +1,12 @@
 # Copyright Notice:
 # Copyright 2016-2020 DMTF. All rights reserved.
-# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/master/LICENSE.md
+# License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 import re
 import logging
 from types import SimpleNamespace
 
+# TODO: Replace logger with custom logger with custom verbose levels, remove verbose1 and verbose2 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
 
@@ -33,7 +34,7 @@ def splitVersionString(v_string):
 
     :return: tuple of integers
     """
-    if(re.match('([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', v_string) is not None):
+    if(re.match(r'([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', v_string) is not None):
         new_string = getVersion(v_string)
         if new_string is not None:
             v_string = new_string
@@ -45,6 +46,15 @@ def splitVersionString(v_string):
     if len(payload_split) != 3:
         return tuple([0, 0, 0])
     return tuple([int(v) for v in payload_split])
+
+
+def stripCollection(typename):
+    """
+    Remove "Collection()" from a type string
+    """
+    if 'Collection(' in typename:
+        typename = typename.replace('Collection(', "").replace(')', "")
+    return typename
 
 
 def navigateJsonFragment(decoded, URILink):
@@ -151,7 +161,7 @@ def checkPayloadConformance(jsondata, uri):
         if odata_name == 'odata.id':
             paramPass = isinstance(decoded[key], str)
             paramPass = re.match(
-                '(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
+                r'(\/.*)+(#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*)?', decoded[key]) is not None
             if not paramPass:
                 my_logger.error("{} {}: Expected format is /path/to/uri, but received: {}".format(uri, key, decoded[key]))
             else:
@@ -164,7 +174,7 @@ def checkPayloadConformance(jsondata, uri):
         elif odata_name == 'odata.context':
             paramPass = isinstance(decoded[key], str)
             paramPass = re.match(
-                '/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                r'/redfish/v1/\$metadata#([a-zA-Z0-9_.-]*\.)[a-zA-Z0-9_.-]*', decoded[key]) is not None
             if not paramPass:
                 my_logger.warning("{} {}: Expected format is /redfish/v1/$metadata#ResourceType, but received: {}".format(uri, key, decoded[key]))
                 info[key] = (decoded[key], 'odata', 'Exists', 'WARN')
@@ -172,7 +182,7 @@ def checkPayloadConformance(jsondata, uri):
         elif odata_name == 'odata.type':
             paramPass = isinstance(decoded[key], str)
             paramPass = re.match(
-                '#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
+                r'#([a-zA-Z0-9_.-]*\.)+[a-zA-Z0-9_.-]*', decoded[key]) is not None
             if not paramPass:
                 my_logger.error("{} {}: Expected format is #Namespace.Type, but received: {}".format(uri, key, decoded[key]))
         else:

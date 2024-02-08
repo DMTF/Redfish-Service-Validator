@@ -124,6 +124,9 @@ When validating a resource, the following types of tests may occur for each prop
 * For object properties, check the properties inside the object againt the object's schema definition.
 * For links, check that the URI referenced matches the expected resource type.
 
+CSDL syntax errors will cause testing to halt and move on to other resources.
+The OData CSDL Validator (https://github.com/DMTF/Redfish-Tools/tree/main/odata-csdl-validator) can be used to identify schema errors prior to testing.
+
 ## Conformance Logs - Summary and Detailed Conformance Report
 
 The Redfish Service Validator generates an HTML report under the 'logs' folder and is named as 'ConformanceHtmlLog_MM_DD_YYYY_HHMMSS.html', along with a text and config file.
@@ -145,7 +148,7 @@ The Redfish Service Validator only performs GET operations on the service.
 Below are certain items that are not in scope for the tool.
 
 * Other HTTP methods, such as PATCH, are not covered.
-* Wuery parameters, such as $top and $skip, are not covered.
+* Query parameters, such as $top and $skip, are not covered.
 * Multiple services are not tested simultaneously.
 
 ## Building a Standalone Windows Executable
