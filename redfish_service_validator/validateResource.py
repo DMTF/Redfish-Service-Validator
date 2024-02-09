@@ -336,7 +336,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
         # Bring Registries to Front if possible
         for link_type in service.config['collectionlimit']:
             link_limit = service.config['collectionlimit'][link_type]
-            applicable_links = [x for x in links if link_type in x.Type.Type]
+            applicable_links = [x for x in links if link_type in x.Type.TypeName]
             trimmed_links = applicable_links[link_limit:]
             for link in trimmed_links:
                 link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
