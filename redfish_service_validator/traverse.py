@@ -8,6 +8,7 @@ from functools import lru_cache
 from urllib.parse import urlparse, urlunparse
 from http.client import responses
 import os
+import re
 
 import redfish as rf
 import requests
@@ -43,6 +44,15 @@ class rfService():
         self.config['certificatecheck'] = False
         self.config['certificatebundle'] = None
         self.config['timeout'] = 10
+
+        # NOTE: this is a validator limitation.  maybe move this to its own config
+        if self.config['collectionlimit']:
+            total_len = len(self.config['collectionlimit']) / 2
+            limit_string = ' '.join(self.config['collectionlimit'])
+            limit_array = [tuple(found_item.split(' ')) for found_item in re.findall(r"[A-Za-z]+ [0-9]+", limit_string)]
+            if len(limit_array) != total_len:
+                raise ValueError('Collection Limit array seems malformed, use format: RESOURCE1 COUNT1 RESOURCE2 COUNT2)...')
+            self.config['collectionlimit'] = {x[0]: int(x[1]) for x in limit_array}
 
         # Log into the service
         if not self.config['usessl'] and not self.config['forceauth']:
