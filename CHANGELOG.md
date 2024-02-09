@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.4.1] - 2024-02-09
+- Added 'collectionlimit' argument to limit the number of entries checked in a collection
+
 ## [2.4.0] - 2024-01-26
 - Added missing break out of object schema mapping if discovered property is not an object
 
