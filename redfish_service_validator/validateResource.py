@@ -362,13 +362,13 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 continue
             link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
 
+            if link.IsExcerpt or link.Type.Excerpt:
+                continue
             if not service.config['oemcheck']:
-                if '/Oem/' in link_destination or 'Resource.OemObject' in link.Type.getTypeTree():
+                if link_destination and '/Oem/' in link_destination or link and 'Resource.OemObject' in link.Type.getTypeTree():
                     my_logger.info('Oem link skipped: {}'.format(link_destination))
                     counts['skipOemLink'] += 1
                     continue
-            if link.IsExcerpt or link.Type.Excerpt:
-                continue
             if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']) and not link.IsAutoExpanded:
                 referenced_links.append((link, thisobj))
                 continue
