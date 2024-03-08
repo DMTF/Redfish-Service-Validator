@@ -9,6 +9,7 @@ import logging
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
 
+
 def validateExcerpt(prop, val):
     # check Navprop if it's NEUTRAL or CONTAINS
     base = prop.Type.getBaseType()
@@ -109,8 +110,11 @@ def validateEntity(service, prop, val, parentURI=""):
         return False
     uri = val.get('@odata.id')
     if '@odata.id' not in val:
-        if autoExpand: uri = parentURI + '#/{}'.format(name.replace('[', '/').strip(']'))
-        else: uri = parentURI + '/{}'.format(name)
+        if autoExpand:
+            uri = parentURI + '#/{}'.format(name.replace('[', '/').strip(']'))
+        else:
+            uri = parentURI + '/{}'.format(name)
+
         if excerptType == ExcerptTypes.NEUTRAL:
             my_logger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, uri))
             if parentURI == "":
@@ -240,7 +244,7 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
         # Get our actions from the object itself to test
         # Action Namespace.Type, Action Object
         my_actions = [(x.strip('#'), y) for x, y in sub_obj.Value.items() if x != 'Oem']
-        if 'Oem' in sub_obj.Value.items():
+        if 'Oem' in sub_obj.Value:
             if oem_check:
                 my_actions.extend([(x, y) for x, y in sub_obj.Value['Oem'].items()])
             else:
@@ -394,10 +398,12 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     # check oem
     # rs-assertion: 7.4.7.2
     oem_check = service.config.get('oemcheck', True)
-    if 'Oem' in prop_name and not oem_check:
-        my_logger.verbose1('\tOem is skipped')
-        counts['skipOem'] += 1
-        return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}, counts
+
+    if not oem_check:
+        if 'Oem' in prop_name or 'Resource.OemObject' in prop.Type.getTypeTree():
+            my_logger.verbose1('\tOem is skipped')
+            counts['skipOem'] += 1
+            return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}, counts
 
     # Parameter Passes
     paramPass = propMandatoryPass = propNullablePass = deprecatedPassOrSinceVersion = nullValid = True
