@@ -855,7 +855,7 @@ class RedfishObject(RedfishProperty):
                 self.properties[prop] = RedfishProperty(REDFISH_ABSENT, prop, self)
                 my_logger.warning('Schema not found for {}'.format(typ))
 
-    def populate(self, payload, check=False, casted=False):
+    def populate(self, payload, uri_check=False, casted=False):
         """
         Return a populated object, or list of objects
         """
@@ -875,7 +875,7 @@ class RedfishObject(RedfishProperty):
 
             new_rf_object = RedfishObject(new_type_obj, populated_object.Name, populated_object.parent)
 
-            populated_object.Value = [new_rf_object.populate(sub_item, check, casted) for sub_item in payload]
+            populated_object.Value = [new_rf_object.populate(sub_item, uri_check, casted) for sub_item in payload]
             return populated_object
         else:
             if populated_object.Type.IsCollection():
@@ -924,7 +924,7 @@ class RedfishObject(RedfishProperty):
                 my_odata_type = my_odata_type.strip('#')
                 try:
                     type_obj = populated_object.Type.catalog.getSchemaDocByClass(my_odata_type).getTypeInSchemaDoc(my_odata_type)
-                    populated_object = RedfishObject(type_obj, populated_object.Name, populated_object.parent).populate(sub_payload, check=check, casted=True)
+                    populated_object = RedfishObject(type_obj, populated_object.Name, populated_object.parent).populate(sub_payload, uri_check=uri_check, casted=True)
                 except MissingSchemaError:
                     my_logger.warning("Couldn't get schema for object, skipping OemObject {}".format(populated_object.Name))
                 except Exception as e:
@@ -964,7 +964,7 @@ class RedfishObject(RedfishProperty):
                 # NOTE: This returns a Type object without IsPropertyType
                 my_logger.verbose1(('Morphing Complex', my_ns, my_type, my_limit))
                 new_type_obj = populated_object.Type.catalog.getSchemaDocByClass(my_ns).getTypeInSchemaDoc('.'.join([my_ns, my_type]))
-                populated_object = RedfishObject(new_type_obj, populated_object.Name, populated_object.parent).populate(sub_payload, check=check, casted=True)
+                populated_object = RedfishObject(new_type_obj, populated_object.Name, populated_object.parent).populate(sub_payload, uri_check=uri_check, casted=True)
                 return populated_object
 
         # Validate our Uri
@@ -977,7 +977,9 @@ class RedfishObject(RedfishProperty):
             # Strip our URI and warn if that's the case
             my_odata_id = sub_payload['@odata.id']
             if my_odata_id != '/redfish/v1/' and my_odata_id.endswith('/'):
-                if check: my_logger.warning('Stripping end of URI... {}'.format(my_odata_id))
+                # NOTE: uri_check is only used to suppress this message, look into better message suppression
+                if uri_check:
+                    my_logger.warning('Stripping end of URI... {}'.format(my_odata_id))
                 my_odata_id = my_odata_id.rstrip('/')
 
             # Initial check if our URI matches our format at all

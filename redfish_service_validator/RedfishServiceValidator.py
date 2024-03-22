@@ -19,28 +19,32 @@ from collections import Counter
 tool_version = '2.4.1'
 
 # Set up the custom debug levels
-VERBOSE1=logging.INFO-1
-VERBOSE2=logging.INFO-2
+VERBOSE1 = logging.INFO-1
+VERBOSE2 = logging.INFO-2
 
 logging.addLevelName(VERBOSE1, "VERBOSE1")
 logging.addLevelName(VERBOSE2, "VERBOSE2")
 
-def verbose1(self, msg, *args, **kwargs):
+
+def print_verbose_1(self, msg, *args, **kwargs):
     if self.isEnabledFor(VERBOSE1):
         self._log(VERBOSE1, msg, args, **kwargs)
 
-def verbose2(self, msg, *args, **kwargs):
+
+def print_verbose_2(self, msg, *args, **kwargs):
     if self.isEnabledFor(VERBOSE2):
         self._log(VERBOSE2, msg, args, **kwargs)
         
-logging.Logger.verbose1 = verbose1
-logging.Logger.verbose2 = verbose2
+
+logging.Logger.verbose1 = print_verbose_1
+logging.Logger.verbose2 = print_verbose_2
 
 my_logger = logging.getLogger()
 my_logger.setLevel(logging.DEBUG)
 standard_out = logging.StreamHandler(sys.stdout)
 standard_out.setLevel(logging.INFO)
 my_logger.addHandler(standard_out)
+
 
 def validate(argslist=None, configfile=None):
     """Main command

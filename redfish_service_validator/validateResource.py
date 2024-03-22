@@ -282,7 +282,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
         if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
             pass_val = False
             break
-    my_logger.info("\t {}".format('PASS' if pass_val else' FAIL...'))
+    my_logger.info("\t {}".format('PASS' if pass_val else ' FAIL...'))
 
     my_logger.verbose1('%s, %s', SchemaFullType, counts)
 
@@ -292,30 +292,35 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
     # Count of occurrences of fail, warn, invalid and deprecated in result of tests to FAILS / WARNINGS
     for value in messages.values():
-        if "FAIL" in value.result: counts['fails'] += 1
-        if "WARN" in value.result or "INVALID" in value.result or "Deprecated" in value.result: counts['warnings'] += 1
+        if "FAIL" in value.result:
+            counts['fails'] += 1
+        if "WARN" in value.result or "INVALID" in value.result or "Deprecated" in value.result:
+            counts['warnings'] += 1
     
     # Additional analysis of whether failMandatoryExist occurred in the scheme and adding the number of failMandatoryExist to FAILS
-    if 'failMandatoryExist' in counts.keys(): counts['fails'] += counts['failMandatoryExist']
+    if 'failMandatoryExist' in counts.keys():
+        counts['fails'] += counts['failMandatoryExist']
 
     return True, counts, results, redfish_obj.getLinks(), redfish_obj
 
 
-def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None, parent=None, allLinks=None, inAnnotation=False):
+def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None, parent=None, all_links_traversed=None, inAnnotation=False):
     # from given URI, validate it, then follow its links like nodes
     #   Other than expecting a valid URI, on success (real URI) expects valid links
     #   valid links come from getAllLinks, includes info such as expected values, etc
     #   as long as it is able to pass that info, should not crash
     # If this is our first called URI
-    top = allLinks is None
-    if top: allLinks = set()
-    allLinks.add(URI)
+    top_of_tree = all_links_traversed is None
+    if top_of_tree:
+        all_links_traversed = set()
+    all_links_traversed.add(URI)
 
-    refLinks = []
+    # Links that are not direct, usually "Redundancy"
+    referenced_links = []
 
     if inAnnotation and service.config['uricheck']:
         service.catalog.flags['ignore_uri_checks'] = True
-    validateSuccess, counts, results, links, thisobj = validateSingleURI(service, URI, uriName, expectedType, expectedJson, parent)
+    validateSuccess, counts, results, gathered_links, thisobj = validateSingleURI(service, URI, uriName, expectedType, expectedJson, parent)
     if inAnnotation and service.config['uricheck']:
         service.catalog.flags['ignore_uri_checks'] = False
 
@@ -329,21 +334,21 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 val_list = [thisobj['Location'].Value]
             for sub_obj in val_list:
                 if 'Uri' in sub_obj:
-                    links.append(sub_obj)
+                    gathered_links.append(sub_obj)
 
     # If successful...
     if validateSuccess:
         # Bring Registries to Front if possible
         for link_type in service.config['collectionlimit']:
             link_limit = service.config['collectionlimit'][link_type]
-            applicable_links = [x for x in links if link_type in x.Type.TypeName]
+            applicable_links = [link for link in gathered_links if link_type in link.Type.TypeName]
             trimmed_links = applicable_links[link_limit:]
             for link in trimmed_links:
                 link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
                 my_logger.verbose1('Removing link via limit: {} {}'.format(link_type, link_destination))
-                allLinks.add(link_destination)
+                all_links_traversed.add(link_destination)
 
-        for link in sorted(links, key=lambda x: (x.Type.fulltype != 'Registries.Registries')):
+        for link in sorted(gathered_links, key=lambda link: (link.Type.fulltype != 'Registries.Registries')):
             if link is None or link.Value is None:
                 my_logger.warning('Link is None, does it exist?')
                 continue
@@ -359,10 +364,15 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
 
             if link.IsExcerpt or link.Type.Excerpt:
                 continue
+            if not service.config['oemcheck']:
+                if link_destination and '/Oem/' in link_destination or link and 'Resource.OemObject' in link.Type.getTypeTree():
+                    my_logger.info('Oem link skipped: {}'.format(link_destination))
+                    counts['skipOemLink'] += 1
+                    continue
             if any(x in str(link.parent.Type) or x in link.Name for x in ['RelatedItem', 'Redundancy', 'Links', 'OriginOfCondition']) and not link.IsAutoExpanded:
-                refLinks.append((link, thisobj))
+                referenced_links.append((link, thisobj))
                 continue
-            if link_destination in allLinks:
+            if link_destination in all_links_traversed:
                 counts['repeat'] += 1
                 continue
             elif link_destination is None:
@@ -378,26 +388,26 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 results[uriName]['warns'] += '\n' + warnmsg
                 counts['warnTrailingSlashLink'] += 1
                 newLink = ''.join(link_destination.split('/')[:-1])
-                if newLink in allLinks:
+                if newLink in all_links_traversed:
                     counts['repeat'] += 1
                     continue
 
             if link.Type is not None and link.IsAutoExpanded:
-                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, link.Type, link.Value, thisobj, allLinks, link.InAnnotation)
+                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, link.Type, link.Value, thisobj, all_links_traversed, link.InAnnotation)
             else:
-                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=parent, allLinks=allLinks, inAnnotation=link.InAnnotation)
+                returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, parent=parent, all_links_traversed=all_links_traversed, inAnnotation=link.InAnnotation)
             success, linkCounts, linkResults, xlinks, xobj = returnVal
 
             my_logger.verbose1('%s, %s', link.Name, linkCounts)
 
-            refLinks.extend(xlinks)
+            referenced_links.extend(xlinks)
             if not success:
                 counts['unvalidated'] += 1
             results.update(linkResults)
 
-    if top:
+    if top_of_tree:
         # TODO: consolidate above code block with this
-        for link in refLinks:
+        for link in referenced_links:
             link, refparent = link
             # get Uri or @odata.id
             if link is None or link.Value is None:
@@ -425,11 +435,11 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
                 results[uriName]['warns'] += '\n' + warnmsg
                 counts['warnTrailingSlashRefLink'] += 1
                 newLink = ''.join(link_destination.split('/')[:-1])
-                if newLink in allLinks:
+                if newLink in all_links_traversed:
                     counts['repeat'] += 1
                     continue
 
-            if link_destination not in allLinks:
+            if link_destination not in all_links_traversed:
                 my_logger.verbose1('{}, {}'.format(link.Name, link))
                 counts['reflink'] += 1
             else:
@@ -438,7 +448,7 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
             my_link_type = link.Type.fulltype
             success, my_data, _, _ = service.callResourceURI(link_destination)
             # Using None instead of refparent simply because the parent is not where the link comes from
-            returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, my_link_type, my_data, None, allLinks)
+            returnVal = validateURITree(service, link_destination, uriName + ' -> ' + link.Name, my_link_type, my_data, None, all_links_traversed)
             success, linkCounts, linkResults, xlinks, xobj = returnVal
             # refLinks.update(xlinks)
 
@@ -451,4 +461,4 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
             else:
                 results.update(linkResults)
 
-    return validateSuccess, counts, results, refLinks, thisobj
+    return validateSuccess, counts, results, referenced_links, thisobj
