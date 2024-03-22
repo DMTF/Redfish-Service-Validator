@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.4.2] - 2024-03-22
+- Made corrections to skipping OEM checks when '--nooemcheck' is specified
+
 ## [2.4.1] - 2024-02-09
 - Added 'collectionlimit' argument to limit the number of entries checked in a collection
 
