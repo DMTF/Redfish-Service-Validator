@@ -260,8 +260,12 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
         for act_name, actionDecoded in my_actions:
             if '@' in act_name:
                 continue
-            act_schema = sub_obj.Type.catalog.getSchemaDocByClass(getNamespace(act_name))
-            act_class = act_schema.classes.get(getNamespace(act_name))
+            try:
+                act_schema = sub_obj.Type.catalog.getSchemaDocByClass(getNamespace(act_name))
+                act_class = act_schema.classes.get(getNamespace(act_name))
+            except:
+                my_logger.warning('Schema not found for action {}'.format(act_name))
+                continue
 
             a, c = validateAction(act_name, actionDecoded, act_class.actions)
 
