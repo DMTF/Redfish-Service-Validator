@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.4.3] - 2024-04-12
+- Reduced severity of missing schema for an action from error to warning to be consistent with other warnings
+
 ## [2.4.2] - 2024-03-22
 - Made corrections to skipping OEM checks when '--nooemcheck' is specified
 
