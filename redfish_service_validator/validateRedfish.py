@@ -410,7 +410,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}, counts
 
     # Parameter Passes
-    paramPass = propMandatoryPass = propNullablePass = deprecatedPassOrSinceVersion = nullValid = True
+    paramPass = propMandatoryPass = propNullablePass = deprecatedPassOrSinceVersion = nullValid = permissionValid = True
 
     if prop.Type.IsMandatory:
         propMandatoryPass = True if prop.Exists else False
@@ -550,6 +550,13 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
             if prop.Exists:
                 paramPass = propNullablePass = True
+
+                #   <Annotation Term="OData.Permissions" EnumMember="OData.Permission/ReadWrite"/>
+                if prop.Type.Permissions == "OData.Permission/Write":
+                    if val is not None:
+                        my_logger.error('{}: Permissions for this property are Write only, reading this property should be null!!!'.format(sub_item))
+                        counts['failWriteOnly'] += 1
+
                 if val is None:
                     if propNullable:
                         my_logger.debug('Property {} is nullable and is null, so Nullable checking passes'.format(sub_item))
