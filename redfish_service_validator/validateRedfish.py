@@ -555,6 +555,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 if prop.Type.Permissions == "OData.Permission/Write":
                     if val is not None:
                         my_logger.error('{}: Permissions for this property are Write only, reading this property should be null!!!'.format(sub_item))
+                        permissionValid = False
                         counts['failWriteOnly'] += 1
 
                 if val is None:
@@ -584,7 +585,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             # Render our result
             my_type = prop.Type.fulltype
 
-            if all([paramPass, propMandatoryPass, propNullablePass, excerptPass]):
+            if all([paramPass, propMandatoryPass, propNullablePass, excerptPass, permissionValid]):
                 my_logger.verbose1("\tSuccess")
                 counts['pass'] += 1
                 result_str = 'PASS'
