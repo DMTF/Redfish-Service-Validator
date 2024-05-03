@@ -552,7 +552,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 paramPass = propNullablePass = True
 
                 #   <Annotation Term="OData.Permissions" EnumMember="OData.Permission/ReadWrite"/>
-                if prop.Type.Permissions == "OData.Permission/Write":
+                if prop.Type.Permissions == "OData.Permission/Write" or prop.Type.Permissions == "OData.Permission/None":
                     if val is not None:
                         my_logger.error('{}: Permissions for this property are Write only, reading this property should be null!!!'.format(sub_item))
                         permissionValid = False
