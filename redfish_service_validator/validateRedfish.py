@@ -410,7 +410,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}, counts
 
     # Parameter Passes
-    paramPass = propMandatoryPass = propNullablePass = deprecatedPassOrSinceVersion = nullValid = True
+    paramPass = propMandatoryPass = propNullablePass = deprecatedPassOrSinceVersion = nullValid = permissionValid = True
 
     if prop.Type.IsMandatory:
         propMandatoryPass = True if prop.Exists else False
@@ -550,6 +550,14 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
             if prop.Exists:
                 paramPass = propNullablePass = True
+
+                #   <Annotation Term="OData.Permissions" EnumMember="OData.Permission/ReadWrite"/>
+                if prop.Type.Permissions == "OData.Permission/Write" or prop.Type.Permissions == "OData.Permission/None":
+                    if val is not None:
+                        my_logger.error('{}: Permissions for this property are Write only, reading this property should be null!!!'.format(sub_item))
+                        permissionValid = False
+                        counts['failWriteOnly'] += 1
+
                 if val is None:
                     if propNullable:
                         my_logger.debug('Property {} is nullable and is null, so Nullable checking passes'.format(sub_item))
@@ -577,7 +585,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             # Render our result
             my_type = prop.Type.fulltype
 
-            if all([paramPass, propMandatoryPass, propNullablePass, excerptPass]):
+            if all([paramPass, propMandatoryPass, propNullablePass, excerptPass, permissionValid]):
                 my_logger.verbose1("\tSuccess")
                 counts['pass'] += 1
                 result_str = 'PASS'
