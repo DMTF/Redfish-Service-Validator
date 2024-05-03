@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.4.4] - 2024-05-03
+- Added test to ensure write-only properties are null in responses
+
 ## [2.4.3] - 2024-04-12
 - Reduced severity of missing schema for an action from error to warning to be consistent with other warnings
 
