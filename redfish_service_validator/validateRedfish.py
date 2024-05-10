@@ -51,7 +51,7 @@ def validateExcerpt(prop, val):
 def validateAction(act_fulltype, actionDecoded, all_actions):
     actionMessages, actionCounts = OrderedDict(), Counter()
     act_namespace, act_type = getNamespace(act_fulltype.strip('#')), getType(act_fulltype)
-    actPass = False
+    actPass = True
     if act_type not in all_actions:
         my_logger.error('Action {} does not exist in Namespace {}'.format(act_type, act_namespace))
         actionCounts['errorActionBadName'] += 1
@@ -63,25 +63,27 @@ def validateAction(act_fulltype, actionDecoded, all_actions):
         my_act = all_actions[act_type]
         actOptional = my_act.find('annotation', {'term': 'Redfish.Required'}) is not None
         if actionDecoded == REDFISH_ABSENT:
-            if actOptional:
-                actPass = True
-            else:
-                my_logger.error('{}: Mandatory action missing'.format(act_namespace))
+            if not actOptional:
+                actPass = False
+                my_logger.error('{}: Mandatory action missing'.format(act_fulltype))
                 actionCounts['failMandatoryAction'] += 1
         if actionDecoded != REDFISH_ABSENT:
             # validate target
             target = actionDecoded.get('target')
             if target is None:
-                my_logger.error('{}: target for action is missing'.format(act_namespace))
+                actPass = False
+                my_logger.error('{}: target for action is missing'.format(act_fulltype))
             elif not isinstance(target, str):
-                my_logger.error('{}: target for action is malformed'.format(act_namespace))
-                # check for unexpected properties
+                actPass = False
+                my_logger.error('{}: target for action is malformed'.format(act_fulltype))
+            # check for unexpected properties
             for ap_name in actionDecoded:
                 expected = ['target', 'title', '@Redfish.ActionInfo', '@Redfish.OperationApplyTimeSupport']
-                if ap_name not in expected and '@Redfish.AllowableValues' not in ap_name:
-                    my_logger.error('{}: Property "{}" is not allowed in actions property. \
-                        Allowed properties are "{}", "{}", "{}", "{}" and "{}"'.format(act_namespace, ap_name, *expected, '*@Redfish.AllowableValues'))
-            actPass = True
+                expected_patterns = ['@Redfish.AllowableValues', '@Redfish.AllowableNumbers', '@Redfish.AllowablePattern']
+                if ap_name not in expected and not any(pattern in ap_name for pattern in expected_patterns):
+                    actPass = False
+                    my_logger.error('{}: Property "{}" is not allowed in actions property. ' \
+                        'Allowed properties are {}, {}'.format(act_fulltype, ap_name, ', '.join(expected), ', '.join(expected_patterns)))
         if actOptional and actPass:
             actionCounts['optionalAction'] += 1
         elif actPass:
