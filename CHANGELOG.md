@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.4.5] - 2024-05-10
+- Updated action testing to allow for '@Redfish.AllowablePattern' and '@Redfish.AllowableNumbers' annotations on action parameters
+
 ## [2.4.4] - 2024-05-03
 - Added test to ensure write-only properties are null in responses
 
