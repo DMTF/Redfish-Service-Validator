@@ -55,6 +55,8 @@ def convert_config_to_args(args, config):
                         setattr(args, option, my_config[section][option].split(' '))
                     else:
                         setattr(args, option, my_config[section][option])
+                    if option.lower() in ['password', 'token']:
+                        my_config.set(section, option, '******')
     my_config_dict = config_parse_to_dict(my_config)
     print(json.dumps(my_config_dict, indent=4))
         
