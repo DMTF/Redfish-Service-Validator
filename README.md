@@ -58,36 +58,36 @@ At a minimum, the `ip`, `username`, and `password` options must be modified.
 
 | Variable   | CLI Argument  | Type    | Definition |
 | :---       | :---          | :---    | :---       |
-| `verbose`  | `-v`          | integer | Verbosity of tool in stdout | 
+| `verbose`  | `-v`          | integer | Verbosity of tool in stdout; 0 to 3, 3 being the greatest level of verbosity. |
 
 ### [Host]
 
 | Variable           | CLI Argument         | Type    | Definition |
 | :---               | :---                 | :---    | :---       |
-| `ip`               | `-r`                 | string  | The address of the Redfish service (with scheme); example: 'https://123.45.6.7:8000' |
-| `username`         | `-u`                 | string  | The username for authentication |
-| `password`         | `-p`                 | string  | The password for authentication |
-| `description`      | `--description`      | string  | The description of the system for identifying logs; if none is given, a value is produced from information in the service root |
-| `forceauth`        | `--forceauth`        | boolean | Force authentication on unsecure connections |
-| `authtype`         | `--authtype`         | string  | Authorization type; 'None', 'Basic', 'Session', or 'Token' |
-| `token`            | `--token`            | string  | Token when 'authtype' is 'Token' |
-| `ext_http_proxy`   | `--ext_http_proxy`   | string  | URL of the HTTP proxy for accessing external sites
-| `ext_https_proxy`  | `--ext_https_proxy`  | string  | URL of the HTTPS proxy for accessing external sites
-| `serv_http_proxy`  | `--serv_http_proxy`  | string  | URL of the HTTP proxy for accessing the service
-| `serv_https_proxy` | `--serv_https_proxy` | string  | URL of the HTTPS proxy for accessing the service
+| `ip`               | `-r`                 | string  | The address of the Redfish service (with scheme); example: 'https://123.45.6.7:8000'. |
+| `username`         | `-u`                 | string  | The username for authentication. |
+| `password`         | `-p`                 | string  | The password for authentication. |
+| `description`      | `--description`      | string  | The description of the system for identifying logs; if none is given, a value is produced from information in the service root. |
+| `forceauth`        | `--forceauth`        | boolean | Force authentication on unsecure connections; 'True' or 'False'. |
+| `authtype`         | `--authtype`         | string  | Authorization type; 'None', 'Basic', 'Session', or 'Token'. |
+| `token`            | `--token`            | string  | Token when 'authtype' is 'Token'. |
+| `ext_http_proxy`   | `--ext_http_proxy`   | string  | URL of the HTTP proxy for accessing external sites. |
+| `ext_https_proxy`  | `--ext_https_proxy`  | string  | URL of the HTTPS proxy for accessing external sites. |
+| `serv_http_proxy`  | `--serv_http_proxy`  | string  | URL of the HTTP proxy for accessing the service. |
+| `serv_https_proxy` | `--serv_https_proxy` | string  | URL of the HTTPS proxy for accessing the service. |
 
 ### [Validator]
 
 | Variable           | CLI Argument         | Type    | Definition |
 | :---               | :---                 | :---    | :---       |
-| `payload`          | `--payload`          | string  | The mode to validate payloads ('Tree', 'Single', 'SingleFile', or 'TreeFile') followed by resource/filepath; see below |
-| `logdir`           | `--logdir`           | string  | The directory for generated report files; default: 'logs'
-| `oemcheck`         | `--nooemcheck`       | boolean | Whether to check OEM items on service |
-| `uricheck`         | `--uricheck`         | boolean | Allow URI checking on services below RedfishVersion 1.6.0 |
-| `debugging`        | `--debugging`        | boolean | Output debug statements to text log, otherwise it only uses INFO |
-| `schema_directory` | `--schema_directory` | string  | Directory for local schema files |
-| `mockup`           | `--mockup`           | string  | Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage |
-| `collectionlimit`  | `--collectionlimit`  | string  | Sets a limit to links gathered from collections by type, e.g. `ComputerSystem 20` limits ComputerSystemCollection to 20 links |
+| `payload`          | `--payload`          | string  | The mode to validate payloads ('Tree', 'Single', 'SingleFile', or 'TreeFile') followed by resource/filepath; see below. |
+| `logdir`           | `--logdir`           | string  | The directory for generated report files; default: 'logs'. |
+| `oemcheck`         | `--nooemcheck`       | boolean | Whether to check OEM items on service; 'True' or 'False'. |
+| `uricheck`         | `--uricheck`         | boolean | Allow URI checking on services below RedfishVersion 1.6.0; 'True' or 'False'. |
+| `debugging`        | `--debugging`        | boolean | Output debug statements to text log, otherwise it only uses INFO; 'True' or 'False'. |
+| `schema_directory` | `--schema_directory` | string  | Directory for local schema files. |
+| `mockup`           | `--mockup`           | string  | Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage. |
+| `collectionlimit`  | `--collectionlimit`  | string  | Sets a limit to links gathered from collections by type (schema name).<br/>Example 1: `ComputerSystem 20` limits ComputerSystemCollection to 20 links.<br/>Example 2: `ComputerSystem 20 LogEntry 10` limits ComputerSystemCollection to 20 links and LogEntryCollection to 10 links. |
 
 ### Payload Option
 

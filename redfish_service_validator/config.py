@@ -51,7 +51,7 @@ def convert_config_to_args(args, config):
                     if option.lower() not in ['version', 'copyright']:
                         my_logger.error('Option {} not supported!'.format(option))
                 elif my_config[section][option] not in ['', None]:
-                    if option.lower() == 'payload':
+                    if option.lower() == 'payload' or option.lower() == 'collectionlimit':
                         setattr(args, option, my_config[section][option].split(' '))
                     else:
                         setattr(args, option, my_config[section][option])
