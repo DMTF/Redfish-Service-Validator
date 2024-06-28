@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.4.7] - 2024-06-28
+- Corrected handling of 'collectionlimit' when specified in a config file
+
 ## [2.4.6] - 2024-06-14
 - Hide password and token parameters from console output when running the tool from a config file
 

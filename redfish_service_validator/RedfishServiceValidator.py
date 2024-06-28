@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2016-2021 DMTF. All rights reserved.
+# Copyright 2017-2024 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 import os
@@ -16,7 +16,7 @@ from redfish_service_validator import tohtml, schema_pack, traverse
 from urllib.parse import urlparse
 from collections import Counter
 
-tool_version = '2.4.6'
+tool_version = '2.4.7'
 
 # Set up the custom debug levels
 VERBOSE1 = logging.INFO-1

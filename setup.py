@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2022 DMTF. All rights reserved.
+# Copyright 2017-2024 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link:
 # https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
@@ -11,7 +11,7 @@ with open("README.md", "r", "utf-8") as f:
 
 setup(
     name="redfish_service_validator",
-    version="2.4.6",
+    version="2.4.7",
     description="Redfish Service Validator",
     long_description=long_description,
     long_description_content_type="text/markdown",
