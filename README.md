@@ -101,15 +101,16 @@ The second parameter specifies a URI of the target payload to test or a filename
 
 For example, `--payload Single /redfish/v1/AccountService` will perform validation of the URI `/redfish/v1/AccountService` and no other resources.
 
-### Mockup option
+### Mockup Option
 
-The `mockup` option takes a single parameter as a string.  The parameter specifies a local folder path to the ServiceRoot resource of a Redfish mockup tree.  
+The `mockup` option takes a single parameter as a string.  The parameter specifies a local directory path to the `ServiceRoot` resource of a Redfish mockup tree.
 
 This option provides a powerful debugging tool as is allows local "mockup" JSON payloads to replace those retreived from the unit under test.  This can aid testers by allowing the tool to skip over problematic resources, which may cause the tool to crash, or more likely, miss portions of the implemented resources due to missing or invalid link properties or values.
 
-The mockup files follow the Redfish Mockup style, with the directory tree matching the URI segments under /redfish/v1, and with a single `index.json` file in each subdirectory as desired.  For examples of full mockups, see the Redfish Mockup Bundle (DSP2043) at https://www.dmtf.org/sites/default/files/standards/documents/DSP2043_2024.1.zip 
+The mockup files follow the Redfish mockup style, with the directory tree matching the URI segments under /redfish/v1, and with a single `index.json` file in each subdirectory as desired.  For examples of full mockups, see the Redfish Mockup Bundle (DSP2043) at https://www.dmtf.org/sites/default/files/standards/documents/DSP2043_2024.1.zip.
 
-Populate the mockup directory tree with `index.json` files wherever problematic resources need to be replaced.  Any replaced resource will report a Warning in the report to indicate a workaround was used.  
+Populate the mockup directory tree with `index.json` files wherever problematic resources need to be replaced.  Any replaced resource will report a Warning in the report to indicate a workaround was used.
+
 ## Execution Flow
 
 1. The Redfish Service Validator starts by querying the service root resource from the target service and collections information about the service.
