@@ -156,7 +156,7 @@ def validateEntity(service, prop, val, parentURI=""):
             my_target_type = my_target_schema.getTypeInSchemaDoc(my_target_type)
             all_target_types = [str(x) for x in my_target_type.getTypeTree()]
             expect_type = stripCollection(prop.Type.fulltype)
-            if expect_type not in all_target_types:
+            if expect_type not in all_target_types and my_target_type != 'Resource.Item':
                 my_logger.error('{}: Linked resource is not the correct type; found {}, expected {}' .format(name.split(':')[-1], my_target_type, expect_type))
                 return False
             elif any(x in my_type_chain for x in all_target_types):
