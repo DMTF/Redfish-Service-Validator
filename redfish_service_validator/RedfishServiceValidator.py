@@ -241,7 +241,7 @@ def validate(argslist=None, configfile=None):
 
     # dump cache info to debug log
     my_logger.debug('getSchemaDetails() -> {}'.format(getSchemaDetails.cache_info()))
-    my_logger.debug('callResourceURI() -> {}'.format(currentService.callResourceURI.cache_info()))
+    my_logger.debug('callResourceURI() -> {}'.format(currentService.cache_order))
 
     if not success:
         my_logger.error("Validation has failed: {} problems found".format(fails))

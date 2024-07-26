@@ -20,6 +20,8 @@ import logging
 my_logger = logging.getLogger(__name__)
 traverseLogger = my_logger
 
+CACHE_SIZE = 128
+
 # dictionary to hold sampling notation strings for URIs
 class AuthenticationError(Exception):
     """Exception used for failed basic auth or token auth"""
@@ -37,6 +39,8 @@ class rfService():
         traverseLogger.info('Setting up service...')
         self.active, self.config = False, config
         self.logger = getLogger()
+    
+        self.cache, self.cache_order = {}, []
 
         self.config['configuri'] = self.config['ip']
         self.config['metadatafilepath'] = self.config['schema_directory']
@@ -109,12 +113,10 @@ class rfService():
 
         self.active = True
 
-
     def close(self):
         self.active = False
-
-    @lru_cache(maxsize=128)
-    def callResourceURI(self, URILink):
+    
+    def callResourceURI(self, link_uri):
         traverseLogger = my_logger
         """
         Makes a call to a given URI or URL
@@ -126,21 +128,21 @@ class rfService():
         # rs-assertion: handle redirects?  and target permissions
         # rs-assertion: require no auth for serviceroot calls
         # TODO: Written with "success" values, should replace with Exception and catches
-        if URILink is None:
+        if link_uri is None:
             traverseLogger.warning("This URI is empty!")
             return False, None, None, 0
-
+        
         config = self.config
         # proxies = self.proxies
         ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['configuri'], config['usessl'], config['authtype'], \
                 config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
 
-        scheme, netloc, path, params, query, fragment = urlparse(URILink)
+        scheme, netloc, path, params, query, fragment = urlparse(link_uri)
         inService = scheme == '' and netloc == ''
         if inService:
-            URLDest = urlunparse((scheme, netloc, path, '', '', '')) #URILink
+            my_destination = urlunparse((scheme, netloc, path, '', '', ''))  # URILink
         else:
-            URLDest = urlunparse((scheme, netloc, path, params, query, fragment))
+            my_destination = urlunparse((scheme, netloc, path, params, query, fragment))
 
         payload, statusCode, elapsed, auth, noauthchk = None, '', 0, None, True
 
@@ -151,8 +153,8 @@ class rfService():
 
         # determine if we need to Auth...
         if inService:
-            noauthchk =  URILink in ['/redfish', '/redfish/v1', '/redfish/v1/odata'] or\
-                '/redfish/v1/$metadata' in URILink
+            noauthchk = link_uri in ['/redfish', '/redfish/v1', '/redfish/v1/odata'] or\
+                '/redfish/v1/$metadata' in link_uri
 
             auth = None if noauthchk else (config.get('username'), config.get('password'))
             traverseLogger.debug('dont chkauth' if noauthchk else 'chkauth')
@@ -169,22 +171,32 @@ class rfService():
 
         # rs-assertion: must have application/json or application/xml
         traverseLogger.debug('callingResourceURI {}with authtype {} and ssl {}: {} {}'.format(
-            'out of service ' if not inService else '', AuthType, UseSSL, URILink, headers))
+            'out of service ' if not inService else '', AuthType, UseSSL, link_uri, headers))
         response = None
         try:
             startTick = datetime.now()
-            mockup_file_path = os.path.join(config['mockup'], URLDest.replace('/redfish/v1/', '', 1).strip('/'), 'index.json')
-            if not inService:
-                req = requests.get(URLDest, proxies=self.ext_proxies, verify=False)
-                content = req.json if not isXML else req.text
-                response = rf.rest.v1.StaticRestResponse(Status=req.status_code, Headers={x:req.headers[x] for x in req.headers}, Content=req.text)
-            elif config['mockup'] != '' and os.path.isfile(mockup_file_path):
-                content = {}
-                with open(mockup_file_path) as mockup_file:
-                    content = json.load(mockup_file)
-                response = rf.rest.v1.StaticRestResponse(Status=200, Headers={'Content-Type': 'application/json', 'X-Redfish-Mockup': 'true'}, Content=content)
+            if my_destination not in self.cache:
+                mockup_file_path = os.path.join(config['mockup'], my_destination.replace('/redfish/v1/', '', 1).strip('/'), 'index.json')
+                if not inService:
+                    req = requests.get(my_destination, proxies=self.ext_proxies, verify=False)
+                    content = req.json if not isXML else req.text
+                    response = rf.rest.v1.StaticRestResponse(Status=req.status_code, Headers={x:req.headers[x] for x in req.headers}, Content=req.text)
+                elif config['mockup'] != '' and os.path.isfile(mockup_file_path):
+                    content = {}
+                    with open(mockup_file_path) as mockup_file:
+                        content = json.load(mockup_file)
+                    response = rf.rest.v1.StaticRestResponse(Status=200, Headers={'Content-Type': 'application/json', 'X-Redfish-Mockup': 'true'}, Content=content)
+                else:
+                    response = self.context.get(my_destination, headers=headers)
+                self.cache[my_destination] = response
+                self.cache_order.append(my_destination)
+                if len(self.cache) > CACHE_SIZE:
+                    del self.cache[self.cache_order.pop(0)]
             else:
-                response = self.context.get(URLDest, headers=headers)
+                traverseLogger.debug("CACHE HIT {} {}".format(my_destination, link_uri))
+            
+            response = self.cache[my_destination]
+
             elapsed = datetime.now() - startTick
             statusCode = response.status
 
@@ -192,28 +204,28 @@ class rfService():
             if statusCode in [200]:
                 contenttype = response.getheader('content-type')
                 if contenttype is None:
-                    traverseLogger.error("Content-type not found in header: {}".format(URILink))
+                    traverseLogger.error("Content-type not found in header: {}".format(link_uri))
                     contenttype = ''
                 if 'application/json' in contenttype:
                     traverseLogger.debug("This is a JSON response")
                     decoded = response.dict
                             
                     # navigate fragment
-                    decoded = navigateJsonFragment(decoded, URILink)
+                    decoded = navigateJsonFragment(decoded, link_uri)
                     if decoded is None:
                         traverseLogger.error(
-                                "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(URILink))
+                                "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(link_uri))
                 elif 'application/xml' in contenttype:
                     decoded = response.text
                 elif 'text/xml' in contenttype:
                     # non-service schemas can use "text/xml" Content-Type
                     if inService:
                         traverseLogger.warning(
-                                "Incorrect content type 'text/xml' for file within service {}".format(URILink))
+                                "Incorrect content type 'text/xml' for file within service {}".format(link_uri))
                     decoded = response.text
                 else:
                     traverseLogger.error(
-                            "This URI did NOT return XML or Json contenttype, is this not a Redfish resource (is this redirected?): {}".format(URILink))
+                            "This URI did NOT return XML or Json contenttype, is this not a Redfish resource (is this redirected?): {}".format(link_uri))
                     decoded = None
                     if isXML:
                         traverseLogger.info('Attempting to interpret as XML')
@@ -234,12 +246,12 @@ class rfService():
                     else:
                         cred_type = 'username and password'
                     raise AuthenticationError('Error accessing URI {}. Status code "{} {}". Check {} supplied for "{}" authentication.'
-                                              .format(URILink, statusCode, responses[statusCode], cred_type, AuthType))
+                                              .format(link_uri, statusCode, responses[statusCode], cred_type, AuthType))
 
         except AuthenticationError as e:
             raise e  # re-raise exception
         except Exception as e:
-            traverseLogger.error("A problem when getting resource {} has occurred: {}".format(URILink, repr(e)))
+            traverseLogger.error("A problem when getting resource {} has occurred: {}".format(link_uri, repr(e)))
             traverseLogger.debug("output: ", exc_info=True)
             if response and response.text:
                 traverseLogger.debug("payload: {}".format(response.text))

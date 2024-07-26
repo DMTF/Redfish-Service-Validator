@@ -121,6 +121,9 @@ def validateEntity(service, prop, val, parentURI=""):
             my_logger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, uri))
             if parentURI == "":
                 return False
+        else:
+            # Don't need to verify an excerpt's entity this way
+            return True
 
     # check if the entity is truly what it's supposed to be
     # if not autoexpand, we must grab the resource
@@ -585,8 +588,6 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
                 if propRealType == 'entity':
                     paramPass = validateEntity(service, prop, val)
-                
-
 
             # Render our result
             my_type = prop.Type.fulltype
