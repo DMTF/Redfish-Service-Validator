@@ -547,6 +547,16 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             appendStr = (('[' + str(cnt) + ']') if prop.IsCollection else '')
             sub_item = prop_name + appendStr
 
+            if propRealType == 'entity' and isinstance(prop.Type, RedfishType):
+                if prop.Type.TypeName in service.config['collectionlimit']:
+                    link_limit = service.config['collectionlimit'][prop.Type.TypeName]
+                    if cnt >= link_limit:
+                        my_logger.verbose1('Removing link check via limit: {} {}'.format(prop.Type.TypeName, val))
+                        resultList[sub_item] = (
+                                displayValue(val, sub_item if prop.IsAutoExpanded else None), displayType(prop.Type),
+                                'Yes' if prop.Exists else 'No', 'NOT TESTED')
+                        continue
+
             excerptPass = validateExcerpt(prop, val)
 
             if isinstance(val, str):

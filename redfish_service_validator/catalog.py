@@ -1083,7 +1083,7 @@ class RedfishObject(RedfishProperty):
             base.update({'Properties': {a: b.as_json() for a, b in self.properties.items()}})
             return base
 
-    def getLinks(self):
+    def getLinks(self, collectionlimit={}):
         """Grab links from our Object
         """
         links = []
@@ -1109,6 +1109,11 @@ class RedfishObject(RedfishProperty):
                         if isinstance(item.Value, list):
                             for num, val in enumerate(item.Value):
                                 # TODO: Along with example Excerpt and RedfishObject, replace following code with hypothetical RedfishType.getCollectionType
+                                if item.Type.TypeName in collectionlimit:
+                                    link_limit = collectionlimit[item.Type.TypeName]
+                                    if num >= link_limit:
+                                        my_logger.verbose1('Removing link via limit: {} {}'.format(item.Type.TypeName, val))
+                                        continue
                                 try:
                                     new_type_obj = item.Type.getCollectionType()
                                     new_link = RedfishObject(new_type_obj, item.Name, item.parent).populate(val)

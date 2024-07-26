@@ -288,7 +288,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
 
     # Get all links available
 
-    my_logger.debug(redfish_obj.getLinks())
+    collection_limit = service.config['collectionlimit']
 
     # Count of occurrences of fail, warn, invalid and deprecated in result of tests to FAILS / WARNINGS
     for value in messages.values():
@@ -301,7 +301,7 @@ def validateSingleURI(service, URI, uriName='', expectedType=None, expectedJson=
     if 'failMandatoryExist' in counts.keys():
         counts['fails'] += counts['failMandatoryExist']
 
-    return True, counts, results, redfish_obj.getLinks(), redfish_obj
+    return True, counts, results, redfish_obj.getLinks(collection_limit), redfish_obj
 
 
 def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None, parent=None, all_links_traversed=None, inAnnotation=False):
@@ -339,14 +339,6 @@ def validateURITree(service, URI, uriName, expectedType=None, expectedJson=None,
     # If successful...
     if validateSuccess:
         # Bring Registries to Front if possible
-        for link_type in service.config['collectionlimit']:
-            link_limit = service.config['collectionlimit'][link_type]
-            applicable_links = [link for link in gathered_links if link_type in link.Type.TypeName]
-            trimmed_links = applicable_links[link_limit:]
-            for link in trimmed_links:
-                link_destination = link.Value.get('@odata.id', link.Value.get('Uri'))
-                my_logger.verbose1('Removing link via limit: {} {}'.format(link_type, link_destination))
-                all_links_traversed.add(link_destination)
 
         for link in sorted(gathered_links, key=lambda link: (link.Type.fulltype != 'Registries.Registries')):
             if link is None or link.Value is None:
