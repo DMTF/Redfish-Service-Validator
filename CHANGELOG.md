@@ -1,5 +1,10 @@
 # Change Log
 
+## [2.4.8] - 2024-07-26
+- Fixed link verification to ensure the linked resource is of the expected data type
+- Fixed usage of collection limiting to apply limits for all aspects of validation
+- Fixed URI cache handling for nested JSON objects that contain URI fragments
+
 ## [2.4.7] - 2024-06-28
 - Corrected handling of 'collectionlimit' when specified in a config file
 
