@@ -121,6 +121,9 @@ def validateEntity(service, prop, val, parentURI=""):
             my_logger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, uri))
             if parentURI == "":
                 return False
+        else:
+            # Don't need to verify an excerpt's entity this way
+            return True
 
     # check if the entity is truly what it's supposed to be
     # if not autoexpand, we must grab the resource
@@ -155,7 +158,11 @@ def validateEntity(service, prop, val, parentURI=""):
         else:
             my_target_type = my_target_schema.getTypeInSchemaDoc(my_target_type)
             all_target_types = [str(x) for x in my_target_type.getTypeTree()]
-            if any(x in my_type_chain for x in all_target_types):
+            expect_type = stripCollection(prop.Type.fulltype)
+            if expect_type not in all_target_types and my_target_type != 'Resource.Item':
+                my_logger.error('{}: Linked resource is not the correct type; found {}, expected {}' .format(name.split(':')[-1], my_target_type, expect_type))
+                return False
+            elif any(x in my_type_chain for x in all_target_types):
                 return True
             else:
                 my_logger.error('{}: Linked resource reports version {} not in Typechain' .format(name.split(':')[-1], my_target_type))

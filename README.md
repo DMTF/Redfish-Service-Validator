@@ -1,4 +1,4 @@
-Copyright 2017-2022 DMTF.  All rights reserved.
+Copyright 2017-2024 DMTF.  All rights reserved.
 
 # Redfish Service Validator
 
@@ -58,36 +58,36 @@ At a minimum, the `ip`, `username`, and `password` options must be modified.
 
 | Variable   | CLI Argument  | Type    | Definition |
 | :---       | :---          | :---    | :---       |
-| `verbose`  | `-v`          | integer | Verbosity of tool in stdout | 
+| `verbose`  | `-v`          | integer | Verbosity of tool in stdout; 0 to 3, 3 being the greatest level of verbosity. |
 
 ### [Host]
 
 | Variable           | CLI Argument         | Type    | Definition |
 | :---               | :---                 | :---    | :---       |
-| `ip`               | `-r`                 | string  | The address of the Redfish service (with scheme); example: 'https://123.45.6.7:8000' |
-| `username`         | `-u`                 | string  | The username for authentication |
-| `password`         | `-p`                 | string  | The password for authentication |
-| `description`      | `--description`      | string  | The description of the system for identifying logs; if none is given, a value is produced from information in the service root |
-| `forceauth`        | `--forceauth`        | boolean | Force authentication on unsecure connections |
-| `authtype`         | `--authtype`         | string  | Authorization type; 'None', 'Basic', 'Session', or 'Token' |
-| `token`            | `--token`            | string  | Token when 'authtype' is 'Token' |
-| `ext_http_proxy`   | `--ext_http_proxy`   | string  | URL of the HTTP proxy for accessing external sites
-| `ext_https_proxy`  | `--ext_https_proxy`  | string  | URL of the HTTPS proxy for accessing external sites
-| `serv_http_proxy`  | `--serv_http_proxy`  | string  | URL of the HTTP proxy for accessing the service
-| `serv_https_proxy` | `--serv_https_proxy` | string  | URL of the HTTPS proxy for accessing the service
+| `ip`               | `-r`                 | string  | The address of the Redfish service (with scheme); example: 'https://123.45.6.7:8000'. |
+| `username`         | `-u`                 | string  | The username for authentication. |
+| `password`         | `-p`                 | string  | The password for authentication. |
+| `description`      | `--description`      | string  | The description of the system for identifying logs; if none is given, a value is produced from information in the service root. |
+| `forceauth`        | `--forceauth`        | boolean | Force authentication on unsecure connections; 'True' or 'False'. |
+| `authtype`         | `--authtype`         | string  | Authorization type; 'None', 'Basic', 'Session', or 'Token'. |
+| `token`            | `--token`            | string  | Token when 'authtype' is 'Token'. |
+| `ext_http_proxy`   | `--ext_http_proxy`   | string  | URL of the HTTP proxy for accessing external sites. |
+| `ext_https_proxy`  | `--ext_https_proxy`  | string  | URL of the HTTPS proxy for accessing external sites. |
+| `serv_http_proxy`  | `--serv_http_proxy`  | string  | URL of the HTTP proxy for accessing the service. |
+| `serv_https_proxy` | `--serv_https_proxy` | string  | URL of the HTTPS proxy for accessing the service. |
 
 ### [Validator]
 
 | Variable           | CLI Argument         | Type    | Definition |
 | :---               | :---                 | :---    | :---       |
-| `payload`          | `--payload`          | string  | The mode to validate payloads ('Tree', 'Single', 'SingleFile', or 'TreeFile') followed by resource/filepath; see below |
-| `logdir`           | `--logdir`           | string  | The directory for generated report files; default: 'logs'
-| `oemcheck`         | `--nooemcheck`       | boolean | Whether to check OEM items on service |
-| `uricheck`         | `--uricheck`         | boolean | Allow URI checking on services below RedfishVersion 1.6.0 |
-| `debugging`        | `--debugging`        | boolean | Output debug statements to text log, otherwise it only uses INFO |
-| `schema_directory` | `--schema_directory` | string  | Directory for local schema files |
-| `mockup`           | `--mockup`           | string  | Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage |
-| `collectionlimit`  | `--collectionlimit`  | string  | Sets a limit to links gathered from collections by type, e.g. `ComputerSystem 20` limits ComputerSystemCollection to 20 links |
+| `payload`          | `--payload`          | string  | The mode to validate payloads ('Tree', 'Single', 'SingleFile', or 'TreeFile') followed by resource/filepath; see below. |
+| `logdir`           | `--logdir`           | string  | The directory for generated report files; default: 'logs'. |
+| `oemcheck`         | `--nooemcheck`       | boolean | Whether to check OEM items on service; 'True' or 'False'. |
+| `uricheck`         | `--uricheck`         | boolean | Allow URI checking on services below RedfishVersion 1.6.0; 'True' or 'False'. |
+| `debugging`        | `--debugging`        | boolean | Output debug statements to text log, otherwise it only uses INFO; 'True' or 'False'. |
+| `schema_directory` | `--schema_directory` | string  | Directory for local schema files. |
+| `mockup`           | `--mockup`           | string  | Directory tree for local mockup files.  This option enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage. |
+| `collectionlimit`  | `--collectionlimit`  | string  | Sets a limit to links gathered from collections by type (schema name).<br/>Example 1: `ComputerSystem 20` limits ComputerSystemCollection to 20 links.<br/>Example 2: `ComputerSystem 20 LogEntry 10` limits ComputerSystemCollection to 20 links and LogEntryCollection to 10 links. |
 
 ### Payload Option
 
@@ -100,6 +100,16 @@ The first parameter specifies how to test the payload URI given, which can be 'S
 The second parameter specifies a URI of the target payload to test or a filename of a local file to test.
 
 For example, `--payload Single /redfish/v1/AccountService` will perform validation of the URI `/redfish/v1/AccountService` and no other resources.
+
+### Mockup Option
+
+The `mockup` option takes a single parameter as a string.  The parameter specifies a local directory path to the `ServiceRoot` resource of a Redfish mockup tree.
+
+This option provides a powerful debugging tool as is allows local "mockup" JSON payloads to replace those retreived from the unit under test.  This can aid testers by allowing the tool to skip over problematic resources, which may cause the tool to crash, or more likely, miss portions of the implemented resources due to missing or invalid link properties or values.
+
+The mockup files follow the Redfish mockup style, with the directory tree matching the URI segments under /redfish/v1, and with a single `index.json` file in each subdirectory as desired.  For examples of full mockups, see the Redfish Mockup Bundle (DSP2043) at https://www.dmtf.org/sites/default/files/standards/documents/DSP2043_2024.1.zip.
+
+Populate the mockup directory tree with `index.json` files wherever problematic resources need to be replaced.  Any replaced resource will report a Warning in the report to indicate a workaround was used.
 
 ## Execution Flow
 

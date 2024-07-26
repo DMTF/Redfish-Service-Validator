@@ -63,11 +63,15 @@ jobs:
         .
         xit
         eof
+    - name: Update the copyright year
+      run: |
+        find . -type f -exec sed -i -E 's/Copyright [0-9\-]+ DMTF/Copyright 2016-'$(date +'%Y')' DMTF/' {} \;
+        find . -type f -exec sed -i -E 's/Copyright \(c\) [0-9\-]+,/Copyright (c) 2016-'$(date +'%Y')',/' {} \;
     - name: Commit and push the updates
       run: |
         git config user.name "GitHub Release Workflow"
         git config user.email "<>"
-        git add CHANGELOG.md setup.py redfish_service_validator/RedfishServiceValidator.py
+        git add *
         git commit -s -m "${{github.event.inputs.version}} versioning"
         git push origin main
     - name: Set up Python
