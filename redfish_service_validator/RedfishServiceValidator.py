@@ -80,6 +80,8 @@ def validate(argslist=None, configfile=None):
     argget.add_argument('--schema_directory', type=str, default='./SchemaFiles/metadata', help='Directory for local schema files')
     argget.add_argument('--mockup', type=str, default='', help='Enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage')
     argget.add_argument('--collectionlimit', type=str, default=['LogEntry', '20'], help='apply a limit to collections (format: RESOURCE1 COUNT1 RESOURCE2 COUNT2...)', nargs='+')
+    argget.add_argument('--requesttimeout', type=int, default=10, help='Timeout in seconds for HTTP requests waiting for response')
+    argget.add_argument('--requestattempts', type=int, default=10, help='Number of attempts after failed HTTP requests')
 
     # parse...
     args = argget.parse_args(argslist)

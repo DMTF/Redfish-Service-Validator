@@ -47,7 +47,6 @@ class rfService():
         self.config['usessl'] = urlparse(self.config['configuri']).scheme in ['https']
         self.config['certificatecheck'] = False
         self.config['certificatebundle'] = None
-        self.config['timeout'] = 10
 
         # NOTE: this is a validator limitation.  maybe move this to its own config
         if self.config['collectionlimit']:
@@ -75,7 +74,7 @@ class rfService():
             self.ext_proxies = {}
             if self.config['ext_http_proxy'] != '': self.ext_proxies['http'] = self.config['ext_http_proxy']
             if self.config['ext_https_proxy'] != '': self.ext_proxies['https'] = self.config['ext_https_proxy']
-        self.context = rf.redfish_client(base_url=rhost, username=user, password=passwd, timeout=self.config['timeout'], proxies=proxies)
+        self.context = rf.redfish_client(base_url=rhost, username=user, password=passwd, timeout=self.config['requesttimeout'], max_retry=self.config['requestattempts'], proxies=proxies)
         self.context.login( auth = self.config['authtype'].lower() )
 
         # Go through $metadata and download any additional schema files needed
@@ -135,7 +134,7 @@ class rfService():
         config = self.config
         # proxies = self.proxies
         ConfigIP, UseSSL, AuthType, ChkCert, ChkCertBundle, timeout, Token = config['configuri'], config['usessl'], config['authtype'], \
-                config['certificatecheck'], config['certificatebundle'], config['timeout'], config['token']
+                config['certificatecheck'], config['certificatebundle'], config['requesttimeout'], config['token']
 
         scheme, netloc, path, params, query, fragment = urlparse(link_uri)
         inService = scheme == '' and netloc == ''
