@@ -12,7 +12,7 @@ my_logger.setLevel(logging.DEBUG)
 config_struct = {
     'Tool': ['verbose'],
     'Host': ['ip', 'username', 'password', 'description', 'forceauth', 'authtype', 'token', 'ext_http_proxy', 'ext_https_proxy', 'serv_http_proxy', 'serv_https_proxy'],
-    'Validator': ['payload', 'logdir', 'oemcheck', 'debugging', 'schema_directory', 'uricheck', 'mockup', 'collectionlimit']
+    'Validator': ['payload', 'logdir', 'oemcheck', 'debugging', 'schema_directory', 'uricheck', 'mockup', 'collectionlimit', 'requesttimeout', 'requestattempts']
 }
 
 config_options = [x for name in config_struct for x in config_struct[name]]
@@ -53,6 +53,8 @@ def convert_config_to_args(args, config):
                 elif my_config[section][option] not in ['', None]:
                     if option.lower() == 'payload' or option.lower() == 'collectionlimit':
                         setattr(args, option, my_config[section][option].split(' '))
+                    elif option.lower() in ['requesttimeout', 'requestattempts']:
+                        setattr(args, option, int(my_config[section][option]))
                     else:
                         setattr(args, option, my_config[section][option])
                     if option.lower() in ['password', 'token']:

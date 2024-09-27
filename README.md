@@ -79,7 +79,7 @@ At a minimum, the `ip`, `username`, and `password` options must be modified.
 ### [Validator]
 
 | Variable           | CLI Argument         | Type    | Definition |
-| :---               | :---                 | :---    | :---       |
+| :---               | :---                 |:--------| :---       |
 | `payload`          | `--payload`          | string  | The mode to validate payloads ('Tree', 'Single', 'SingleFile', or 'TreeFile') followed by resource/filepath; see below. |
 | `logdir`           | `--logdir`           | string  | The directory for generated report files; default: 'logs'. |
 | `oemcheck`         | `--nooemcheck`       | boolean | Whether to check OEM items on service; 'True' or 'False'. |
@@ -88,6 +88,8 @@ At a minimum, the `ip`, `username`, and `password` options must be modified.
 | `schema_directory` | `--schema_directory` | string  | Directory for local schema files. |
 | `mockup`           | `--mockup`           | string  | Directory tree for local mockup files.  This option enables insertion of local mockup resources to replace missing, incomplete, or incorrect implementations retrieved from the service that may hinder full validation coverage. |
 | `collectionlimit`  | `--collectionlimit`  | string  | Sets a limit to links gathered from collections by type (schema name).<br/>Example 1: `ComputerSystem 20` limits ComputerSystemCollection to 20 links.<br/>Example 2: `ComputerSystem 20 LogEntry 10` limits ComputerSystemCollection to 20 links and LogEntryCollection to 10 links. |
+| `requesttimeout`   | `--requesttimeout`   | integer | Timeout in seconds for HTTP request waiting for response. |
+| `requestattempts`  | `--requestattempts`  | integer | Number of attempts after failed HTTP requests. |
 
 ### Payload Option
 
