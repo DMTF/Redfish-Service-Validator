@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.4.9] - 2024-09-27
+- Added 'requesttimeout' and 'requestattempts' arguments
+
 ## [2.4.8] - 2024-07-26
 - Fixed link verification to ensure the linked resource is of the expected data type
 - Fixed usage of collection limiting to apply limits for all aspects of validation
