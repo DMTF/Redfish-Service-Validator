@@ -18,7 +18,8 @@ from redfish_service_validator.helper import (
 
 includeTuple = namedtuple("include", ["Namespace", "Uri"])
 
-my_logger = logging.getLogger(__name__)
+my_logger = logging.getLogger('rsv')
+my_logger.setLevel(logging.DEBUG)
 
 REDFISH_ABSENT = "n/a"
 

@@ -4,7 +4,7 @@
 
 import json
 from datetime import datetime
-from functools import lru_cache
+import logging
 from urllib.parse import urlparse, urlunparse
 from http.client import responses
 import os
@@ -17,8 +17,9 @@ from redfish_service_validator.helper import navigateJsonFragment, splitVersionS
 from redfish_service_validator.metadata import Metadata
 
 import logging
-my_logger = logging.getLogger(__name__)
-traverseLogger = my_logger
+
+my_logger = logging.getLogger('rsv')
+my_logger.setLevel(logging.DEBUG)
 
 CACHE_SIZE = 128
 
@@ -28,17 +29,12 @@ class AuthenticationError(Exception):
     def __init__(self, msg=None):
         super(AuthenticationError, self).__init__(msg)
 
-def getLogger():
-    """
-    Grab logger for tools that might use this lib
-    """
-    return my_logger
 
 class rfService():
     def __init__(self, config):
-        traverseLogger.info('Setting up service...')
+        my_logger.info('Setting up service...')
         self.active, self.config = False, config
-        self.logger = getLogger()
+        self.logger = my_logger
     
         self.cache, self.cache_order = {}, []
 
@@ -60,29 +56,37 @@ class rfService():
         # Log into the service
         if not self.config['usessl'] and not self.config['forceauth']:
             if self.config['username'] not in ['', None] or self.config['password'] not in ['', None]:
-                traverseLogger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
+                my_logger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
                 self.config['username'] = ''
                 self.config['password'] = ''
         rhost, user, passwd = self.config['configuri'], self.config['username'], self.config['password']
-        proxies=None
+
+        proxies = None
         if self.config['serv_http_proxy'] != '' or self.config['serv_https_proxy'] != '':
             proxies = {}
-            if self.config['serv_http_proxy'] != '': proxies['http'] = self.config['serv_http_proxy']
-            if self.config['serv_https_proxy'] != '': proxies['https'] = self.config['serv_https_proxy']
-        self.ext_proxies=None
+            if self.config['serv_http_proxy'] != '':
+                proxies['http'] = self.config['serv_http_proxy']
+            if self.config['serv_https_proxy'] != '':
+                proxies['https'] = self.config['serv_https_proxy']
+
+        self.ext_proxies = None
         if self.config['ext_http_proxy'] != '' or self.config['ext_https_proxy'] != '':
             self.ext_proxies = {}
-            if self.config['ext_http_proxy'] != '': self.ext_proxies['http'] = self.config['ext_http_proxy']
-            if self.config['ext_https_proxy'] != '': self.ext_proxies['https'] = self.config['ext_https_proxy']
+            if self.config['ext_http_proxy'] != '':
+                self.ext_proxies['http'] = self.config['ext_http_proxy']
+            if self.config['ext_https_proxy'] != '':
+                self.ext_proxies['https'] = self.config['ext_https_proxy']
+
         self.context = rf.redfish_client(base_url=rhost, username=user, password=passwd, timeout=self.config['requesttimeout'], max_retry=self.config['requestattempts'], proxies=proxies)
-        self.context.login( auth = self.config['authtype'].lower() )
+        self.context.login(auth=self.config['authtype'].lower())
 
         # Go through $metadata and download any additional schema files needed
         success, data, response, delay = self.callResourceURI(Metadata.metadata_uri)
-        if success and data is not None and response.status in range(200,210):
-            self.metadata = Metadata(data, self, my_logger)
+        if success and data is not None and response.status in range(200, 210):
+            self.metadata = Metadata(data, self)
+            self.metadata.elapsed_secs = delay
         else:
-            self.metadata = Metadata(None, self, my_logger)
+            self.metadata = Metadata(None, self)
 
         # Build the data model based on cached schema files
         self.catalog = catalog.SchemaCatalog(self.config['metadatafilepath'])
@@ -92,17 +96,17 @@ class rfService():
         # get Version
         success, data, response, delay = self.callResourceURI('/redfish/v1')
         if not success:
-            traverseLogger.warning('Could not get ServiceRoot')
+            my_logger.warning('Could not get ServiceRoot')
         else:
             if 'RedfishVersion' not in data:
-                traverseLogger.warning('Could not get RedfishVersion from ServiceRoot')
+                my_logger.warning('Could not get RedfishVersion from ServiceRoot')
             else:
-                traverseLogger.info('Redfish Version of Service: {}'.format(data['RedfishVersion']))
+                my_logger.info('Redfish Version of Service: {}'.format(data['RedfishVersion']))
                 target_version = data['RedfishVersion']
         if target_version in ['1.0.0', 'n/a']:
-            traverseLogger.warning('!!Version of target may produce issues!!')
+            my_logger.warning('!!Version of target may produce issues!!')
         if splitVersionString(target_version) < splitVersionString('1.6.0') and not self.config['uricheck']:
-            traverseLogger.warning('RedfishVersion below 1.6.0, disabling uri checks')
+            my_logger.warning('RedfishVersion below 1.6.0, disabling uri checks')
             self.catalog.flags['ignore_uri_checks'] = True
         else:
             self.catalog.flags['ignore_uri_checks'] = False
@@ -116,7 +120,6 @@ class rfService():
         self.active = False
     
     def callResourceURI(self, link_uri):
-        traverseLogger = my_logger
         """
         Makes a call to a given URI or URL
 
@@ -128,7 +131,7 @@ class rfService():
         # rs-assertion: require no auth for serviceroot calls
         # TODO: Written with "success" values, should replace with Exception and catches
         if link_uri is None:
-            traverseLogger.warning("This URI is empty!")
+            my_logger.warning("This URI is empty!")
             return False, None, None, 0
         
         config = self.config
@@ -148,7 +151,7 @@ class rfService():
         isXML = False
         if "$metadata" in path or ".xml" in path[:-5]:
             isXML = True
-            traverseLogger.debug('Should be XML')
+            my_logger.debug('Should be XML')
 
         # determine if we need to Auth...
         if inService:
@@ -156,7 +159,7 @@ class rfService():
                 '/redfish/v1/$metadata' in link_uri
 
             auth = None if noauthchk else (config.get('username'), config.get('password'))
-            traverseLogger.debug('dont chkauth' if noauthchk else 'chkauth')
+            my_logger.debug('dont chkauth' if noauthchk else 'chkauth')
 
         # rs-assertion: do not send auth over http
         # remove UseSSL if necessary if you require unsecure auth
@@ -169,7 +172,7 @@ class rfService():
         certVal = ChkCertBundle if ChkCert and ChkCertBundle not in [None, ""] else ChkCert
 
         # rs-assertion: must have application/json or application/xml
-        traverseLogger.debug('callingResourceURI {}with authtype {} and ssl {}: {} {}'.format(
+        my_logger.debug('callingResourceURI {}with authtype {} and ssl {}: {} {}'.format(
             'out of service ' if not inService else '', AuthType, UseSSL, link_uri, headers))
         response = None
         try:
@@ -192,47 +195,47 @@ class rfService():
                 if len(self.cache) > CACHE_SIZE:
                     del self.cache[self.cache_order.pop(0)]
             else:
-                traverseLogger.debug("CACHE HIT {} {}".format(my_destination, link_uri))
+                my_logger.debug("CACHE HIT {} {}".format(my_destination, link_uri))
             
             response = self.cache[my_destination]
 
             elapsed = datetime.now() - startTick
             statusCode = response.status
 
-            traverseLogger.debug('{}, {},\nTIME ELAPSED: {}'.format(statusCode, response.getheaders(), elapsed))
+            my_logger.debug('{}, {},\nTIME ELAPSED: {}'.format(statusCode, response.getheaders(), elapsed))
             if statusCode in [200]:
                 contenttype = response.getheader('content-type')
                 if contenttype is None:
-                    traverseLogger.error("Content-type not found in header: {}".format(link_uri))
+                    my_logger.error("Content-type not found in header: {}".format(link_uri))
                     contenttype = ''
                 if 'application/json' in contenttype:
-                    traverseLogger.debug("This is a JSON response")
+                    my_logger.debug("This is a JSON response")
                     decoded = response.dict
                             
                     # navigate fragment
                     decoded = navigateJsonFragment(decoded, link_uri)
                     if decoded is None:
-                        traverseLogger.error(
+                        my_logger.error(
                                 "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(link_uri))
                 elif 'application/xml' in contenttype:
                     decoded = response.text
                 elif 'text/xml' in contenttype:
                     # non-service schemas can use "text/xml" Content-Type
                     if inService:
-                        traverseLogger.warning(
+                        my_logger.warning(
                                 "Incorrect content type 'text/xml' for file within service {}".format(link_uri))
                     decoded = response.text
                 else:
-                    traverseLogger.error(
+                    my_logger.error(
                             "This URI did NOT return XML or Json contenttype, is this not a Redfish resource (is this redirected?): {}".format(link_uri))
                     decoded = None
                     if isXML:
-                        traverseLogger.info('Attempting to interpret as XML')
+                        my_logger.info('Attempting to interpret as XML')
                         decoded = response.text
                     else:
                         try:
                             json.loads(response.text)
-                            traverseLogger.info('Attempting to interpret as JSON')
+                            my_logger.info('Attempting to interpret as JSON')
                             decoded = response.dict
                         except ValueError:
                             pass
@@ -250,10 +253,10 @@ class rfService():
         except AuthenticationError as e:
             raise e  # re-raise exception
         except Exception as e:
-            traverseLogger.error("A problem when getting resource {} has occurred: {}".format(link_uri, repr(e)))
-            traverseLogger.debug("output: ", exc_info=True)
+            my_logger.error("A problem when getting resource {} has occurred: {}".format(link_uri, repr(e)))
+            my_logger.debug("output: ", exc_info=True)
             if response and response.text:
-                traverseLogger.debug("payload: {}".format(response.text))
+                my_logger.debug("payload: {}".format(response.text))
 
         if payload is not None:
             return True, payload, response, 0

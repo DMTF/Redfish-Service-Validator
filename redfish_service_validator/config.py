@@ -6,7 +6,7 @@ import configparser
 import logging
 import json
 
-my_logger = logging.getLogger()
+my_logger = logging.getLogger('rsv')
 my_logger.setLevel(logging.DEBUG)
 
 config_struct = {
@@ -28,7 +28,6 @@ def convert_args_to_config(args):
                 my_var = vars(args)[option]
                 if isinstance(my_var, list):
                     my_var = ' '.join(my_var)
-                    print(my_var)
                 my_config.set(section, option, str(my_var) if my_var is not None else '')
             else:
                 my_config.set(section, option, '******')
@@ -49,7 +48,7 @@ def convert_config_to_args(args, config):
             for option in my_config[section]:
                 if option.lower() not in config_options:
                     if option.lower() not in ['version', 'copyright']:
-                        my_logger.error('Option {} not supported!'.format(option))
+                        my_logger.error('Option {} not supported!'.format(option), extra={"result": "unsupportedOption"})
                 elif my_config[section][option] not in ['', None]:
                     if option.lower() == 'payload' or option.lower() == 'collectionlimit':
                         setattr(args, option, my_config[section][option].split(' '))

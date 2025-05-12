@@ -3,7 +3,7 @@
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 import os
-import time
+import logging
 from collections import Counter, OrderedDict, defaultdict
 from collections import namedtuple
 from bs4 import BeautifulSoup
@@ -12,9 +12,8 @@ import os.path
 
 from redfish_service_validator.helper import getNamespace, getNamespaceUnversioned
 
-import logging
-my_logger = logging.getLogger(__name__)
-
+my_logger = logging.getLogger('rsv')
+my_logger.setLevel(logging.DEBUG)
 
 EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
 EDMX_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edmx"
@@ -73,15 +72,13 @@ class Metadata(object):
     metadata_uri = '/redfish/v1/$metadata'
     schema_type = '$metadata'
 
-    def __init__(self, data, service, logger):
-        logger.info('Constructing metadata...')
+    def __init__(self, data, service):
+        my_logger.info('Constructing metadata...')
         self.success_get = False
         self.service = service
         self.uri_to_namespaces = defaultdict(list)
-        self.elapsed_secs = 0
         self.metadata_namespaces = set()
         self.service_namespaces = set()
-        self.schema_store = dict()
         self.bad_tags = dict()
         self.bad_tag_ns = dict()
         self.refs_missing_uri = dict()
@@ -89,15 +86,13 @@ class Metadata(object):
         self.bad_schema_uris = set()
         self.bad_namespace_include = set()
         self.counter = OrderedCounter()
-        self.logger = logger
         self.redfish_extensions_alias_ok = False
 
-        start = time.time()
         self.md_soup = None
         self.service_refs = None
         uri = Metadata.metadata_uri
 
-        self.elapsed_secs = time.time() - start
+        self.elapsed_secs = -1
         self.schema_obj = None
         if data:
             self.md_soup = BeautifulSoup(data, "xml")
@@ -108,30 +103,29 @@ class Metadata(object):
             # create map of schema URIs to namespaces from $metadata
             for k in self.service_refs.keys():
                 self.uri_to_namespaces[self.service_refs[k][1]].append(self.service_refs[k][0])
-            logger.debug('Metadata: uri = {}'.format(uri))
-            logger.debug('Metadata: metadata_namespaces: {} = {}'
+            my_logger.debug('Metadata: uri = {}'.format(uri))
+            my_logger.debug('Metadata: metadata_namespaces: {} = {}'
                          .format(type(self.metadata_namespaces), self.metadata_namespaces))
             # check for Redfish alias for RedfishExtensions.v1_0_0
             ref = self.service_refs.get('Redfish')
             if ref is not None and ref[0] == 'RedfishExtensions.v1_0_0':
                 self.redfish_extensions_alias_ok = True
-            logger.debug('Metadata: redfish_extensions_alias_ok = {}'.format(self.redfish_extensions_alias_ok))
+            my_logger.debug('Metadata: redfish_extensions_alias_ok = {}'.format(self.redfish_extensions_alias_ok))
             # check for XML tag problems
             self.check_tags()
             # check that all namespace includes are found in the referenced schema
-            self.check_namespaces_in_schemas()
-            logger.debug('Metadata: bad_tags = {}'.format(self.bad_tags))
-            logger.debug('Metadata: bad_tag_ns = {}'.format(self.bad_tag_ns))
-            logger.debug('Metadata: refs_missing_uri = {}'.format(self.refs_missing_uri))
-            logger.debug('Metadata: includes_missing_ns = {}'.format(self.includes_missing_ns))
-            logger.debug('Metadata: bad_schema_uris = {}'.format(self.bad_schema_uris))
-            logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
+            my_logger.debug('Metadata: bad_tags = {}'.format(self.bad_tags))
+            my_logger.debug('Metadata: bad_tag_ns = {}'.format(self.bad_tag_ns))
+            my_logger.debug('Metadata: refs_missing_uri = {}'.format(self.refs_missing_uri))
+            my_logger.debug('Metadata: includes_missing_ns = {}'.format(self.includes_missing_ns))
+            my_logger.debug('Metadata: bad_schema_uris = {}'.format(self.bad_schema_uris))
+            my_logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
             for ref in self.service_refs:
                 name, uri = self.service_refs[ref]
-                success, soup, origin = getSchemaDetails(service, name, uri)
-                self.schema_store[name] = soup
+                success, soup, origin = getSchemaDetails(service, getNamespace(name), uri)
+            self.check_namespaces_in_schemas()
         else:
-            logger.warning('Metadata: getSchemaDetails() did not return success')
+            my_logger.warning('Metadata: getSchemaDetails() did not return success')
 
     def get_schema_obj(self):
         return self.schema_obj
@@ -185,7 +179,7 @@ class Metadata(object):
                 tag_str = tag_str + ' ' + tag_ns
                 self.bad_tag_ns[tag_str] = self.bad_tag_ns.get(tag_str, 0) + 1
         except Exception as e:
-            self.logger.warning('Metadata: Problem parsing $metadata document: {}'.format(e))
+            my_logger.warning('Metadata: Problem parsing $metadata document: {}'.format(e))
 
     def check_namespaces_in_schemas(self):
         """
@@ -196,15 +190,15 @@ class Metadata(object):
             if '#' in schema_uri:
                 schema_uri, frag = k.split('#', 1)
             schema_type = os.path.basename(os.path.normpath(k)).strip('.xml').strip('_v1')
-            success, soup, _ = getSchemaDetails(self.service, schema_type, schema_uri)
+            success, soup, _ = getSchemaDetails(self.service, getNamespace(schema_type), schema_uri)
             if success:
                 for namespace in self.uri_to_namespaces[k]:
                     if soup.find('Schema', attrs={'Namespace': namespace}) is None:
                         msg = 'Namespace {} not found in schema {}'.format(namespace, k)
-                        self.logger.debug('Metadata: {}'.format(msg))
+                        my_logger.debug('Metadata: {}'.format(msg))
                         self.bad_namespace_include.add(msg)
             else:
-                self.logger.error('Metadata: failure opening schema {} of type {}'.format(schema_uri, schema_type))
+                my_logger.error('Metadata: failure opening schema {} of type {}'.format(schema_uri, schema_type))
                 self.bad_schema_uris.add(schema_uri)
 
     def get_counter(self):
@@ -231,7 +225,7 @@ class Metadata(object):
         """
         Convert the $metadata validation results to HTML
         """
-        time_str = 'response time {0:.6f}s'.format(self.elapsed_secs)
+        time_str = 'response time {}s'.format(self.elapsed_secs)
         section_title = '{} ({})'.format(Metadata.metadata_uri, time_str)
 
         counter = self.get_counter()
@@ -240,9 +234,9 @@ class Metadata(object):
         html_str += '<tr><th class="titlerow bluebg"><b>{}</b></th></tr>'\
             .format(section_title)
         html_str += '<tr><td class="titlerow"><table class="titletable"><tr>'
-        html_str += '<td class="title" style="width:40%"><div>{}</div>\
+        html_str += '<td class="title" style="width:30%"><div>{}</div>\
                         <div class="button warn" onClick="document.getElementById(\'resMetadata\').classList.toggle(\'resultsShow\');">Show results</div>\
-                        </td>'.format(section_title)
+                        </td>'.format('')
         html_str += '<td class="titlesub log" style="width:30%"><div><b>Schema File:</b> {}</div><div><b>Resource Type:</b> {}</div></td>'\
             .format(Metadata.metadata_uri, Metadata.schema_type)
         html_str += '<td style="width:10%"' + \
@@ -256,8 +250,9 @@ class Metadata(object):
                 if counter[count_type] > 0:
                     errors_found = True
                     style = 'class="fail log"'
-            html_str += '<div {style}>{p}: {q}</div>'.format(
-                    p=count_type, q=counter.get(count_type, 0), style=style)
+            if counter.get(count_type, 0) > 0:
+                html_str += '<div {style}>{p}: {q}</div>'.format(
+                        p=count_type, q=counter.get(count_type, 0), style=style)
 
         html_str += '</td></tr>'
         html_str += '</table></td></tr>'
@@ -314,6 +309,7 @@ class OrderedCounter(Counter, OrderedDict):
     def __reduce__(self):
         return self.__class__, (OrderedDict(self),)
 
+
 def storeSchemaToLocal(xml_data, origin, service):
     """storeSchemaToLocal
 
@@ -355,11 +351,6 @@ def getSchemaDetails(service, SchemaType, SchemaURI):
 
     if service is None:
         return getSchemaDetailsLocal(SchemaType, SchemaURI, {})
-
-    elif service.active and getNamespace(SchemaType) in service.metadata.schema_store:
-        result = service.metadata.schema_store[getNamespace(SchemaType)]
-        if result is not None:
-            return True, result.soup, result.origin
 
     success, soup, origin = getSchemaDetailsLocal(SchemaType, SchemaURI, service.config)
     if success:

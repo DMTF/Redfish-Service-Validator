@@ -4,29 +4,11 @@
 
 import re
 import logging
-from types import SimpleNamespace
 
-# TODO: Replace logger with custom logger with custom verbose levels, remove verbose1 and verbose2 
-my_logger = logging.getLogger()
+my_logger = logging.getLogger('rsv')
 my_logger.setLevel(logging.DEBUG)
 
-"""
- Power.1.1.1.Power , Power.v1_0_0.Power
-"""
-
-versionpattern = 'v[0-9]+_[0-9]+_[0-9]+'
-
-LOG_ENTRY = ('name', 'value', 'type', 'exists', 'result')
-
-def create_entry(name, value, type, exists, result):
-    return SimpleNamespace(**{
-        "name": name,
-        "value": value,
-        "type": type,
-        "exists": exists,
-        "result": result
-    })
-
+VERSION_PATTERN = 'v[0-9]+_[0-9]+_[0-9]+'
 
 def splitVersionString(v_string):
     """
@@ -101,7 +83,7 @@ def getVersion(string: str):
     :param string:  A type/namespace string
     :type string: str
     """
-    regcap = re.search(versionpattern, string)
+    regcap = re.search(VERSION_PATTERN, string)
     return regcap.group() if regcap else None
 
 

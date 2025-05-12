@@ -2,50 +2,24 @@
 # Copyright 2016-2024 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
-if __name__ != '__main__':
-    from redfish_service_validator.helper import getType
-else:
-    import argparse
-    from bs4 import BeautifulSoup
-    import os, csv
-import redfish_service_validator.RedfishLogo as logo
-from redfish_service_validator.helper import LOG_ENTRY
 from types import SimpleNamespace
 from collections import Counter
 import json
 import re
+from redfish_service_validator.helper import getType
+import redfish_service_validator.RedfishLogo as logo
+from redfish_service_validator.logger import LOG_ENTRY, Level
+
+if __name__ == '__main__':
+    import argparse
+    from bs4 import BeautifulSoup
+    import os
+    import csv
 
 # hack in tagnames into module namespace
 tag = SimpleNamespace(**{tagName: lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)\
     for tagName in ['tr', 'td', 'th', 'div', 'b', 'table', 'body', 'head', 'summary']})
 
-def count_errors(results):
-    error_lines = []
-    finalCounts = Counter()
-    for item in results:
-        innerCounts = results[item]['counts']
-
-        # detect if there are error messages for this resource, but no failure counts; if so, add one to the innerCounts
-        counters_all_pass = True
-        for countType in sorted(innerCounts.keys()):
-            if innerCounts.get(countType) == 0:
-                continue
-            if re.search(r"^error|problem|fail|bad|exception|err[.]", countType):
-                counters_all_pass = False
-                error_lines.append('{} {} errors in {}'.format(innerCounts[countType], countType, results[item]['uri']))
-            innerCounts[countType] += 0
-        error_messages_present = False
-        if results[item]['errors'] is not None and len(results[item]['errors']) > 0:
-            error_messages_present = True
-        if results[item]['warns'] is not None and len(results[item]['warns']) > 0:
-            if "warningPresent" in innerCounts: innerCounts['warnings'] += 1
-            innerCounts['warningPresent'] = 1
-        if counters_all_pass and error_messages_present:
-            innerCounts['failErrorPresent'] = 1
-            error_lines.append('Error message present in {}'.format(results[item]['uri']))
-
-        finalCounts.update(innerCounts)
-    return error_lines, finalCounts
 
 def wrapTag(string, tag='div', attr=None):
     string = str(string)
@@ -103,9 +77,6 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
     # Render html
     config = service.config
     sysDescription, ConfigURI = (config['description'], config['ip'])
-    error_lines, finalCounts = count_errors(results)
-    if service.metadata is not None:
-        finalCounts.update(service.metadata.get_counter())
 
     # wrap html
     htmlPage = ''
@@ -114,7 +85,7 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
             .pass {background-color:#99EE99}\
             .column {\
                 float: left;\
-                width: 45%;\
+                width: 33%;\
             }\
             .fail {background-color:#EE9999}\
             .warn {background-color:#EEEE99}\
@@ -126,6 +97,7 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
             .titlesub {padding: 8px}\
             .titlerow {border: 2pt solid}\
             .results {transition: visibility 0s, opacity 0.5s linear; display: none; opacity: 0}\
+            .payload {transition: visibility 0s, opacity 0.5s linear; display: none; opacity: 0}\
             .resultsShow {display: block; opacity: 1}\
             body {background-color:lightgrey; border: 1pt solid; text-align:center; margin-left:auto; margin-right:auto}\
             th {text-align:center; background-color:beige; border: 1pt solid}\
@@ -143,8 +115,7 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
                  'https://github.com/DMTF/Redfish-Service-Validator</a></h4>')
     infos.append('Tool Version: {}'.format(tool_version))
     infos.append(startTick.strftime('%c'))
-    infos.append('(Run time: {})'.format(
-        str(nowTick - startTick).rsplit('.', 1)[0]))
+    infos.append('(Run time: {})'.format(str(nowTick - startTick).rsplit('.', 1)[0]))
     infos.append('<h4>This tool is provided and maintained by the DMTF. '
                  'For feedback, please open issues<br>in the tool\'s Github repository: '
                  '<a href="https://github.com/DMTF/Redfish-Service-Validator/issues">'
@@ -152,125 +123,168 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
 
     htmlStrBodyHeader += tag.tr(tag.th(infoBlock(infos)))
 
+    htmlStrBodyHeader += tag.tr(tag.th('Test Summary', 'class="bluebg titlerow"'))
+    infos = {'System': ConfigURI, 'Description': sysDescription}
+    infos['Target'] = ", ".join(service.config['payload']) if service.config['payload'] else 'Complete System Test'
+    htmlStrBodyHeader += tag.tr(tag.th(infoBlock(infos, sort=False)))
+
+    summary = Counter()
+
+    for k, my_result in results.items():
+        for record in my_result['records']:
+            if record.levelname.lower() in ['error', 'warning']:
+                summary[record.levelname.lower()] += 1
+            if record.result:
+                summary[record.result] += 1
+
+    important_block = tag.div('<b>Results Summary</b>')
+    important_block += tag.div(", ".join([
+        'Pass: {}'.format(summary['pass']),
+        'Fail: {}'.format(summary['error']),
+        'Warning: {}'.format(summary['warning']),
+        'Not Tested: {}'.format(summary['nottested']),
+        ]))
+    htmlStrBodyHeader += tag.tr(tag.td(important_block, 'class="center"'))
+
     infos = {x: config[x] for x in config if x not in ['systeminfo', 'ip', 'password', 'description']}
     infos_left, infos_right = dict(), dict()
+    infos_mid = dict()
     for key in sorted(infos.keys()):
-        if len(infos_left) <= len(infos_right):
+        if len(infos_left) <= len(infos_mid):
             infos_left[key] = infos[key]
+        elif len(infos_mid) <= len(infos_right):
+            infos_mid[key] = infos[key]
         else:
             infos_right[key] = infos[key]
 
-    block = tag.td(tag.div(infoBlock(infos_left), 'class=\'column log\'') \
-            + tag.div(infoBlock(infos_right), 'class=\'column log\''), 'id=\'resNumConfig\' class=\'results resultsShow\'')
-
     htmlButtons = '<div class="button warn" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].classList.add(\'resultsShow\')};">Expand All</div>'
     htmlButtons += '<div class="button fail" onClick="arr = document.getElementsByClassName(\'results\'); for (var i = 0; i < arr.length; i++){arr[i].classList.remove(\'resultsShow\')};">Collapse All</div>'
-    htmlButtons += tag.div('Toggle Config', attr='class="button pass" onClick="document.getElementById(\'resNumConfig\').classList.toggle(\'resultsShow\');"')
+    htmlButtons += tag.div('Show Configuration', attr='class="button pass" onClick="document.getElementById(\'resNumConfig\').classList.toggle(\'resultsShow\');"')
 
+    htmlStrBodyHeader += tag.tr(tag.th('Full Test Report', 'class="titlerow bluebg"'))
     htmlStrBodyHeader += tag.tr(tag.th(htmlButtons))
-    htmlStrBodyHeader += tag.tr(tag.th('Test Summary'))
 
-    infos = {'System': ConfigURI, 'Description': sysDescription}
-    htmlStrBodyHeader += tag.tr(tag.th(infoBlock(infos)))
-
-    errors = error_lines
-    if len(errors) == 0:
-        errors = ['No errors located.']
-    errorTags = tag.td(infoBlock(errors), 'class="log"')
-
-    infos_left, infos_right = dict(), dict()
-    for key in sorted(finalCounts.keys()):
-        if finalCounts.get(key) == 0:
-            continue
-        if len(infos_left) <= len(infos_right):
-            infos_left[key] = finalCounts[key]
-        else:
-            infos_right[key] = finalCounts[key]
-
-    htmlStrCounts = (tag.div(infoBlock(infos_left), 'class=\'column log\'') + tag.div(infoBlock(infos_right), 'class=\'column log\''))
-
-    htmlStrBodyHeader += tag.tr(tag.td(htmlStrCounts))
-
-    htmlStrBodyHeader += tag.tr(errorTags)
+    block = tag.td(tag.div(infoBlock(infos_left), 'class=\'column log\'') \
+            + tag.div(infoBlock(infos_mid), 'class=\'column log\'')\
+            + tag.div(infoBlock(infos_right), 'class=\'column log\''), 
+            'id=\'resNumConfig\' class=\'results\'')
 
     htmlStrBodyHeader += tag.tr(block)
+
+    # for k, my_result in results.items():
+    #     warns = [x for x in my_result['records'] if x.levelno == Level.WARN]
+    #     warns_with_msg = [x for x in my_result['records'] if x.result]
+    #     errors = [x for x in my_result['records'] if x.levelno == Level.ERROR]
+    #     errors_with_msg = [x for x in my_result['records'] if x.result]
+    #     if len(errors) and not len(errors_with_msg):
+    #         important_items.append("Errors present in {}".format(my_result['uri']))
+                
+    infos_left, infos_right = dict(), dict()
+    infos_mid = dict()
+    for key in sorted(summary.keys()):
+        if len(infos_left) <= len(infos_mid):
+            infos_left[key] = summary[key]
+        else:
+            infos_right[key] = summary[key]
+    htmlStrCounts = tag.div(infoBlock(infos_left), 'class=\'column log\'') + tag.div(infoBlock(infos_mid), 'class=\'column log\'') + tag.div(infoBlock(infos_right), 'class=\'column log\'')
+
+    htmlStrBodyHeader += tag.tr(tag.td(htmlStrCounts))
 
 
     if service.metadata is not None:
         htmlPage = service.metadata.to_html()
+
     for cnt, item in enumerate(results):
         entry = []
-        val = results[item]
-        rtime = '(response time: {})'.format(val['rtime'])
-        rcode = '({})'.format(val['rcode'])
-        payload = val.get('payload', {})
+        my_result = results[item]
+        rtime = '(response time: {})'.format(my_result['rtime'])
+        rcode = my_result['rcode']
+        if rcode == -1 or my_result['rtime'] == 0:
+            rtime = ''
+        payload = my_result.get('payload', {})
 
         # uri block
-        prop_type = val['fulltype']
+        prop_type, type_name = my_result['fulltype'], '-'
         if prop_type is not None:
             type_name = getType(prop_type)
 
-        infos = [str(val.get(x)) for x in ['uri', 'samplemapped'] if val.get(x) not in ['',None]]
+        infos = [str(my_result.get(x)) for x in ['uri', 'samplemapped'] if my_result.get(x) not in ['',None]]
         infos.append(rtime)
         infos.append(type_name)
         uriTag = tag.tr(tag.th(infoBlock(infos, '&ensp;'), 'class="titlerow bluebg"'))
         entry.append(uriTag)
 
         # info block
-        infos = [str(val.get(x)) for x in ['uri'] if val.get(x) not in ['',None]]
-        infos.append(rtime)
-        infos.append(tag.div('Show Results', attr='class="button warn"\
+        # infos = [str(my_result.get(x)) for x in ['uri'] if my_result.get(x) not in ['',None]]
+        # if rtime:
+        #     infos.append(rtime)
+        infos = []
+        infos_buttons = tag.div('Show Results', attr='class="button warn"\
                 onClick="document.getElementById(\'payload{}\').classList.remove(\'resultsShow\');\
-                document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');"'.format(cnt, cnt)))
-        infos.append(tag.div('Show Payload', attr='class="button pass"\
+                document.getElementById(\'resNum{}\').classList.toggle(\'resultsShow\');"'.format(cnt, cnt))
+        infos_buttons += tag.div('Show Payload', attr='class="button pass"\
                 onClick="document.getElementById(\'payload{}\').classList.toggle(\'resultsShow\');\
-                document.getElementById(\'resNum{}\').classList.add(\'resultsShow\');"'.format(cnt, cnt)))
+                document.getElementById(\'resNum{}\').classList.add(\'resultsShow\');"'.format(cnt, cnt))
+        infos.append(infos_buttons)
         buttonTag = tag.td(infoBlock(infos), 'class="title" style="width:30%"')
 
-        infos = [str(val.get(x)) for x in ['context', 'origin', 'fulltype']]
+        infos = [str(my_result.get(x)) for x in ['context', 'origin', 'fulltype']]
         infos = {y: x for x, y in zip(infos, ['Context', 'File Origin', 'Resource Type'])}
         infosTag = tag.td(infoBlock(infos), 'class="titlesub log" style="width:40%"')
 
-        success = val['success']
+        success = my_result['success']
         if success:
-            getTag = tag.td('GET Success HTTP Code {}'.format(rcode), 'class="pass"')
+            if rcode != -1:
+                getTag = tag.td('GET Success HTTP Code ({})'.format(rcode), 'class="pass"')
+            else:
+                getTag = tag.td('GET Success', 'class="pass"')
         else:
-            getTag = tag.td('GET Failure HTTP Code {}'.format(rcode), 'class="fail"')
+            getTag = tag.td('GET Failure HTTP Code ({})'.format(rcode), 'class="fail"')
 
-        countsTag = tag.td(infoBlock(val['counts'], split='', ffunc=applyInfoSuccessColor), 'class="log"')
+        my_summary = Counter()
+
+        for k_e, val in my_result['messages'].items():
+            if val.result.lower() == 'pass':
+                my_summary['pass'] += 1
+
+        for record in my_result['records']:
+            if record.levelname.lower() in ['error', 'warning']:
+                my_summary[record.levelname.lower()] += 1
+            if record.result:
+                my_summary[record.result] += 1
+
+        countsTag = tag.td(infoBlock(my_summary, split='', ffunc=applyInfoSuccessColor), 'class="log"')
 
         rhead = ''.join([buttonTag, infosTag, getTag, countsTag])
+        # rhead = ''.join([buttonTag, infosTag, getTag])
         for x in [('tr',), ('table', 'class=titletable'), ('td', 'class=titlerow'), ('tr')]:
             rhead = wrapTag(''.join(rhead), *x)
         entry.append(rhead)
 
         # actual table
 
-        rows = [list([str(vars(m)[x]) for x in LOG_ENTRY]) for m in val['messages'].values()]
+        rows = [list([str(vars(m)[x]) for x in LOG_ENTRY]) for m in my_result['messages'].values()]
         titles = ['Property Name', 'Value', 'Type', 'Exists', 'Result']
-        widths = ['15', '30', '30', '10', '15']
+        widths = ['20', '30', '25', '5', '10']
         tableHeader = tableBlock(rows, titles, widths, ffunc=applySuccessColor)
 
         #    lets wrap table and errors and warns into one single column table
         tableHeader = tag.tr(tag.td((tableHeader)))
 
-        infos_a = [str(val.get(x)) for x in ['uri'] if val.get(x) not in ['',None]]
+        infos_a = [str(my_result.get(x)) for x in ['uri'] if my_result.get(x) not in ['',None]]
         infos_a.append(rtime)
 
+        errors = [x for x in my_result['records'] if x.levelno == Level.ERROR]
+        warns = [x for x in my_result['records'] if x.levelno == Level.WARN]
+
         # warns and errors
-        errors = val['errors']
-        if len(errors) == 0:
-            errors = 'No errors'
-        infos = errors.split('\n')
-        errorTags = tag.tr(tag.td(infoBlock(infos), 'class="fail log"'))
+        errors = ['No errors'] if len(errors) == 0 else [x.msg for x in errors]
+        errorTags = tag.tr(tag.td(infoBlock(errors), 'class="fail log"'))
 
-        warns = val['warns']
-        if len(warns) == 0:
-            warns = 'No warns'
-        infos = warns.split('\n')
-        warnTags = tag.tr(tag.td(infoBlock(infos), 'class="warn log"'))
-
-        payloadTag = tag.td(json.dumps(payload, indent=4, sort_keys=True), 'id=\'payload{}\' class=\'results log\''.format(cnt))
+        warns = ['No warns'] if len(warns) == 0 else [x.msg for x in warns]
+        warnTags = tag.tr(tag.td(infoBlock(warns), 'class="warn log"'))
+    
+        payloadTag = tag.td(json.dumps(payload, indent=4, sort_keys=True), 'id=\'payload{}\' class=\'payload log\''.format(cnt))
 
         tableHeader += errorTags
         tableHeader += warnTags

@@ -3,8 +3,12 @@
 # License: BSD 3-Clause License. For full text see link:
 # https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
-from redfish_service_validator.RedfishServiceValidator import main, my_logger
 import sys
+import logging
+from redfish_service_validator.RedfishServiceValidator import main
+
+my_logger = logging.getLogger('rsv')
+my_logger.setLevel(logging.DEBUG)
 
 if __name__ == '__main__':
     try:
