@@ -792,7 +792,7 @@ class RedfishProperty(object):
 
         elif my_type == "Edm.DateTimeOffset":
             return RedfishProperty.validate_string(
-                val, r".*(Z|(\+|-)[0-9][0-9]:[0-9][0-9])")
+                val, r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|(\+|-)\d{2}:\d{2})")
 
         elif my_type == "Edm.Duration":
             return RedfishProperty.validate_string(
