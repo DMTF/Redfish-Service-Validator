@@ -221,7 +221,7 @@ def validateSingleURI(service, URI, expectedType=None, expectedJson=None, parent
             my_logger.error('Attempting {} (from {})?'.format(fuzz, key), extra={"result": "invalidNamedProperty"})
             my_new_obj = redfish_obj.properties[fuzz].populate(item)
             new_msgs = checkPropertyConformance(service, key, my_new_obj)
-            new_msgs = {x:create_entry(x, *y) for x,y in new_msgs.items()}
+            new_msgs = {x: create_entry(x, *y) for x, y in new_msgs.items()}
             message_table.update(new_msgs)
 
     for key in message_table:
