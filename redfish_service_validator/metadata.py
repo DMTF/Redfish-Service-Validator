@@ -123,9 +123,10 @@ class Metadata(object):
             for ref in self.service_refs:
                 name, uri = self.service_refs[ref]
                 success, soup, origin = getSchemaDetails(service, getNamespace(name), uri)
+            getSchemaDetails.cache_clear()
             self.check_namespaces_in_schemas()
         else:
-            my_logger.warning('Metadata: getSchemaDetails() did not return success')
+            my_logger.warning('Metadata Warning: getSchemaDetails() did not return success')
 
     def get_schema_obj(self):
         return self.schema_obj
@@ -179,7 +180,7 @@ class Metadata(object):
                 tag_str = tag_str + ' ' + tag_ns
                 self.bad_tag_ns[tag_str] = self.bad_tag_ns.get(tag_str, 0) + 1
         except Exception as e:
-            my_logger.warning('Metadata: Problem parsing $metadata document: {}'.format(e))
+            my_logger.warning('Metadata Warning: Problem parsing $metadata document: {}'.format(e))
 
     def check_namespaces_in_schemas(self):
         """
@@ -198,7 +199,7 @@ class Metadata(object):
                         my_logger.debug('Metadata: {}'.format(msg))
                         self.bad_namespace_include.add(msg)
             else:
-                my_logger.error('Metadata: failure opening schema {} of type {}'.format(schema_uri, schema_type))
+                my_logger.error('Metadata Warning: failure opening schema {} of type {}'.format(schema_uri, schema_type))
                 self.bad_schema_uris.add(schema_uri)
 
     def get_counter(self):
@@ -382,11 +383,9 @@ def getSchemaDetails(service, SchemaType, SchemaURI):
                     if success:
                         return True, linksoup, newlink
                     else:
-                        my_logger.error(
-                            "SchemaURI couldn't call reference link {} inside {}".format(frag, base_schema_uri))
+                        my_logger.error("Metadata Error: SchemaURI couldn't call reference link {} inside {}".format(frag, base_schema_uri))
                 else:
-                    my_logger.error(
-                        "SchemaURI missing reference link {} inside {}".format(frag, base_schema_uri))
+                    my_logger.error("Metadata Error: SchemaURI missing reference link {} inside {}".format(frag, base_schema_uri))
                     # error reported; assume likely schema uri to allow continued validation
                     uri = 'http://redfish.dmtf.org/schemas/v1/{}{}'.format(frag, xml_suffix)
                     my_logger.info("Continue assuming schema URI for {} is {}".format(SchemaType, uri))
@@ -413,7 +412,7 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI, config):
         uriparse = SchemaURI.split('/')[-1].split('#')
         xml = uriparse[0]
     else:
-        my_logger.warning("SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
+        my_logger.warning("Metadata Warning: SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
         return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix, config)
     my_logger.debug(('local', SchemaType, SchemaURI, SchemaLocation + '/' + xml))
     filestring = Alias + SchemaSuffix if xml is None else xml
@@ -442,10 +441,10 @@ def getSchemaDetailsLocal(SchemaType, SchemaURI, config):
         else:
             my_logger.warning("Schema file {} not found in {}".format(filestring, SchemaLocation))
             if Alias == '$metadata':
-                my_logger.warning("If $metadata cannot be found, Annotations may be unverifiable")
+                my_logger.warning("Metadata Warning: If $metadata cannot be found, Annotations may be unverifiable")
     except Exception as ex:
-        my_logger.error("A problem when getting a local schema has occurred {}".format(SchemaURI))
-        my_logger.warning("output: ", exc_info=True)
+        my_logger.error("Metadata Error: A problem when getting a local schema has occurred {}".format(SchemaURI))
+        my_logger.error("output: ", exc_info=True)
     return False, None, None
 
 
@@ -457,10 +456,9 @@ def check_redfish_extensions_alias(name, namespace, alias):
     :return: bool
     """
     if alias is None or alias != 'Redfish':
-        msg = ("In the resource {}, the {} namespace must have an alias of 'Redfish'. The alias is {}. " +
+        msg = ("Metadata Error: In the resource {}, the {} namespace must have an alias of 'Redfish'. The alias is {}. " +
                "This may cause properties of the form [PropertyName]@Redfish.TermName to be unrecognized.")
-        my_logger.error(msg.format(name, namespace,
-                             'missing' if alias is None else "'" + str(alias) + "'"))
+        my_logger.error(msg.format(name, namespace, 'missing' if alias is None else "'" + str(alias) + "'"))
         return False
     return True
 
@@ -484,7 +482,7 @@ def getReferenceDetails(soup, metadata_dict=None, name='xml'):
             uri = ref.get('Uri')
             ns, alias = (item.get(x) for x in ['Namespace', 'Alias'])
             if ns is None or uri is None:
-                my_logger.error("Reference incorrect for: {}".format(item))
+                my_logger.error("Metadata Error: Reference incorrect for: {}".format(item))
                 continue
             if alias is None:
                 alias = ns

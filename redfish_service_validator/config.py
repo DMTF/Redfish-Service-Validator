@@ -48,7 +48,7 @@ def convert_config_to_args(args, config):
             for option in my_config[section]:
                 if option.lower() not in config_options:
                     if option.lower() not in ['version', 'copyright']:
-                        my_logger.error('Option {} not supported!'.format(option), extra={"result": "unsupportedOption"})
+                        my_logger.error('Tool Configuration Error: Option {} not supported!'.format(option), extra={"result": "unsupportedOption"})
                 elif my_config[section][option] not in ['', None]:
                     if option.lower() == 'payload' or option.lower() == 'collectionlimit':
                         setattr(args, option, my_config[section][option].split(' '))

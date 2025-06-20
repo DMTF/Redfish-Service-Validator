@@ -16,6 +16,7 @@ if __name__ == '__main__':
     import os
     import csv
 
+
 # hack in tagnames into module namespace
 tag = SimpleNamespace(**{tagName: lambda string, attr=None, tag=tagName: wrapTag(string, tag=tag, attr=attr)\
     for tagName in ['tr', 'td', 'th', 'div', 'b', 'table', 'body', 'head', 'summary']})
@@ -66,7 +67,7 @@ def applySuccessColor(num, entry):
 def applyInfoSuccessColor(num, entry):
     if any(x in entry for x in ['fail', 'exception', 'error', 'problem', 'err']):
         style = 'class="fail"'
-    elif 'warn' in entry or 'invalid' in entry:
+    elif 'warn' in entry:
         style = 'class="warn"'
     else:
         style = None
@@ -85,7 +86,7 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
             .pass {background-color:#99EE99}\
             .column {\
                 float: left;\
-                width: 33%;\
+                width: 40%;\
             }\
             .fail {background-color:#EE9999}\
             .warn {background-color:#EEEE99}\
@@ -141,19 +142,15 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
     important_block += tag.div(", ".join([
         'Pass: {}'.format(summary['pass']),
         'Fail: {}'.format(summary['error']),
-        'Warning: {}'.format(summary['warning']),
-        'Not Tested: {}'.format(summary['nottested']),
+        'Warning: {}'.format(summary['warning'])
         ]))
     htmlStrBodyHeader += tag.tr(tag.td(important_block, 'class="center"'))
 
     infos = {x: config[x] for x in config if x not in ['systeminfo', 'ip', 'password', 'description']}
     infos_left, infos_right = dict(), dict()
-    infos_mid = dict()
     for key in sorted(infos.keys()):
-        if len(infos_left) <= len(infos_mid):
+        if len(infos_left) <= len(infos_right):
             infos_left[key] = infos[key]
-        elif len(infos_mid) <= len(infos_right):
-            infos_mid[key] = infos[key]
         else:
             infos_right[key] = infos[key]
 
@@ -165,31 +162,10 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
     htmlStrBodyHeader += tag.tr(tag.th(htmlButtons))
 
     block = tag.td(tag.div(infoBlock(infos_left), 'class=\'column log\'') \
-            + tag.div(infoBlock(infos_mid), 'class=\'column log\'')\
             + tag.div(infoBlock(infos_right), 'class=\'column log\''), 
             'id=\'resNumConfig\' class=\'results\'')
 
     htmlStrBodyHeader += tag.tr(block)
-
-    # for k, my_result in results.items():
-    #     warns = [x for x in my_result['records'] if x.levelno == Level.WARN]
-    #     warns_with_msg = [x for x in my_result['records'] if x.result]
-    #     errors = [x for x in my_result['records'] if x.levelno == Level.ERROR]
-    #     errors_with_msg = [x for x in my_result['records'] if x.result]
-    #     if len(errors) and not len(errors_with_msg):
-    #         important_items.append("Errors present in {}".format(my_result['uri']))
-                
-    infos_left, infos_right = dict(), dict()
-    infos_mid = dict()
-    for key in sorted(summary.keys()):
-        if len(infos_left) <= len(infos_mid):
-            infos_left[key] = summary[key]
-        else:
-            infos_right[key] = summary[key]
-    htmlStrCounts = tag.div(infoBlock(infos_left), 'class=\'column log\'') + tag.div(infoBlock(infos_mid), 'class=\'column log\'') + tag.div(infoBlock(infos_right), 'class=\'column log\'')
-
-    htmlStrBodyHeader += tag.tr(tag.td(htmlStrCounts))
-
 
     if service.metadata is not None:
         htmlPage = service.metadata.to_html()
@@ -256,7 +232,6 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
         countsTag = tag.td(infoBlock(my_summary, split='', ffunc=applyInfoSuccessColor), 'class="log"')
 
         rhead = ''.join([buttonTag, infosTag, getTag, countsTag])
-        # rhead = ''.join([buttonTag, infosTag, getTag])
         for x in [('tr',), ('table', 'class=titletable'), ('td', 'class=titlerow'), ('tr')]:
             rhead = wrapTag(''.join(rhead), *x)
         entry.append(rhead)
@@ -264,7 +239,7 @@ def renderHtml(results, tool_version, startTick, nowTick, service):
         # actual table
 
         rows = [list([str(vars(m)[x]) for x in LOG_ENTRY]) for m in my_result['messages'].values()]
-        titles = ['Property Name', 'Value', 'Type', 'Exists', 'Result']
+        titles = ['Name', 'Value', 'Type', 'Exists', 'Result']
         widths = ['20', '30', '25', '5', '10']
         tableHeader = tableBlock(rows, titles, widths, ffunc=applySuccessColor)
 

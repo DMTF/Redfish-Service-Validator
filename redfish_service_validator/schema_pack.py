@@ -35,7 +35,7 @@ def setup_schema_pack(uri, local_dir, http_proxy='', https_proxy=''):
         my_logger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode, expCode, response.headers, elapsed))
         if statusCode in expCode:
             if not zipfile.is_zipfile(BytesIO(response.content)):
-                my_logger.error('This URL did not return a valid zipfile')
+                my_logger.error('Schema Unpacking Error: This URL did not return a valid zipfile')
                 pass
             else:
                 zf = zipfile.ZipFile(BytesIO(response.content))
@@ -50,8 +50,8 @@ def setup_schema_pack(uri, local_dir, http_proxy='', https_proxy=''):
                         item.close()
                 zf.close()
     except Exception as ex:
-        my_logger.error("A problem when getting resource has occurred {}".format(uri))
-        my_logger.warning("output: ", exc_info=True)
+        my_logger.error("Schema Unpacking Error: A problem when getting resource has occurred {}".format(uri))
+        my_logger.error("output: ", exc_info=True)
     return True
 
 

@@ -2,8 +2,6 @@
 # Copyright 2016-2024 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
-from collections import Counter, OrderedDict
-
 import logging
 
 from redfish_service_validator.catalog import REDFISH_ABSENT, MissingSchemaError, ExcerptTypes, get_fuzzy_property, RedfishObject, RedfishType
@@ -33,31 +31,31 @@ def validateExcerpt(prop, val):
             valid_tagging = any([x in my_excerpt_tags for x in innerprop.Type.excerptTags]) or innerprop.Type.excerptTags == []
             if my_excerpt_type == ExcerptTypes.NEUTRAL:
                 if innerprop.Type.excerptType == [ExcerptTypes.EXCLUSIVE] and innerprop.Exists:
-                    my_logger.error('{}: Exclusive Excerpt {} should not exist in this Resource/ComplexType'.format(prop.Name, innerprop.Name))
+                    my_logger.error('Excerpt Exclusivity Error: Exclusive Excerpt Property {} should not exist in Resource/ComplexType {}'.format(innerprop.Name, prop.Name))
                     return False
             if my_excerpt_type == ExcerptTypes.CONTAINS:
                 if innerprop.Type.excerptType in [ExcerptTypes.ALLOWED, ExcerptTypes.EXCLUSIVE, ExcerptTypes.CONTAINS]:
                     if innerprop.Exists and not valid_tagging:
-                        my_logger.error('{}: Excerpt tags of owner {} do not match property {} {}'.format(innerprop.Name, prop.Name, my_excerpt_tags, innerprop.Type.excerptTags))
+                        my_logger.error('Excerpt Tag Error: {} is incorrect, Excerpt tags of owner {} do not match property {} {}'.format(innerprop.Name, prop.Name, my_excerpt_tags, innerprop.Type.excerptTags))
                         return False
                 elif innerprop.Exists:
-                    my_logger.error('{}: Property is not a valid Excerpt'.format(innerprop.Name))
+                    my_logger.error('Excerpt Property Error: {} is not a valid Excerpt'.format(innerprop.Name))
                     return False
 
     # check our prop if it's EXCLUSIVE
     if prop.Type.excerptType == ExcerptTypes.EXCLUSIVE and prop.Exists:
-        my_logger.error('{}: Exclusive Excerpt should not exist in a Resource/Complex'.format(prop.Name))
+        my_logger.error('Excerpt Exclusivity Error: Exclusive Excerpt {} should not exist in a Resource/Complex'.format(prop.Name))
         return False
 
     return True
 
 
 def validateAction(act_fulltype, actionDecoded, all_actions):
-    actionMessages = OrderedDict()
+    actionMessages = {}
     act_namespace, act_type = getNamespace(act_fulltype.strip('#')), getType(act_fulltype)
     actPass = True
     if act_type not in all_actions:
-        my_logger.error('Action {} does not exist in Namespace {}'.format(act_type, act_namespace), extra={"result": "errorActionBadName"})
+        my_logger.error('Action Resolution Error: Action {} does not exist in Namespace {}'.format(act_type, act_namespace))
         actionMessages[act_fulltype] = (
                 'Action', '-',
                 'Yes' if actionDecoded != REDFISH_ABSENT else 'No',
@@ -68,30 +66,30 @@ def validateAction(act_fulltype, actionDecoded, all_actions):
         if actionDecoded == REDFISH_ABSENT:
             if not actOptional:
                 actPass = False
-                my_logger.error('{}: Mandatory action missing'.format(act_fulltype), extra={"result": "failMandatoryAction"})
+                my_logger.error('Mandatory Action Error: {} is missing'.format(act_fulltype))
         if actionDecoded != REDFISH_ABSENT:
             # validate target
             target = actionDecoded.get('target')
             if target is None:
                 actPass = False
-                my_logger.error('{}: target for action is missing'.format(act_fulltype), extra={"result": "failTargetMissing"})
+                my_logger.error('Action Target Error: target for action {} is missing'.format(act_fulltype))
             elif not isinstance(target, str):
                 actPass = False
-                my_logger.error('{}: target for action is malformed'.format(act_fulltype), extra={"result": "failMalformedAction"})
+                my_logger.error('Action Target Error: target for action {} is malformed'.format(act_fulltype))
             # check for unexpected properties
             for ap_name in actionDecoded:
                 expected = ['target', 'title', '@Redfish.ActionInfo', '@Redfish.OperationApplyTimeSupport']
                 expected_patterns = ['@Redfish.AllowableValues', '@Redfish.AllowableNumbers', '@Redfish.AllowablePattern']
                 if ap_name not in expected and not any(pattern in ap_name for pattern in expected_patterns):
                     actPass = False
-                    my_logger.error('{}: Property "{}" is not allowed in actions property. ' \
-                        'Allowed properties are {}, {}'.format(act_fulltype, ap_name, ', '.join(expected), ', '.join(expected_patterns)), extra={"result": "errorPropNotAllowed"})
+                    my_logger.error('Action AdditionalProperty Error: {}... property "{}" is not allowed in actions property. ' \
+                        'Allowed properties are {}, {}'.format(act_fulltype, ap_name, ', '.join(expected), ', '.join(expected_patterns)))
         if actOptional and actPass:
-            my_logger.verbose1('Optional Action PASS...', extra={"result": "optionalAction"})
+            my_logger.verbose1('Optional Action PASS...', extra={"result": 'passAction'})
         elif actPass:
-            my_logger.verbose1('Action PASS...', extra={"result": "passAction"})
+            my_logger.verbose1('Action PASS...' , extra={"result": 'passAction'})
         else:
-            my_logger.error('Action {} FAIL...'.format("act_fulltype"), extra={"result": "failAction"})
+            my_logger.error('Action Test Error: {} FAIL...'.format("act_fulltype"))
             
         actionMessages[act_fulltype] = (
                 'Action', '-',
@@ -120,7 +118,7 @@ def validateEntity(service, prop, val, parentURI=""):
             uri = parentURI + '/{}'.format(name)
 
         if excerptType == ExcerptTypes.NEUTRAL:
-            my_logger.error("{}: EntityType resource does not contain required @odata.id property, attempting default {}".format(name, uri))
+            my_logger.error("Missing OdataId Error: EntityType resource {} does not contain required @odata.id property, attempting default {}".format(name, uri))
             if parentURI == "":
                 return False
         else:
@@ -152,22 +150,22 @@ def validateEntity(service, prop, val, parentURI=""):
         try:
             my_target_schema = prop.Type.catalog.getSchemaDocByClass(getNamespaceUnversioned(my_target_type))
         except MissingSchemaError:
-            my_logger.error("{}: Could not get schema file for Entity check".format(name))
+            my_logger.error("Entity Schema Error: Could not get schema file for Entity check on {}".format(name))
             return False
 
         if getNamespace(my_target_type) not in my_target_schema.classes:
-            my_logger.error('{}: Linked resource reports version {} not in Schema'.format(name.split(':')[-1], my_target_type))
+            my_logger.error('Entity Version Error: Linked resource {} reports version {} not in Schema'.format(name.split(':')[-1], my_target_type))
         else:
             my_target_type = my_target_schema.getTypeInSchemaDoc(my_target_type)
             all_target_types = [str(x) for x in my_target_type.getTypeTree()]
             expect_type = stripCollection(prop.Type.fulltype)
             if expect_type not in all_target_types and my_target_type != 'Resource.Item':
-                my_logger.error('{}: Linked resource is not the correct type; found {}, expected {}' .format(name.split(':')[-1], my_target_type, expect_type))
+                my_logger.error('Entity Type Error: Linked resource {} is not the correct type; found {}, expected {}' .format(name.split(':')[-1], my_target_type, expect_type))
                 return False
             elif any(x in my_type_chain for x in all_target_types):
                 return True
             else:
-                my_logger.error('{}: Linked resource reports version {} not in Typechain' .format(name.split(':')[-1], my_target_type))
+                my_logger.error('Entity Version Error: Linked resource {} reports version {} not in Typechain' .format(name.split(':')[-1], my_target_type))
                 return False
     else:
         if excerptType == ExcerptTypes.NEUTRAL:
@@ -177,7 +175,7 @@ def validateEntity(service, prop, val, parentURI=""):
                 return True
 
             else:
-                my_logger.error("{}: GET of resource at URI {} returned HTTP {}. Check URI."
+                my_logger.error("Entity Get Error: GET of resource {} at URI {} returned HTTP {}. Check URI."
                                 .format(name, uri, status if isinstance(status, int) and status >= 200 else "error"))
                 return False
         else:
@@ -186,7 +184,7 @@ def validateEntity(service, prop, val, parentURI=""):
 
 
 def validateComplex(service, sub_obj, prop_name, oem_check=True):
-    subMsgs = OrderedDict()
+    subMsgs = {}
 
     # Based on the object's properties, see if we need to insert a pattern to verify the contents
     # At this time, only the Identifier object has this type of check to ensure the DurableName matches the long description
@@ -208,7 +206,7 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
         if not sub_prop.HasSchema and not sub_prop.Exists:
             continue
         elif not sub_prop.HasSchema:
-            my_logger.error('No Schema for sub_property {}'.format(sub_prop.Name), extra={"result": "errorNoSchema"})
+            my_logger.error('Missing Schema Error: No Schema for sub_property {}'.format(sub_prop.Name))
             continue
         new_msgs = checkPropertyConformance(service, sub_name, sub_prop)
         subMsgs.update(new_msgs)
@@ -220,18 +218,18 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
             # note: extra subMsgs for "unchecked" properties
             item = jsonData.get(key)
             if not allowAdditional:
-                my_logger.error('{} not defined in Complex {} {} (check version, spelling and casing)'
-                                .format(key, prop_name, sub_obj.Type), extra={"result": "failAdditional.complex"})
+                my_logger.error('Additional Property Error: {} not defined in Complex {} {} (check version, spelling and casing)'
+                                .format(key, prop_name, sub_obj.Type))
                 subMsgs[key] = (displayValue(item), '-', '-', 'FAIL')
             else:
-                my_logger.warning('{} not defined in schema Complex {} {} (check version, spelling and casing)'
-                                .format(key, prop_name, sub_obj.Type), extra={"result": "unverifiedAdditional.complex"})
+                my_logger.warning('Additional Property Warning: {} not defined in schema Complex {} {} (check version, spelling and casing)'
+                                .format(key, prop_name, sub_obj.Type))
                 subMsgs[key] = (displayValue(item), '-', '-', 'Additional')
             
             fuzz = get_fuzzy_property(key, sub_obj.properties)
             if fuzz != key and fuzz in sub_obj.properties:
                 subMsgs[fuzz] = ('-', '-', '-', 'INVALID')
-                my_logger.error('Attempting {} (from {})?'.format(fuzz, key), extra={"result": 'invalidNamedProperty.complex'})
+                my_logger.error('Invalid Property Error: Property {} was not found, attempting to test {} instead'.format(key, fuzz))
                 my_new_obj = sub_obj.properties[fuzz].populate(item)
                 new_msgs = checkPropertyConformance(service, key, my_new_obj)
                 subMsgs.update(new_msgs)
@@ -239,10 +237,10 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
     successPayload, odataMessages = checkPayloadConformance(sub_obj.Value, '')
 
     if not successPayload:
-        my_logger.error('{}: complex payload error, @odata property non-conformant'.format(str(sub_obj.Name)), extra={"result": "failPayloadError.complex"})
+        my_logger.error('Object OData Error: complex payload {} error, @odata property non-conformant'.format(str(sub_obj.Name)))
 
     if prop_name == 'Actions':
-        actionMessages = OrderedDict()
+        actionMessages = {}
 
         # Get our actions from the object itself to test
         # Action Namespace.Type, Action Object
@@ -260,7 +258,7 @@ def validateComplex(service, sub_obj, prop_name, oem_check=True):
                 act_schema = sub_obj.Type.catalog.getSchemaDocByClass(getNamespace(act_name))
                 act_class = act_schema.classes.get(getNamespace(act_name))
             except:
-                my_logger.warning('Schema not found for action {}'.format(act_name))
+                my_logger.warning('Action Resolution Warning: Schema not found for action {}'.format(act_name))
                 continue
 
             a = validateAction(act_name, actionDecoded, act_class.actions)
@@ -372,7 +370,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     :param parentURI:
     """
 
-    resultList = OrderedDict()
+    resultList = {}
 
     my_logger.verbose1(prop_name)
     my_logger.verbose1("\tvalue: {} {}".format(prop.Value, type(prop.Value)))
@@ -384,10 +382,10 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
     if not prop.SchemaExists:
         if not prop.Exists:
-            my_logger.verbose1('{}: Item is skipped, no schema'.format(prop_name), extra={"result": "skipNoSchema"})
+            my_logger.verbose1('{}: Item is skipped, no schema'.format(prop_name))
             return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'NoSchema')}
         else:
-            my_logger.error('{}: Item is present, but no schema found'.format(prop_name), extra={"result": "failNoSchema"})
+            my_logger.error('Missing Schema Error: Item {} is present, but no schema found'.format(prop_name))
             return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'FAIL')}
 
     # check oem
@@ -396,7 +394,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
     if not oem_check:
         if 'Oem' in prop_name or 'Resource.OemObject' in prop.Type.getTypeTree():
-            my_logger.verbose1('\tOem is skipped', extra={"result": "skipOem"})
+            my_logger.verbose1('\tOem is skipped')
             return {prop_name: ('-', '-', 'Yes' if prop.Exists else 'No', 'OEM')}
 
     # Parameter Passes
@@ -406,7 +404,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
         propMandatoryPass = True if prop.Exists else False
         my_logger.verbose1("\tMandatory Test: {}".format('OK' if propMandatoryPass else 'FAIL'))
         if not propMandatoryPass:
-            my_logger.error("{}: Mandatory prop does not exist".format(prop_name), extra={"result": "failMandatoryExist"})
+            my_logger.error("Mandatory Property Error: Mandatory prop {} does not exist".format(prop_name))
     else:
         my_logger.verbose1("\tis Optional")
         if not prop.Exists:
@@ -416,7 +414,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     # <Annotation Term="Redfish.Deprecated" String="This property has been Deprecated in favor of Thermal.v1_1_0.Thermal.Fan.Name"/>
     if prop.Type.Deprecated is not None and not prop.Type.IsMandatory:
         deprecatedPassOrSinceVersion = False
-        my_logger.warning('{}: The given property is deprecated: {}'.format(prop_name, prop.Type.Deprecated.get('String', '')), extra={"result": "warnDeprecated"})
+        my_logger.warning('Deprecated Property Warning: The given property {} is deprecated: {}'.format(prop_name, prop.Type.Deprecated.get('String', '')))
 
     if prop.Type.Revisions is not None:
         for tag_item in prop.Type.Revisions:
@@ -426,9 +424,9 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 version_tag = tag_item.find('PropertyValue', attrs={'Property': 'Version'})
                 deprecatedPassOrSinceVersion = version_tag.attrs.get('String', False) if version_tag else False
                 if desc_tag:
-                    my_logger.warning('{}: The given property is deprecated: {}'.format(prop_name, desc_tag.attrs.get('String', '')), extra={"result": "warnDeprecated"})
+                    my_logger.warning('Deprecated Property Warning: The given property {} is deprecated: {}'.format(prop_name, desc_tag.attrs.get('String', '')))
                 else:
-                    my_logger.warning('{}: The given property is deprecated'.format(prop_name), extra={"result": "warnDeprecated"})
+                    my_logger.warning('Deprecated Property Warning: The given property {} is deprecated'.format(prop_name))
 
     # Note: consider http://docs.oasis-open.org/odata/odata-csdl-xml/v4.01/csprd01/odata-csdl-xml-v4.01-csprd01.html#_Toc472333112
     # Note: make sure it checks each one
@@ -437,7 +435,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
     excerptPass = True
     if not isCollection and isinstance(prop.Value, list): 
-        my_logger.error('{}: Value of property is an array but is not a Collection'.format(prop_name), extra={"result": "failInvalidArray"})
+        my_logger.error('Payload Value Error: Value of property {} is an array but is not a Collection'.format(prop_name))
         return {prop_name: ('-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')}
 
     if isCollection and prop.Value is None:
@@ -448,7 +446,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
             propNullable = True
             resultList[prop_name] = ('Array (size: null)', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', '...')
         else:
-            my_logger.error('{}: Value of Collection property is null but Collections cannot be null, only their entries'.format(prop_name), extra={"result": "failNullCollection"})
+            my_logger.error('Collection Null Error: Value of Collection {} is null but Collections cannot be null, only their entries'.format(prop_name))
             return {prop_name: ( '-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')}
     elif isCollection and prop.Value is not None:
         # note: handle collections correctly, this needs a nicer printout
@@ -462,7 +460,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 displayType(prop.Type, is_collection=True),
                 'Yes' if prop.Exists else 'No', 'PASS' if propMandatoryPass else 'FAIL')
         elif not isinstance(prop.Value, list):
-            my_logger.error('{}: property is expected to contain an array'.format(prop_name), extra={"result": "failInvalidArray"})
+            my_logger.error('Payload Value Error: property {} is expected to contain an array'.format(prop_name))
             resultList[prop_name] = ('-', displayType(prop.Type, is_collection=True), 'Yes' if prop.Exists else 'No', 'FAIL')
             return resultList
         else:
@@ -472,7 +470,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
     if propRealType == 'complex':
         result_str = 'complex'
         if prop.Type.IsMandatory and not prop.Exists:
-            my_logger.error("{}: Mandatory prop does not exist".format(prop_name), extra={"result": "failMandatoryExist"})
+            my_logger.error("Mandatory Property Error: Mandatory prop {} does not exist".format(prop_name))
             result_str = 'FAIL'
 
         if not prop.Exists:
@@ -490,10 +488,10 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 if sub_obj.Value is None:
                     if prop.Type.IsNullable or 'EventDestination.v1_0_0.HttpHeaderProperty' == str(prop.Type.fulltype):
                         # HttpHeaders in EventDestination has non-conformant details in the long description we need to allow to not break existing implementations
-                        my_logger.verbose1("HttpHeader can be nullable", extra={"result": 'pass'})
+                        my_logger.verbose1("HttpHeader can be nullable")
                         result_str = 'PASS'
                     else:
-                        my_logger.error('{}: Property is null but is not Nullable'.format(prop_name), extra={"result": "failNullable"})
+                        my_logger.error('Property Nullable Error: Property is null but is not Nullable'.format(prop_name))
                         result_str = 'FAIL'
                     if isinstance(prop, RedfishObject):
                         resultList['{}.[Value]'.format(prop_name)] = ('[null]', displayType(prop.Type),
@@ -511,7 +509,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                     resultList.update(subMsgs)
             except Exception as ex:
                 my_logger.verbose1('Exception caught while validating Complex', exc_info=1)
-                my_logger.error('{}: Could not finish check on this property ({})'.format(prop_name, str(ex)), extra={"result": "exceptionProperty"})
+                my_logger.error('Property Exception Error: Could not finish check on {} ({})'.format(prop_name, str(ex)))
         return resultList
 
     # Everything else...
@@ -525,7 +523,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 if prop.Type.TypeName in service.config['collectionlimit']:
                     link_limit = service.config['collectionlimit'][prop.Type.TypeName]
                     if cnt >= link_limit:
-                        my_logger.verbose1('Removing link check via limit: {} {}'.format(prop.Type.TypeName, val), extra={"result": "nottested"})
+                        my_logger.verbose1('Removing link check via limit: {} {}'.format(prop.Type.TypeName, val))
                         resultList[sub_item] = (
                                 displayValue(val, sub_item if prop.IsAutoExpanded else None), displayType(prop.Type),
                                 'Yes' if prop.Exists else 'No', 'NOT TESTED')
@@ -533,14 +531,14 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
             excerptPass = validateExcerpt(prop, val)
             if not excerptPass:
-                my_logger.error('{}: Excerpt is incorrectly implemented'.format(sub_item), extra={"result": "errorExcerpt"})
+                my_logger.error('Excerpt Implementation Error: Excerpt {} is incorrectly implemented'.format(sub_item))
 
             if isinstance(val, str):
                 if val == '' and prop.Type.Permissions == 'OData.Permission/Read':
-                    my_logger.warning('{}: Empty string found - Services should omit properties if not supported'.format(sub_item), extra={"result": "invalidPropertyValue"})
+                    my_logger.warning('Improper Value Warning: Empty string found in {} - Services should omit properties if not supported'.format(sub_item))
                     nullValid = False
                 if val.lower() == 'null':
-                    my_logger.warning('{}: "null" string found - Did you mean to use an actual null value?'.format(sub_item), extra={"result": "invalidPropertyValue"})
+                    my_logger.warning('Improper Value Warning: "null" string found in {} - Did you mean to use an actual null value?'.format(sub_item))
                     nullValid = False
 
             if prop.Exists:
@@ -549,26 +547,26 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 #   <Annotation Term="OData.Permissions" EnumMember="OData.Permission/ReadWrite"/>
                 if prop.Type.Permissions == "OData.Permission/Write" or prop.Type.Permissions == "OData.Permission/None":
                     if val is not None:
-                        my_logger.error('{}: Permissions for this property are Write only, reading this property should be null!!!'.format(sub_item), extra={"result": "failWriteOnly"})
+                        my_logger.error('ReadPermission Value Error: Permissions for this property are Write only, reading this property should be null!!!'.format(sub_item))
 
                 if val is None:
                     if propNullable:
                         my_logger.debug('Property {} is nullable and is null, so Nullable checking passes'.format(sub_item))
                     else:
-                        my_logger.error('{}: Property is null but is not Nullable'.format(sub_item), extra={"result": "failNullable"})
+                        my_logger.error('Property Nullable Error: Property {} is null but is not Nullable'.format(sub_item))
                         propNullablePass = False
                 
                 if isinstance(prop.Type, str) and 'Edm.' in prop.Type:
                     try:
                         paramPass = prop.Exists and prop.validate_basic(val, prop.Type)
                     except ValueError as e:
-                        my_logger.error('{}: {}'.format(prop.Name, e))  # log this
+                        my_logger.error('ValueError: {} {}'.format(prop.Name, e))  # log this
                         paramPass = False
                 elif isinstance(prop.Type, RedfishType):
                     try:
                         paramPass = prop.Type.validate(val, prop.added_pattern)
                     except ValueError as e:
-                        my_logger.error('{}: {}'.format(prop.Name, e))  # log this
+                        my_logger.error('ValueError: {} {}'.format(prop.Name, e))  # log this
                         paramPass = False
 
                 if propRealType == 'entity':
@@ -576,7 +574,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
 
             # Render our result
             if not paramPass and prop.Type.IsMandatory:
-                my_logger.verbose1("\tMandatory prop has failed...", extra={"result": 'failMandatory'})
+                my_logger.verbose1("\tMandatory prop has failed...")
 
             if all([paramPass, propMandatoryPass, propNullablePass, excerptPass, permissionValid]):
                 my_logger.verbose1("\tSuccess", extra={"result": 'pass'})
@@ -588,7 +586,7 @@ def checkPropertyConformance(service, prop_name, prop, parent_name=None, parent_
                 if not nullValid:
                     result_str = 'WARN'
             else:
-                my_logger.error("\tFAIL", extra={"result": 'fail.' + str(prop.Type.fulltype)})
+                my_logger.error("Property Validation Error: {}".format(sub_item))
                 result_str = 'FAIL'
 
             resultList[sub_item] = (

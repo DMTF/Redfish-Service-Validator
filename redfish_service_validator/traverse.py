@@ -56,7 +56,7 @@ class rfService():
         # Log into the service
         if not self.config['usessl'] and not self.config['forceauth']:
             if self.config['username'] not in ['', None] or self.config['password'] not in ['', None]:
-                my_logger.warning('Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
+                my_logger.warning('Authentication Credentials Warning: Attempting to authenticate on unchecked http/https protocol is insecure, if necessary please use ForceAuth option.  Clearing auth credentials...')
                 self.config['username'] = ''
                 self.config['password'] = ''
         rhost, user, passwd = self.config['configuri'], self.config['username'], self.config['password']
@@ -96,17 +96,17 @@ class rfService():
         # get Version
         success, data, response, delay = self.callResourceURI('/redfish/v1')
         if not success:
-            my_logger.warning('Could not get ServiceRoot')
+            my_logger.warning('Service Warning: Could not get ServiceRoot')
         else:
             if 'RedfishVersion' not in data:
-                my_logger.warning('Could not get RedfishVersion from ServiceRoot')
+                my_logger.warning('Service Warning: Could not get RedfishVersion from ServiceRoot')
             else:
                 my_logger.info('Redfish Version of Service: {}'.format(data['RedfishVersion']))
                 target_version = data['RedfishVersion']
         if target_version in ['1.0.0', 'n/a']:
-            my_logger.warning('!!Version of target may produce issues!!')
+            my_logger.warning('Service Version Warning: !!Version of target may produce issues!!')
         if splitVersionString(target_version) < splitVersionString('1.6.0') and not self.config['uricheck']:
-            my_logger.warning('RedfishVersion below 1.6.0, disabling uri checks')
+            my_logger.warning('Service Version Warning: RedfishVersion below 1.6.0, disabling uri checks')
             self.catalog.flags['ignore_uri_checks'] = True
         else:
             self.catalog.flags['ignore_uri_checks'] = False
@@ -131,7 +131,7 @@ class rfService():
         # rs-assertion: require no auth for serviceroot calls
         # TODO: Written with "success" values, should replace with Exception and catches
         if link_uri is None:
-            my_logger.warning("This URI is empty!")
+            my_logger.warning("URI Request Warning: Supplied URI is empty!")
             return False, None, None, 0
         
         config = self.config
@@ -206,7 +206,7 @@ class rfService():
             if statusCode in [200]:
                 contenttype = response.getheader('content-type')
                 if contenttype is None:
-                    my_logger.error("Content-type not found in header: {}".format(link_uri))
+                    my_logger.error("Missing ContentType Error: Content-type not found in header: {}".format(link_uri))
                     contenttype = ''
                 if 'application/json' in contenttype:
                     my_logger.debug("This is a JSON response")
@@ -215,19 +215,16 @@ class rfService():
                     # navigate fragment
                     decoded = navigateJsonFragment(decoded, link_uri)
                     if decoded is None:
-                        my_logger.error(
-                                "The JSON pointer in the fragment of this URI is not constructed properly: {}".format(link_uri))
+                        my_logger.error("JSON Pointer Error: The JSON pointer in the fragment of this URI is not constructed properly: {}".format(link_uri))
                 elif 'application/xml' in contenttype:
                     decoded = response.text
                 elif 'text/xml' in contenttype:
                     # non-service schemas can use "text/xml" Content-Type
                     if inService:
-                        my_logger.warning(
-                                "Incorrect content type 'text/xml' for file within service {}".format(link_uri))
+                        my_logger.warning("Response ContentType Warning: Incorrect content type 'text/xml' for file within service {}".format(link_uri))
                     decoded = response.text
                 else:
-                    my_logger.error(
-                            "This URI did NOT return XML or Json contenttype, is this not a Redfish resource (is this redirected?): {}".format(link_uri))
+                    my_logger.error("Redfish Response Error: This URI did NOT return XML or Json contenttype, is this not a Redfish resource (is this redirected?): {}".format(link_uri))
                     decoded = None
                     if isXML:
                         my_logger.info('Attempting to interpret as XML')
@@ -253,7 +250,7 @@ class rfService():
         except AuthenticationError as e:
             raise e  # re-raise exception
         except Exception as e:
-            my_logger.error("A problem when getting resource {} has occurred: {}".format(link_uri, repr(e)))
+            my_logger.warning("A problem when getting resource {} has occurred: {}".format(link_uri, repr(e)))
             my_logger.debug("output: ", exc_info=True)
             if response and response.text:
                 my_logger.debug("payload: {}".format(response.text))
