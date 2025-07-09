@@ -75,7 +75,8 @@ class rfService():
             if self.config['ext_http_proxy'] != '': self.ext_proxies['http'] = self.config['ext_http_proxy']
             if self.config['ext_https_proxy'] != '': self.ext_proxies['https'] = self.config['ext_https_proxy']
         self.context = rf.redfish_client(base_url=rhost, username=user, password=passwd, timeout=self.config['requesttimeout'], max_retry=self.config['requestattempts'], proxies=proxies)
-        self.context.login( auth = self.config['authtype'].lower() )
+        if self.config['no_login_required']:
+            self.context.login(auth=self.config['authtype'].lower())
 
         # Go through $metadata and download any additional schema files needed
         success, data, response, delay = self.callResourceURI(Metadata.metadata_uri)

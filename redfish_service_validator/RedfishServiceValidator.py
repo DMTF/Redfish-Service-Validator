@@ -82,6 +82,7 @@ def validate(argslist=None, configfile=None):
     argget.add_argument('--collectionlimit', type=str, default=['LogEntry', '20'], help='apply a limit to collections (format: RESOURCE1 COUNT1 RESOURCE2 COUNT2...)', nargs='+')
     argget.add_argument('--requesttimeout', type=int, default=10, help='Timeout in seconds for HTTP requests waiting for response')
     argget.add_argument('--requestattempts', type=int, default=10, help='Number of attempts after failed HTTP requests')
+    argget.add_argument('--no-login-required', action='store_true', help='Login is not required if this flag is set')
 
     # parse...
     args = argget.parse_args(argslist)
