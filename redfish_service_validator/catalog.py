@@ -1082,7 +1082,16 @@ class RedfishObject(RedfishProperty):
             base = super().as_json()
             base.update({'Properties': {a: b.as_json() for a, b in self.properties.items()}})
             return base
-
+        
+    def act_iterator(self, actions_dict):
+        for key, value in actions_dict.items():
+            if key.startswith("#"):
+                yield value
+            elif key == "Oem":
+                for oem_key, oem_value in value.items():
+                    if oem_key.startswith("#"):
+                        yield oem_value
+                        
     def getLinks(self, collectionlimit={}):
         """Grab links from our Object
         """
@@ -1098,13 +1107,13 @@ class RedfishObject(RedfishProperty):
                     if not isinstance(item.Type, RedfishType): continue
                     if n == 'Actions':
                         new_type = item.Type.catalog.getTypeInCatalog('ActionInfo.ActionInfo')
-                        for act in item.Value.values():
-                            if isinstance(act, dict):
-                                uri = act.get('@Redfish.ActionInfo')
-                                if isinstance(uri, str):
-                                    my_link = RedfishObject(new_type, 'ActionInfo', item).populate({'@odata.id': uri})
-                                    my_link.InAnnotation = True
-                                    links.append(my_link)
+                        act_iter = self.act_iterator(item.Value)
+                        for act in act_iter:
+                            uri = act.get('@Redfish.ActionInfo')
+                            if isinstance(uri, str):
+                                my_link = RedfishObject(new_type, 'ActionInfo', item).populate({'@odata.id': uri})
+                                my_link.InAnnotation = True
+                                links.append(my_link)
                     if item.Type.IsNav:
                         if isinstance(item.Value, list):
                             for num, val in enumerate(item.Value):
