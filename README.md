@@ -1,4 +1,4 @@
-Copyright 2016-2024 DMTF.  All rights reserved.
+Copyright 2016-2025 DMTF.  All rights reserved.
 
 # Redfish Service Validator
 

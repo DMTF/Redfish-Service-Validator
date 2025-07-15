@@ -1,5 +1,8 @@
 # Change Log
 
+## [2.5.0] - 2025-05-16
+- Corrected regex pattern for date-time properties
+
 ## [2.4.9] - 2024-09-27
 - Added 'requesttimeout' and 'requestattempts' arguments
 

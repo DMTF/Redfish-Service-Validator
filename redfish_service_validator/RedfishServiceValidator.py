@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2016-2024 DMTF. All rights reserved.
+# Copyright 2016-2025 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 import sys
@@ -16,7 +16,7 @@ from redfish_service_validator.config import convert_config_to_args, convert_arg
 from redfish_service_validator.validateResource import validateSingleURI, validateURITree
 from redfish_service_validator import tohtml, schema_pack, traverse, logger
 
-tool_version = '2.4.9'
+tool_version = '2.5.0'
 
 def validate(argslist=None, configfile=None):
     """Main command
