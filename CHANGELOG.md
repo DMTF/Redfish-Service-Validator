@@ -1,5 +1,10 @@
 # Change Log
 
+## [2.5.1] - 2025-07-15
+- Cleaned up error and warning reporting
+- Added test results summary to the top of the results file
+- Added support for validating 'ActionInfo' for OEM actions
+
 ## [2.5.0] - 2025-05-16
 - Corrected regex pattern for date-time properties
 
