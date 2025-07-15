@@ -2,56 +2,28 @@
 # Copyright 2016-2025 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
-import os
 import sys
+import os
 import argparse
 import logging
 import json
 from datetime import datetime
-import traceback
-from redfish_service_validator.metadata import getSchemaDetails
-from redfish_service_validator.config import convert_config_to_args, convert_args_to_config
-from redfish_service_validator.validateResource import validateSingleURI, validateURITree
-from redfish_service_validator import tohtml, schema_pack, traverse
 from urllib.parse import urlparse
 from collections import Counter
 
+from redfish_service_validator.metadata import getSchemaDetails
+from redfish_service_validator.config import convert_config_to_args, convert_args_to_config
+from redfish_service_validator.validateResource import validateSingleURI, validateURITree
+from redfish_service_validator import tohtml, schema_pack, traverse, logger
+
 tool_version = '2.5.0'
-
-# Set up the custom debug levels
-VERBOSE1 = logging.INFO-1
-VERBOSE2 = logging.INFO-2
-
-logging.addLevelName(VERBOSE1, "VERBOSE1")
-logging.addLevelName(VERBOSE2, "VERBOSE2")
-
-
-def print_verbose_1(self, msg, *args, **kwargs):
-    if self.isEnabledFor(VERBOSE1):
-        self._log(VERBOSE1, msg, args, **kwargs)
-
-
-def print_verbose_2(self, msg, *args, **kwargs):
-    if self.isEnabledFor(VERBOSE2):
-        self._log(VERBOSE2, msg, args, **kwargs)
-        
-
-logging.Logger.verbose1 = print_verbose_1
-logging.Logger.verbose2 = print_verbose_2
-
-my_logger = logging.getLogger()
-my_logger.setLevel(logging.DEBUG)
-standard_out = logging.StreamHandler(sys.stdout)
-standard_out.setLevel(logging.INFO)
-my_logger.addHandler(standard_out)
-
 
 def validate(argslist=None, configfile=None):
     """Main command
 
     Args:
         argslist ([type], optional): List of arguments in the form of argv. Defaults to None.
-    """    
+    """
     argget = argparse.ArgumentParser(description='DMTF tool to test a service against a collection of Schema, version {}'.format(tool_version))
 
     # base tool
@@ -90,20 +62,22 @@ def validate(argslist=None, configfile=None):
         configfile = args.config
 
     # set logging file
-    startTick = datetime.now()
+    start_tick = datetime.now()
 
-    standard_out.setLevel(logging.INFO - args.verbose if args.verbose < 3 else logging.DEBUG)
+    logger.set_standard_out(logger.Level.INFO - args.verbose if args.verbose < 3 else logger.Level.DEBUG)
 
     logpath = args.logdir
 
     if not os.path.isdir(logpath):
         os.makedirs(logpath)
 
-    fmt = logging.Formatter('%(levelname)s - %(message)s')
-    file_handler = logging.FileHandler(datetime.strftime(startTick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt")))
-    file_handler.setLevel(min(logging.INFO if not args.debugging else logging.DEBUG, standard_out.level))
-    file_handler.setFormatter(fmt)
-    my_logger.addHandler(file_handler)
+    log_level = logger.Level.INFO if not args.debugging else logger.Level.DEBUG
+    file_name = datetime.strftime(start_tick, os.path.join(logpath, "ConformanceLog_%m_%d_%Y_%H%M%S.txt"))
+
+    logger.create_logging_file_handler(log_level, file_name)
+
+    my_logger = logging.getLogger('rsv')
+    my_logger.setLevel(logging.DEBUG)
 
     # begin logging
     my_logger.info("Redfish Service Validator, version {}".format(tool_version))
@@ -111,7 +85,7 @@ def validate(argslist=None, configfile=None):
 
     # config verification
     if args.ip is None and configfile is None:
-        my_logger.error('No IP or Config Specified')
+        my_logger.error('Configuration Error: No IP or Config Specified')
         argget.print_help()
         return 1, None, 'Configuration Incomplete'
 
@@ -119,29 +93,29 @@ def validate(argslist=None, configfile=None):
         convert_config_to_args(args, configfile)
     else:
         my_logger.info('Writing config file to log directory')
-        configfilename = datetime.strftime(startTick, os.path.join(logpath, "ConfigFile_%m_%d_%Y_%H%M%S.ini"))
+        configfilename = datetime.strftime(start_tick, os.path.join(logpath, "ConfigFile_%m_%d_%Y_%H%M%S.ini"))
         my_config = convert_args_to_config(args)
         with open(configfilename, 'w') as f:
             my_config.write(f)
 
-    scheme, netloc, path, params, query, fragment = urlparse(args.ip)
+    scheme, netloc, _path, _params, _query, _fragment = urlparse(args.ip)
     if scheme not in ['http', 'https', 'http+unix']:
-        my_logger.error('IP is missing http or https or http+unix')
+        my_logger.error('Configuration Error: IP is missing http or https or http+unix')
         return 1, None, 'IP Incomplete'
 
     if netloc == '':
-        my_logger.error('IP is missing ip/host')
+        my_logger.error('Configuration Error: IP is missing ip/host')
         return 1, None, 'IP Incomplete'
 
     if len(args.collectionlimit) % 2 != 0:
-        my_logger.error('Collection Limit requires two arguments per entry (ResourceType Count)')
+        my_logger.error('Configuration Error: Collection Limit requires two arguments per entry (ResourceType Count)')
         return 1, None, 'Collection Limit Incomplete'
 
     # start printing config details, remove redundant/private info from print
-    my_logger.info('Target URI: ' + args.ip)
+    my_logger.info('Target URI: {}'.format(args.ip))
     my_logger.info('\n'.join(
         ['{}: {}'.format(x, vars(args)[x] if x not in ['password'] else '******') for x in sorted(list(vars(args).keys() - set(['description']))) if vars(args)[x] not in ['', None]]))
-    my_logger.info('Start time: ' + startTick.strftime('%x - %X'))
+    my_logger.info('Start time: {}'.format(start_tick.strftime('%x - %X')))
     my_logger.info("")
 
     # schema and service init
@@ -150,29 +124,27 @@ def validate(argslist=None, configfile=None):
     if not os.path.isdir(schemadir):
         my_logger.info('Downloading initial schemas from online')
         my_logger.info('The tool will, by default, attempt to download and store XML files to relieve traffic from DMTF/service')
-        schema_pack.my_logger.addHandler(file_handler)
         schema_pack.setup_schema_pack('latest', args.schema_directory, args.ext_http_proxy, args.ext_https_proxy)
 
     try:
         currentService = traverse.rfService(vars(args))
     except Exception as ex:
-        traceback.print_exc()
         my_logger.verbose1('Exception caught while creating Service', exc_info=1)
-        my_logger.error("Service could not be started: {}".format(repr(ex)))
+        my_logger.error("Redfish Service Error: Service could not be started: {}".format(repr(ex)))
         my_logger.error("Try running the Redfish Protocol Validator to ensure the service meets basic protocol conformance")
         return 1, None, 'Service Exception'
-    
+
     if args.description is None and currentService.service_root:
-        my_version = currentService.service_root.get('RedfishVersion', 'No Version')
+        my_version = currentService.service_root.get('RedfishVersion', 'No Given Version')
         my_name = currentService.service_root.get('Name', '')
-        my_uuid = currentService.service_root.get('UUID', 'No UUID')
-        setattr(args, 'description', 'My Target System {}, version {}, {}'.format(my_name, my_version, my_uuid))
-    
+        my_uuid = currentService.service_root.get('UUID', 'No Given UUID')
+        setattr(args, 'description', 'System Under Test - {} version {}, {}'.format(my_name, my_version, my_uuid))
+
     my_logger.info('Description of service: {}'.format(args.description))
 
     # Start main
     status_code = 1
-    jsonData = None
+    json_data = None
 
     if args.payload:
         pmode, ppath = args.payload
@@ -182,25 +154,28 @@ def validate(argslist=None, configfile=None):
 
     if pmode not in ['tree', 'single', 'singlefile', 'treefile', 'default']:
         pmode = 'Default'
-        my_logger.error('PayloadMode or path invalid, using Default behavior')
+        my_logger.error('Configuration Error: PayloadMode or path invalid, using Default behavior')
     if 'file' in pmode:
         if ppath is not None and os.path.isfile(ppath):
             with open(ppath) as f:
-                jsonData = json.load(f)
+                json_data = json.load(f)
                 f.close()
         else:
-            my_logger.error('File not found for payload: {}'.format(ppath))
+            my_logger.error('Configuration Error: File not found for payload: {}'.format(ppath))
             return 1, None, 'File not found for payload: {}'.format(ppath)
     try:
         if 'single' in pmode:
-            success, counts, results, xlinks, topobj = validateSingleURI(currentService, ppath, 'Target', expectedJson=jsonData)
+            my_logger.push_uri(ppath)
+            success, my_result, reference_only_links, top_object = validateSingleURI(currentService, ppath, expectedJson=json_data)
+            results = {'Target': my_result}
+            my_logger.pop_uri()
         elif 'tree' in pmode:
-            success, counts, results, xlinks, topobj = validateURITree(currentService, ppath, 'Target', expectedJson=jsonData)
+            success, results, reference_only_links, top_object = validateURITree(currentService, ppath, 'Target', expectedJson=json_data)
         else:
-            success, counts, results, xlinks, topobj = validateURITree(currentService, '/redfish/v1/', 'ServiceRoot', expectedJson=jsonData)
+            success, results, reference_only_links, top_object = validateURITree(currentService, '/redfish/v1/', 'ServiceRoot', expectedJson=json_data)
     except traverse.AuthenticationError as e:
         # log authentication error and terminate program
-        my_logger.error('{}'.format(e))
+        my_logger.error('Authetication Error: {}'.format(e))
         return 1, None, 'Failed to authenticate with the service'
 
     currentService.close()
@@ -211,47 +186,68 @@ def validate(argslist=None, configfile=None):
     my_logger.info('Metadata: Namespaces missing from $metadata: {}'.format(metadata.get_missing_namespaces()))
 
     if len(metadata.get_missing_namespaces()) > 0:
-        my_logger.error('Metadata is missing Namespaces that are referenced by the service.')
+        my_logger.error('Metadata Error: Metadata is missing Namespaces that are referenced by the service.')
 
-    finalCounts = Counter()
     nowTick = datetime.now()
-    my_logger.info('\nElapsed time: {}'.format(str(nowTick-startTick).rsplit('.', 1)[0]))
+    my_logger.info('\nElapsed time: {}'.format(str(nowTick-start_tick).rsplit('.', 1)[0]))
 
-    error_lines, finalCounts = tohtml.count_errors(results)
+    final_counts = Counter()
 
-    for line in error_lines:
-        my_logger.error(line)
+    my_logger.info('\nListing any warnings and errors: ')
 
-    finalCounts.update(metadata.get_counter())
+    for k, my_result in results.items():
 
-    fails = 0
-    for key in [key for key in finalCounts.keys()]:
-        if finalCounts[key] == 0:
-            del finalCounts[key]
-            continue
-        if any(x in key for x in ['problem', 'fail', 'bad', 'exception']):
-            fails += finalCounts[key]
+        for record in my_result['records']:
+            if record.result:
+                final_counts[record.result] += 1
 
-    html_str = tohtml.renderHtml(results, tool_version, startTick, nowTick, currentService)
+        warns = [x for x in my_result['records'] if x.levelno == logger.Level.WARN]
+        errors = [x for x in my_result['records'] if x.levelno == logger.Level.ERROR]
+        if len(warns + errors):
+            my_logger.info(" ")
+            my_logger.info(my_result['uri'])
 
-    lastResultsPage = datetime.strftime(startTick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
+            if len(warns):
+                my_logger.info("Warnings")
+                for record in warns:
+                    final_counts[record.levelname.lower()] += 1
+                    my_logger.log(record.levelno, ", ".join([x for x in [record.msg, record.result] if x])) 
+
+            if len(errors):
+                my_logger.info("Errors")
+                for record in errors:
+                    final_counts[record.levelname.lower()] += 1
+                    my_logger.log(record.levelno, ", ".join([x for x in [record.msg, record.result] if x])) 
+
+    final_counts.update({x: k for x, k in metadata.get_counter().items() if k > 0})
+
+    html_str = tohtml.renderHtml(results, tool_version, start_tick, nowTick, currentService)
+
+    lastResultsPage = datetime.strftime(start_tick, os.path.join(logpath, "ConformanceHtmlLog_%m_%d_%Y_%H%M%S.html"))
 
     tohtml.writeHtml(html_str, lastResultsPage)
 
-    success = success and not (fails > 0)
-    my_logger.info("\n".join('{}: {}   '.format(x, y) for x, y in sorted(finalCounts.items())))
+    my_logger.info("\nResults Summary:")
+    my_logger.info(", ".join([
+        'Pass: {}'.format(final_counts['pass']),
+        'Fail: {}'.format(final_counts['error']),
+        'Warning: {}'.format(final_counts['warning']),
+        ]))
 
     # dump cache info to debug log
     my_logger.debug('getSchemaDetails() -> {}'.format(getSchemaDetails.cache_info()))
     my_logger.debug('callResourceURI() -> {}'.format(currentService.cache_order))
 
+    success = final_counts['error'] == 0
+
     if not success:
-        my_logger.error("Validation has failed: {} problems found".format(fails))
+        my_logger.error("Validation has failed: {} problems found".format(final_counts['error']))
     else:
         my_logger.info("Validation has succeeded.")
         status_code = 0
-
+    
     return status_code, lastResultsPage, 'Validation done'
+
 
 def main():
     """
@@ -260,9 +256,10 @@ def main():
     status_code, _, _ = validate()
     return status_code
 
+
 if __name__ == '__main__':
     try:
         sys.exit(main())
     except Exception as e:
-        my_logger.exception("Program finished prematurely: %s", e)
+        logger.my_logger.exception("Program finished prematurely: %s", e)
         raise

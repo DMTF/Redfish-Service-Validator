@@ -15,8 +15,8 @@ import redfish_service_validator.catalog as catalog
 
 import logging
 
-logging.Logger.verbose1 =  logging.Logger.debug
-logging.Logger.verbose2 =  logging.Logger.debug
+logging.getLoggerClass().verbose1 = logging.Logger.debug
+logging.getLoggerClass().verbose2 = logging.Logger.debug
 
 class TestCatalog(unittest.TestCase):
     def test_fuzzy(self):

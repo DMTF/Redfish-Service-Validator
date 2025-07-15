@@ -4,15 +4,17 @@
 
 import argparse
 import os
-import logging
-from io import BytesIO
 import zipfile
+from io import BytesIO
+import logging
 import requests
+
+my_logger = logging.getLogger('rsv')
+my_logger.setLevel(logging.DEBUG)
 
 # live_zip_uri = 'http://redfish.dmtf.org/schemas/DSP8010_2021.1.zip'
 live_zip_uri = 'https://www.dmtf.org/sites/default/files/standards/documents/DSP8010.zip' 
 
-my_logger = logging.getLogger()
 
 def setup_schema_pack(uri, local_dir, http_proxy='', https_proxy=''):
     proxies, timeout = None, 20
@@ -30,11 +32,10 @@ def setup_schema_pack(uri, local_dir, http_proxy='', https_proxy=''):
         expCode = [200]
         elapsed = response.elapsed.total_seconds()
         statusCode = response.status_code
-        my_logger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode,
-                                                                        expCode, response.headers, elapsed))
+        my_logger.debug('{}, {}, {},\nTIME ELAPSED: {}'.format(statusCode, expCode, response.headers, elapsed))
         if statusCode in expCode:
             if not zipfile.is_zipfile(BytesIO(response.content)):
-                my_logger.error('This URL did not return a valid zipfile')
+                my_logger.error('Schema Unpacking Error: This URL did not return a valid zipfile')
                 pass
             else:
                 zf = zipfile.ZipFile(BytesIO(response.content))
@@ -49,8 +50,8 @@ def setup_schema_pack(uri, local_dir, http_proxy='', https_proxy=''):
                         item.close()
                 zf.close()
     except Exception as ex:
-        my_logger.error("A problem when getting resource has occurred {}".format(uri))
-        my_logger.warning("output: ", exc_info=True)
+        my_logger.error("Schema Unpacking Error: A problem when getting resource has occurred {}".format(uri))
+        my_logger.error("output: ", exc_info=True)
     return True
 
 

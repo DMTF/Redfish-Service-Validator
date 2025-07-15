@@ -18,7 +18,8 @@ from redfish_service_validator.helper import (
 
 includeTuple = namedtuple("include", ["Namespace", "Uri"])
 
-my_logger = logging.getLogger(__name__)
+my_logger = logging.getLogger('rsv')
+my_logger.setLevel(logging.DEBUG)
 
 REDFISH_ABSENT = "n/a"
 
@@ -65,7 +66,6 @@ def get_fuzzy_property(prop_name: str, jsondata: dict, allPropList=[]):
         val = jsondata.get(possibleMatch[0], "n/a")
         if val != "n/a":
             return possibleMatch[0]
-            # .error('{} was not found in payload, attempting closest match: {}'.format(newProp, pname))
     return prop_name
 
 
@@ -190,7 +190,7 @@ class SchemaDoc:
                 uri = ref.get("Uri")
                 ns, alias = (item.get(x) for x in ["Namespace", "Alias"])
                 if ns is None or uri is None:
-                    my_logger.error("Reference incorrect for: {}".format(item))
+                    my_logger.error("Schema Reference Error: Include is missing Namespace or URI{}".format(item))
                     continue
                 if alias is None:
                     alias = ns
@@ -226,11 +226,11 @@ class SchemaDoc:
         tupVersionless = self.refs.get(getNamespace(namespace))
         if tup is None:
             if tupVersionless is None:
-                my_logger.warning('No such reference {} in {}, returning None...'.format(namespace, self.origin))
+                my_logger.warning('Missing Reference Warning: No such reference {} in {}'.format(namespace, self.origin))
                 return None
             else:
                 tup = tupVersionless
-                my_logger.warning('No such reference {} in {}, using unversioned...'.format(namespace, self.origin))
+                my_logger.warning('Missing Reference Warning: No such reference {} in {}, defaulting to versionless'.format(namespace, self.origin))
         return tup
 
     def getTypeInSchemaDoc(self, currentType, tagType=["EntityType", "ComplexType"]):
@@ -254,7 +254,7 @@ class SchemaDoc:
 
         if pnamespace not in self.classes:
             if pbase in self.classes:
-                my_logger.error("Namespace of type {} appears missing from SchemaXML {}, attempting highest type: {}".format(pnamespace, self.name, currentType))
+                my_logger.error("Missing Namespace Error: Namespace of {} appears missing from SchemaXML {}, attempting highest type: {}".format(pnamespace, self.name, currentType))
                 ns_obj = self.classes[pbase]
                 pnamespace = getNamespace(ns_obj.getHighestType(currentType))
                 my_logger.error("New namespace: {}".format(pnamespace))
@@ -265,7 +265,7 @@ class SchemaDoc:
             currentNamespace = self.classes[pnamespace]
             return currentNamespace.my_types[ptype]
         else:
-            my_logger.error("Namespace of type {} appears missing from SchemaXML {}...".format(pnamespace, self.name))
+            my_logger.error("Missing Namespace Error: Namespace of {} appears missing from SchemaXML {}...".format(pnamespace, self.name))
             raise MissingSchemaError('No such schema referenced in this document')
     
 
@@ -312,7 +312,6 @@ class SchemaClass:
 
         if limit is not None:
             if getVersion(limit) is None:
-                # logger.warning('Limiting namespace has no version, erasing: {}'.format(limit))
                 limit = None
             else:
                 limit = getVersion(limit)
@@ -462,7 +461,7 @@ class RedfishType:
                     my_dict['CanDelete'] = element.find("PropertyValue").get('Bool', 'False').lower() == 'true'
             except Exception as e:
                 my_logger.debug('Exception caught while checking Uri', exc_info=1)
-                my_logger.warning('Could not gather info from Capabilities annotation')
+                my_logger.warning('Warning: Could not gather info from Capabilities annotation')
                 return {'CanUpdate': False, 'CanInsert': False, 'CanDelete': False}
 
         return my_dict
@@ -488,7 +487,7 @@ class RedfishType:
 
             except Exception as e:
                 my_logger.debug('Exception caught while checking Dynamic', exc_info=1)
-                my_logger.warning('Could not gather info from DynamicProperties annotation')
+                my_logger.warning('Warning: Could not gather info from DynamicProperties annotation')
                 return None 
         
         return None
@@ -511,7 +510,7 @@ class RedfishType:
                     expectedUris += [e.contents[0] for e in all_strings]
                 except Exception as e:
                     my_logger.debug('Exception caught while checking Uri', exc_info=1)
-                    my_logger.warning('Could not gather info from Redfish.Uris annotation')
+                    my_logger.warning('Warning: Could not gather info from Redfish.Uris annotation')
                     expectedUris = []
         return expectedUris
 
@@ -547,7 +546,7 @@ class RedfishType:
             else:
                 return tree + [my_type]
         if break_out == 0:
-            my_logger.error("Schema definition for '{}' contained too many base type references; check its schema definition for loops".format(self.fulltype))
+            my_logger.error("Schema Definition Error: '{}' contained too many base type references; check its schema definition for loops".format(self.fulltype))
         return tree
 
     def getBaseType(self):
@@ -702,23 +701,23 @@ class RedfishProperty(object):
         else:
             raise ValueError('Type is not String or RedfishType')
         if eval_prop.IsCollection and not is_type_collection:
-            my_logger.error('Property {} should not be a List'.format(self.Name))
+            my_logger.error('Property Error: {} should not be a List'.format(self.Name))
             eval_prop.IsValid = False
         elif not eval_prop.IsCollection and is_type_collection and val not in [None, REDFISH_ABSENT]:
-            my_logger.error('Collection Property {} is not a List'.format(self.Name))
+            my_logger.error('Property Error: Collection {} is not a List'.format(self.Name))
             eval_prop.IsValid = False
 
         if isinstance(eval_prop.Type, str) and 'Edm.' in eval_prop.Type and check:
             try:
                 eval_prop.IsValid = eval_prop.Exists and RedfishProperty.validate_basic(eval_prop.Value, eval_prop.Type)
             except ValueError as e:
-                my_logger.error('{}: {}'.format(eval_prop.Name, e))  # log this
+                my_logger.error('Property Error: {} {}'.format(eval_prop.Name, e))  # log this
                 eval_prop.IsValid = False
         elif isinstance(eval_prop.Type, RedfishType) and check:
             try:
                 eval_prop.IsValid = eval_prop.Type.validate(eval_prop.Value, eval_prop.added_pattern)
             except ValueError as e:
-                my_logger.error('{}: {}'.format(eval_prop.Name, e))  # log this
+                my_logger.error('Property Error: {} {}'.format(eval_prop.Name, e))  # log this
                 eval_prop.IsValid = False
         return eval_prop
 
@@ -740,14 +739,12 @@ class RedfishProperty(object):
         Validates a string, given a value and a pattern
         """
         if not isinstance(val, str):
-            raise ValueError(
-                "Expected string value, got type {}".format(str(type(val)).strip("<>"))
+            raise ValueError("Expected string value, got type {}".format(str(type(val)).strip("<>"))
             )
         if pattern is not None:
             match = re.fullmatch(pattern, val)
             if match is None:
-                raise ValueError(
-                    "String '{}' does not match pattern '{}'".format(
+                raise ValueError("String '{}' does not match pattern '{}'".format(
                         str(val), repr(pattern)
                     )
                 )
@@ -761,18 +758,15 @@ class RedfishProperty(object):
         """
 
         if not isinstance(val, (int, float)):
-            raise ValueError(
-                "Expected integer or float, got type {}".format(
+            raise ValueError("Expected integer or float, got type {}".format(
                     str(type(val)).strip("<>")))
         if minVal is not None:
             if not minVal <= val:
-                raise ValueError(
-                    "Value out of assigned min range, {} > {}".format(
+                raise ValueError("Value out of assigned min range, {} > {}".format(
                         str(val), str(minVal)))
         if maxVal is not None:
             if not maxVal >= val:
-                raise ValueError(
-                    "Value out of assigned max range, {} > {}".format(
+                raise ValueError("Value out of assigned max range, {} > {}".format(
                         str(val), str(maxVal)))
         return True
 
@@ -786,8 +780,7 @@ class RedfishProperty(object):
 
         elif my_type == "Edm.Boolean":
             if not isinstance(val, bool):
-                raise ValueError(
-                    "Expected bool, got type {}".format(str(type(val)).strip("<>")))
+                raise ValueError("Expected bool, got type {}".format(str(type(val)).strip("<>")))
             return True
 
         elif my_type == "Edm.DateTimeOffset":
@@ -853,7 +846,7 @@ class RedfishObject(RedfishProperty):
                     self.properties[prop] = RedfishProperty(typ, prop, self)
             except MissingSchemaError:
                 self.properties[prop] = RedfishProperty(REDFISH_ABSENT, prop, self)
-                my_logger.warning('Schema not found for {}'.format(typ))
+                my_logger.warning('Warning: Schema not found for {}'.format(typ))
 
     def populate(self, payload, uri_check=False, casted=False):
         """
@@ -865,7 +858,7 @@ class RedfishObject(RedfishProperty):
         if isinstance(payload, list):
             populated_object.IsValid = populated_object.Type.IsCollection()
             if not populated_object.IsValid:
-                my_logger.error("This object's type {} should be a Collection, but it's of type {}...".format(populated_object.Name, populated_object.Type))
+                my_logger.error("RedfishObject Error: {} should be a Collection, but it's of type {}...".format(populated_object.Name, populated_object.Type))
                 return populated_object
             populated_object.IsCollection = True
 
@@ -883,7 +876,7 @@ class RedfishObject(RedfishProperty):
                     populated_object.Value = payload
                     return populated_object
                 else:
-                    my_logger.error("This object {} should be a list, but it's of type {}...".format(populated_object.Name, type(payload).__name__))
+                    my_logger.error("RedfishObject Error: {} should be a list, but it's of type {}...".format(populated_object.Name, type(payload).__name__))
                     return populated_object
 
         # todo: redesign objects to have consistent variables, not only when populated
@@ -901,7 +894,7 @@ class RedfishObject(RedfishProperty):
         # Only valid if we are a dictionary...
         # todo: see above None/REDFISH_ABSENT block
         if not populated_object.IsValid:
-            my_logger.error("This complex object {} should be a dictionary or None, but it's of type {}...".format(populated_object.Name, type(payload).__name__))
+            my_logger.error("RedfishObject Error: {} should be a dictionary or None, but it's of type {}...".format(populated_object.Name, type(payload).__name__))
             populated_object.HasValidUri = True
             populated_object.HasValidUriStrict = False
             populated_object.properties = {x: y.populate(REDFISH_ABSENT) for x, y in populated_object.properties.items()}
@@ -926,9 +919,9 @@ class RedfishObject(RedfishProperty):
                     type_obj = populated_object.Type.catalog.getSchemaDocByClass(my_odata_type).getTypeInSchemaDoc(my_odata_type)
                     populated_object = RedfishObject(type_obj, populated_object.Name, populated_object.parent).populate(sub_payload, uri_check=uri_check, casted=True)
                 except MissingSchemaError:
-                    my_logger.warning("Couldn't get schema for object, skipping OemObject {}".format(populated_object.Name))
+                    my_logger.warning("Schema Warning: Couldn't get schema for OemObject, skipping {}".format(populated_object.Name))
                 except Exception as e:
-                    my_logger.warning("Couldn't get schema for object (?), skipping OemObject {} : {}".format(populated_object.Name, e))
+                    my_logger.warning("Schema Warning: Couldn't get schema for OemObject, skipping {} : {}".format(populated_object.Name, e))
                 return populated_object
         # Otherwise, if we're not casted, or we don't have an odata type, then cast it
         elif not casted and not already_typed:
@@ -991,10 +984,10 @@ class RedfishObject(RedfishProperty):
 
             if 'Resource.Resource' in populated_object.Type.getTypeTree():
                 if '#' in my_odata_id:
-                    my_logger.warning('Found uri with fragment, which Resource.Resource types do not use {}'.format(my_odata_id))
+                    my_logger.warning('Odata.Id Warning: Found uri with fragment, which Resource.Resource types do not use {}'.format(my_odata_id))
             elif 'Resource.ReferenceableMember' in populated_object.Type.getTypeTree():
                 if '#' not in my_odata_id:
-                    my_logger.warning('No fragment in URI, but ReferenceableMembers require it {}'.format(my_odata_id))
+                    my_logger.warning('Odata.Id Warning: No fragment in URI, but ReferenceableMembers require it {}'.format(my_odata_id))
 
             # check that our ID is matching
             # this won't check NavigationProperties but the Resources will
@@ -1059,7 +1052,7 @@ class RedfishObject(RedfishProperty):
             splitKey = key.split('@', 1)
             fullItem = splitKey[1]
             if getNamespace(fullItem) not in allowed_annotations:
-                my_logger.warning("getAnnotations: {} is not an allowed annotation namespace, please check spelling/capitalization.".format(fullItem))
+                my_logger.warning("Annotations Warning: {} is not an allowed annotation namespace, please check spelling/capitalization.".format(fullItem))
                 continue
             try:
                 type_obj = populated_object.Type.catalog.getSchemaInCatalog(fullItem).terms[getType(fullItem)]
@@ -1070,7 +1063,7 @@ class RedfishObject(RedfishProperty):
                 my_logger.verbose1(('Adding Additional', key, my_odata_type, populated_object.Type))
                 populated_object.properties[key] = object.populate(sub_payload[key])
             except:
-                my_logger.error("Unable to locate the definition of the annotation '@{}'.".format(fullItem))
+                my_logger.error("Annotation Error: Unable to locate the definition of the annotation '@{}'.".format(fullItem))
 
         return populated_object
 
@@ -1133,7 +1126,7 @@ class RedfishObject(RedfishProperty):
                                         new_link.IsExcerpt = True
                                     links.append(new_link)
                                 except Exception as e:
-                                    my_logger.error('Unable to build definition for URI {}; check its schema definition or the schema making the reference to the URI for schema errors: {}'.format(val, repr(e)))
+                                    my_logger.error('Link Error: Unable to build definition for URI {}; check its schema definition or the schema making the reference to the URI for schema errors: {}'.format(val, repr(e)))
                         else:
                             links.append(item)
                     elif item.Type.getBaseType() == 'complex':
