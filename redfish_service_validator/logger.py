@@ -61,7 +61,7 @@ class RecordFormatter(logging.Formatter):
         super().__init__()
 
     def format(self, record):
-        msg = "{} - {}".format(record.levelname, record.message)
+        msg = "{} - {}".format(record.levelname, record.getMessage())
         result = record.__dict__.get('result')
         record.result = result
         uri = record.__dict__.get('uri', self.current_uri[-1])
