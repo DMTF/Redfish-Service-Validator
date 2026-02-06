@@ -46,6 +46,7 @@ VERSION_REGEX_SM = r"v([0-9]+)_([0-9]+)_([0-9]+)"
 
 parsed_schemas = []
 
+
 class Metadata:
     """
     Class for describing the data  model for a single schema file
@@ -77,7 +78,6 @@ class Metadata:
                 elif (child.tag == ODATA_TAG_ENUM) or (child.tag == ODATA_TAG_TYPE_DEF):
                     self._add_typedef(child)
 
-
     def get_name(self):
         """
         Gets the schema name
@@ -86,7 +86,6 @@ class Metadata:
             The name of the schema
         """
         return self._name
-
 
     def find_object(self, typename, highest_version, exact_version=False):
         """
@@ -124,7 +123,7 @@ class Metadata:
                         if matched_ver is None or (obj_version > matched_ver):
                             matched_def = self._objects[obj]
                             found_name = obj
-                    elif (obj_version <= highest_version):
+                    elif obj_version <= highest_version:
                         # Within the version range
                         # Needs to be newer than what we've already matched
                         if matched_ver is None or (obj_version > matched_ver):
@@ -170,7 +169,6 @@ class Metadata:
 
         return matched_def
 
-
     def find_typedef(self, typename):
         """
         Finds the definition of a specified type
@@ -183,7 +181,6 @@ class Metadata:
         """
         return self._typedefs.get(typename, None)
 
-
     def find_action(self, action_name):
         """
         Finds the definition of a specified action
@@ -195,7 +192,6 @@ class Metadata:
             The matching action
         """
         return self._actions.get(action_name, None)
-
 
     def _get_attrib(self, element, name, required=True, default=None):
         """
@@ -216,7 +212,6 @@ class Metadata:
             if required:
                 logger.critical("Missing '{}' attribute for tag '{}'".format(name, element.tag.split("}")[-1]))
         return default
-
 
     def _get_version_details(self, object):
         """
@@ -269,13 +264,24 @@ class Metadata:
         return_pattern = None
 
         # Type mapping
-        if (csdl_type == "Edm.SByte") or (csdl_type == "Edm.Int16") or (csdl_type == "Edm.Int32") or (csdl_type == "Edm.Int64"):
+        if (
+            (csdl_type == "Edm.SByte")
+            or (csdl_type == "Edm.Int16")
+            or (csdl_type == "Edm.Int32")
+            or (csdl_type == "Edm.Int64")
+        ):
             return_type = "Integer"
         elif (csdl_type == "Edm.Decimal") or (csdl_type == "Edm.Double"):
             return_type = "Number"
-        elif (csdl_type == "Edm.String") or (csdl_type == "Edm.DateTimeOffset") or (csdl_type == "Edm.Duration") or (csdl_type == "Edm.TimeOfDay") or (csdl_type == "Edm.Guid"):
+        elif (
+            (csdl_type == "Edm.String")
+            or (csdl_type == "Edm.DateTimeOffset")
+            or (csdl_type == "Edm.Duration")
+            or (csdl_type == "Edm.TimeOfDay")
+            or (csdl_type == "Edm.Guid")
+        ):
             return_type = "String"
-        elif (csdl_type == "Edm.Boolean"):
+        elif csdl_type == "Edm.Boolean":
             return_type = "Boolean"
         elif (csdl_type == "Edm.PrimitiveType") or (csdl_type == "Edm.Primitive"):
             return_type = "Primitive"
@@ -294,7 +300,6 @@ class Metadata:
             return_pattern = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
         return return_type, return_pattern
-
 
     def _create_default_property_obj(self):
         """
@@ -321,7 +326,6 @@ class Metadata:
             "ExcerptCopyOnly": None,
         }
         return new_prop
-
 
     def _add_object(self, object):
         """
@@ -387,11 +391,16 @@ class Metadata:
             if self._get_attrib(prop, "Nullable", False, "true") == "false":
                 self._objects[obj_name]["Properties"][prop_name]["Nullable"] = False
             self._objects[obj_name]["Properties"][prop_name]["Navigation"] = prop.tag == ODATA_TAG_NAV_PROPERTY
-            self._objects[obj_name]["Properties"][prop_name]["VersionAdded"] = self._namespace_under_process.split(".")[-1]
+            self._objects[obj_name]["Properties"][prop_name]["VersionAdded"] = self._namespace_under_process.split(".")[
+                -1
+            ]
             _, self._objects[obj_name]["Properties"][prop_name]["VersionDeprecated"] = self._get_version_details(prop)
 
             # Type mapping
-            self._objects[obj_name]["Properties"][prop_name]["Type"], self._objects[obj_name]["Properties"][prop_name]["Pattern"] = self._get_type_info(prop_type)
+            (
+                self._objects[obj_name]["Properties"][prop_name]["Type"],
+                self._objects[obj_name]["Properties"][prop_name]["Pattern"],
+            ) = self._get_type_info(prop_type)
 
             # Extract other info about the property for from annotations
             for annotation in prop.iter(ODATA_TAG_ANNOTATION):
@@ -405,13 +414,21 @@ class Metadata:
                 elif term == "Validation.Pattern":
                     self._objects[obj_name]["Properties"][prop_name]["Pattern"] = self._get_attrib(annotation, "String")
                 elif term == "Validation.Minimum":
-                    self._objects[obj_name]["Properties"][prop_name]["Minimum"] = int(self._get_attrib(annotation, "Int"))
+                    self._objects[obj_name]["Properties"][prop_name]["Minimum"] = int(
+                        self._get_attrib(annotation, "Int")
+                    )
                 elif term == "Validation.Maximum":
-                    self._objects[obj_name]["Properties"][prop_name]["Maximum"] = int(self._get_attrib(annotation, "Int"))
+                    self._objects[obj_name]["Properties"][prop_name]["Maximum"] = int(
+                        self._get_attrib(annotation, "Int")
+                    )
                 elif term == "OData.Permissions":
-                    self._objects[obj_name]["Properties"][prop_name]["Permissions"] = self._get_attrib(annotation, "EnumMember").split("/")[-1]
+                    self._objects[obj_name]["Properties"][prop_name]["Permissions"] = self._get_attrib(
+                        annotation, "EnumMember"
+                    ).split("/")[-1]
                 elif term == "Redfish.ExcerptCopy":
-                    self._objects[obj_name]["Properties"][prop_name]["ExcerptCopy"] = self._get_attrib(annotation, "String", required=False, default="")
+                    self._objects[obj_name]["Properties"][prop_name]["ExcerptCopy"] = self._get_attrib(
+                        annotation, "String", required=False, default=""
+                    )
                 elif term == "Redfish.Excerpt":
                     excerpt = self._get_attrib(annotation, "String", required=False, default="")
                     if excerpt == "":
@@ -424,7 +441,9 @@ class Metadata:
                     self._objects[obj_name]["Properties"][prop_name]["Excerpt"] = []
 
             # Special cases for Members@odata.count and Members@odata.nextLink
-            if (prop_name == "Members") and (self._objects[obj_name]["BaseType"] == "Resource.v1_0_0.ResourceCollection"):
+            if (prop_name == "Members") and (
+                self._objects[obj_name]["BaseType"] == "Resource.v1_0_0.ResourceCollection"
+            ):
                 self._objects[obj_name]["Properties"]["Members@odata.count"] = self._create_default_property_obj()
                 self._objects[obj_name]["Properties"]["Members@odata.count"]["Required"] = True
                 self._objects[obj_name]["Properties"]["Members@odata.count"]["Type"] = "Integer"
@@ -455,22 +474,31 @@ class Metadata:
                             if dynamic_type.startswith("Collection("):
                                 self._objects[obj_name]["DynamicProperties"]["Array"] = True
                                 dynamic_type = dynamic_type[11:-1]
-                            self._objects[obj_name]["DynamicProperties"]["VersionAdded"] = self._namespace_under_process.split(".")[-1]
-                            self._objects[obj_name]["DynamicProperties"]["Type"], self._objects[obj_name]["DynamicProperties"]["Pattern"] = self._get_type_info(dynamic_type)
+                            self._objects[obj_name]["DynamicProperties"]["VersionAdded"] = (
+                                self._namespace_under_process.split(".")[-1]
+                            )
+                            (
+                                self._objects[obj_name]["DynamicProperties"]["Type"],
+                                self._objects[obj_name]["DynamicProperties"]["Pattern"],
+                            ) = self._get_type_info(dynamic_type)
 
             # Allowed URIs
             if self._get_attrib(annotation, "Term") == "Redfish.Uris":
                 self._objects[obj_name]["AllowedURIs"] = []
                 for collection in annotation.iter(ODATA_TAG_COLLECTION):
                     for string in collection.iter(ODATA_TAG_STRING):
-                        self._objects[obj_name]["AllowedURIs"].append(re.sub(URI_ID_REGEX, VALID_ID_REGEX, r"^{}/?$".format(string.text)))
+                        self._objects[obj_name]["AllowedURIs"].append(
+                            re.sub(URI_ID_REGEX, VALID_ID_REGEX, r"^{}/?$".format(string.text))
+                        )
 
             # Deprecated URIs
             if self._get_attrib(annotation, "Term") == "Redfish.DeprecatedUris":
                 self._objects[obj_name]["DeprecatedURIs"] = []
                 for collection in annotation.iter(ODATA_TAG_COLLECTION):
                     for string in collection.iter(ODATA_TAG_STRING):
-                        self._objects[obj_name]["DeprecatedURIs"].append(re.sub(URI_ID_REGEX, VALID_ID_REGEX, r"^{}/?$".format(string.text)))
+                        self._objects[obj_name]["DeprecatedURIs"].append(
+                            re.sub(URI_ID_REGEX, VALID_ID_REGEX, r"^{}/?$".format(string.text))
+                        )
 
             # Capabilities
             if self._get_attrib(annotation, "Term").startswith("Capabilities."):
@@ -489,7 +517,6 @@ class Metadata:
                             elif capability_type == "Deletable":
                                 self._objects[obj_name]["AllowedMethods"].append("DELETE")
 
-
     def _add_action(self, action):
         """
         Adds an action definition to the data model
@@ -503,10 +530,11 @@ class Metadata:
         action_name = self._namespace_under_process + "." + action_name
 
         self._actions[action_name] = {}
-        self._actions[action_name]["VersionAdded"], self._actions[action_name]["VersionDeprecated"] = self._get_version_details(action)
+        self._actions[action_name]["VersionAdded"], self._actions[action_name]["VersionDeprecated"] = (
+            self._get_version_details(action)
+        )
 
         # TODO: Parameters (for annotation checks)
-
 
     def _add_typedef(self, typedef):
         """
@@ -551,7 +579,9 @@ class Metadata:
                 self._typedefs.pop(typedef_name)
                 return
 
-            self._typedefs[typedef_name]["Type"], self._typedefs[typedef_name]["Pattern"] = self._get_type_info(underlying_type)
+            self._typedefs[typedef_name]["Type"], self._typedefs[typedef_name]["Pattern"] = self._get_type_info(
+                underlying_type
+            )
 
             for annotation in typedef.iter(ODATA_TAG_ANNOTATION):
                 term = self._get_attrib(annotation, "Term")

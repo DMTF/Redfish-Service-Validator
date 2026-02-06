@@ -25,7 +25,8 @@ from redfish_service_validator import metadata
 from redfish_service_validator import report
 from redfish_service_validator import schema_pack
 
-tool_version = '2.5.1'
+tool_version = "2.5.1"
+
 
 def main():
     """
@@ -33,22 +34,62 @@ def main():
     """
 
     # Get the input arguments
-    argget = argparse.ArgumentParser(description="Validate Redfish services against schemas; Version {}".format(tool_version))
-    argget.add_argument("--user", "-u", "-user", "--username", type=str, required=True, help="The username for authentication")
+    argget = argparse.ArgumentParser(
+        description="Validate Redfish services against schemas; Version {}".format(tool_version)
+    )
+    argget.add_argument(
+        "--user", "-u", "-user", "--username", type=str, required=True, help="The username for authentication"
+    )
     argget.add_argument("--password", "-p", type=str, required=True, help="The password for authentication")
-    argget.add_argument("--rhost", "-r", "--ip", "-i", type=str, required=True, help="The address of the Redfish service (with scheme)")
-    argget.add_argument("--authtype", type=str, default="Session", choices=["Basic", "Session"], help="The authorization type")
+    argget.add_argument(
+        "--rhost", "-r", "--ip", "-i", type=str, required=True, help="The address of the Redfish service (with scheme)"
+    )
+    argget.add_argument(
+        "--authtype", type=str, default="Session", choices=["Basic", "Session"], help="The authorization type"
+    )
     argget.add_argument("--ext_http_proxy", type=str, help="The URL of the HTTP proxy for accessing external sites")
     argget.add_argument("--ext_https_proxy", type=str, help="The URL of the HTTPS proxy for accessing external sites")
-    argget.add_argument("--serv_http_proxy", type=str, help="The URL of the HTTP proxy for accessing the Redfish service")
-    argget.add_argument("--serv_https_proxy", type=str, help="The URL of the HTTPS proxy for accessing the Redfish service")
-    argget.add_argument("--logdir", "--report-dir", type=str, default="logs", help="The directory for generated report files; default: 'logs'")
-    argget.add_argument("--schema_directory", type=str, default="SchemaFiles", help="Directory for local schema files; default: 'SchemaFiles'")
-    argget.add_argument("--payload", type=str, help="Controls how much of the data model to test; option is followed by the URI of the resource from which to start", nargs=2)
-    argget.add_argument("--mockup", type=str, help="Path to directory containing mockups to override responses from the service")
-    argget.add_argument("--collectionlimit", type=str, default=["LogEntry", "20"], help="Applies a limit to testing resources in collections; format: RESOURCE1 COUNT1 RESOURCE2 COUNT2 ...", nargs="+")
-    argget.add_argument("--nooemcheck", action='store_true', help="Don't check OEM items")
-    argget.add_argument("--debugging", action="store_true", help="Controls the verbosity of the debugging output; if not specified only INFO and higher are logged")
+    argget.add_argument(
+        "--serv_http_proxy", type=str, help="The URL of the HTTP proxy for accessing the Redfish service"
+    )
+    argget.add_argument(
+        "--serv_https_proxy", type=str, help="The URL of the HTTPS proxy for accessing the Redfish service"
+    )
+    argget.add_argument(
+        "--logdir",
+        "--report-dir",
+        type=str,
+        default="logs",
+        help="The directory for generated report files; default: 'logs'",
+    )
+    argget.add_argument(
+        "--schema_directory",
+        type=str,
+        default="SchemaFiles",
+        help="Directory for local schema files; default: 'SchemaFiles'",
+    )
+    argget.add_argument(
+        "--payload",
+        type=str,
+        help="Controls how much of the data model to test; option is followed by the URI of the resource from which to start",
+        nargs=2,
+    )
+    argget.add_argument(
+        "--mockup", type=str, help="Path to directory containing mockups to override responses from the service"
+    )
+    argget.add_argument(
+        "--collectionlimit",
+        type=str,
+        default=["LogEntry", "20"],
+        help="Applies a limit to testing resources in collections; format: RESOURCE1 COUNT1 RESOURCE2 COUNT2 ...",
+        nargs="+",
+    )
+    argget.add_argument("--nooemcheck", action="store_true", help="Don't check OEM items")
+    argget.add_argument(
+        "--debugging",
+        action="store_true",
+        help="Controls the verbosity of the debugging output; if not specified only INFO and higher are logged",
+    )
     args = argget.parse_args()
     code, file = run_validator(vars(args))
     if code != 0:
@@ -88,14 +129,26 @@ def run_validator(args):
 
     # Update the schema cache
     schema_pack.update_dsp8010_files(args["schema_directory"], args["ext_http_proxy"], args["ext_https_proxy"])
-    schema_pack.update_service_metadata(args["schema_directory"], args["rhost"], args["serv_http_proxy"], args["serv_https_proxy"])
+    schema_pack.update_service_metadata(
+        args["schema_directory"], args["rhost"], args["serv_http_proxy"], args["serv_https_proxy"]
+    )
 
     # Build the schema database
     metadata.parse_schema_files(args["schema_directory"])
 
     # Set up the system and validate it
     try:
-        sut = SystemUnderTest(args["rhost"], args["user"], args["password"], args["authtype"], args["serv_http_proxy"], args["serv_https_proxy"], args["mockup"], args["collectionlimit"], args["nooemcheck"])
+        sut = SystemUnderTest(
+            args["rhost"],
+            args["user"],
+            args["password"],
+            args["authtype"],
+            args["serv_http_proxy"],
+            args["serv_https_proxy"],
+            args["mockup"],
+            args["collectionlimit"],
+            args["nooemcheck"],
+        )
     except Exception as err:
         logger.critical("Could not set up the service: {}".format(err))
         return 1, None

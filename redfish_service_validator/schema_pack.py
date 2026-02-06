@@ -24,6 +24,7 @@ dsp8010_zip_uri = "https://www.dmtf.org/sites/default/files/standards/documents/
 dsp8010_zip_version = "https://redfish.dmtf.org/schemas/v1/info.json"
 metadata_uri = "/redfish/v1/$metadata"
 
+
 def update_dsp8010_files(schema_dir, http_proxy=None, https_proxy=None):
     """
     Download schema files from the DMTF site
@@ -40,8 +41,10 @@ def update_dsp8010_files(schema_dir, http_proxy=None, https_proxy=None):
     proxies = None
     if http_proxy or https_proxy:
         proxies = {}
-        if http_proxy: proxies["http"] = http_proxy
-        if https_proxy: proxies["https"] = https_proxy
+        if http_proxy:
+            proxies["http"] = http_proxy
+        if https_proxy:
+            proxies["https"] = https_proxy
 
     # Get the current bundle version of the schema files
     current_ver = "0000.0"
@@ -76,7 +79,9 @@ def update_dsp8010_files(schema_dir, http_proxy=None, https_proxy=None):
         try:
             response = requests.get(dsp8010_zip_uri, proxies=proxies)
             if response.status_code != 200:
-                logger.critical("Could not access DSP8010.zip on dmtf.org; HTTP status: {}\n".format(response.status_code))
+                logger.critical(
+                    "Could not access DSP8010.zip on dmtf.org; HTTP status: {}\n".format(response.status_code)
+                )
                 return
             zf = zipfile.ZipFile(BytesIO(response.content))
             zf.testzip()
@@ -92,6 +97,7 @@ def update_dsp8010_files(schema_dir, http_proxy=None, https_proxy=None):
             return
     else:
         logger.log_print("Cached DSP8010 up to date ({})\n".format(current_ver))
+
 
 def update_service_metadata(schema_dir, rhost, http_proxy=None, https_proxy=None):
     """
@@ -110,8 +116,10 @@ def update_service_metadata(schema_dir, rhost, http_proxy=None, https_proxy=None
     proxies = None
     if http_proxy or https_proxy:
         proxies = {}
-        if http_proxy: proxies["http"] = http_proxy
-        if https_proxy: proxies["https"] = https_proxy
+        if http_proxy:
+            proxies["http"] = http_proxy
+        if https_proxy:
+            proxies["https"] = https_proxy
 
     # Get $metadata from the service
     uri = rhost + metadata_uri

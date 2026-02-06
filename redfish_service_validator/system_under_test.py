@@ -18,6 +18,7 @@ from pathlib import Path
 from redfish_service_validator import logger
 from redfish_service_validator import validate
 
+
 class SystemUnderTest(object):
     def __init__(self, rhost, username, password, authtype, http_proxy, https_proxy, mockup, collection_limits, no_oem):
         """
@@ -39,8 +40,10 @@ class SystemUnderTest(object):
         proxies = None
         if http_proxy or https_proxy:
             proxies = {}
-            if http_proxy: proxies["http"] = http_proxy
-            if https_proxy: proxies["https"] = https_proxy
+            if http_proxy:
+                proxies["http"] = http_proxy
+            if https_proxy:
+                proxies["https"] = https_proxy
         self._redfish_obj = redfish.redfish_client(
             base_url=rhost, username=username, password=password, proxies=proxies, timeout=15, max_retry=3
         )
@@ -82,7 +85,6 @@ class SystemUnderTest(object):
             except:
                 continue
             self._collection_limits[resource_type] = limit
-
 
     @property
     def rhost(self):
@@ -248,11 +250,21 @@ class SystemUnderTest(object):
 
         # Not cached; go read it
         logger.debug("Caching {}...".format(uri))
-        self._resources[uri] = {"Response": None, "Validated": False, "Exception": None, "Results": {}, "Pass": 0, "Warn": 0, "Fail": 0, "Skip": 0, "Mockup": False}
+        self._resources[uri] = {
+            "Response": None,
+            "Validated": False,
+            "Exception": None,
+            "Results": {},
+            "Pass": 0,
+            "Warn": 0,
+            "Fail": 0,
+            "Skip": 0,
+            "Mockup": False,
+        }
         try:
             if self._mockup_dir:
                 # If a mockup directory was given, see if the resource exists in it
-                uri_dirs = [ uri.rstrip("/"), uri.rstrip("/") ]
+                uri_dirs = [uri.rstrip("/"), uri.rstrip("/")]
                 uri_dirs[1] = uri_dirs[1].replace("/redfish/v1", "")
                 for directory in uri_dirs:
                     mockup_file = Path(self._mockup_dir + directory + "/index.json")
@@ -266,7 +278,9 @@ class SystemUnderTest(object):
                             return self._resources[uri]
             self._resources[uri]["Response"] = self._redfish_obj.get(uri)
             if self._resources[uri]["Response"].status != 200:
-                logger.critical("Could not access {}; HTTP status: {}".format(uri, self._resources[uri]["Response"].status))
+                logger.critical(
+                    "Could not access {}; HTTP status: {}".format(uri, self._resources[uri]["Response"].status)
+                )
         except Exception as err:
             self._resources[uri]["Exception"] = err
             logger.critical("Could not access {}; {}".format(uri, err))
@@ -348,7 +362,6 @@ class SystemUnderTest(object):
                 self._resources[uri]["Pass"] += 1
                 logger.info(combined_msg)
 
-
     def set_resource_validated(self, uri):
         """
         Marks a resource as validated to indicate testing is complete
@@ -358,8 +371,14 @@ class SystemUnderTest(object):
         """
         if uri in self._resources:
             self._resources[uri]["Validated"] = True
-            logger.log_print("  - Pass: {}, Warn: {}, Fail: {}, Skip: {}".format(self._resources[uri]["Pass"], self._resources[uri]["Warn"], self._resources[uri]["Fail"], self._resources[uri]["Skip"]))
-
+            logger.log_print(
+                "  - Pass: {}, Warn: {}, Fail: {}, Skip: {}".format(
+                    self._resources[uri]["Pass"],
+                    self._resources[uri]["Warn"],
+                    self._resources[uri]["Fail"],
+                    self._resources[uri]["Skip"],
+                )
+            )
 
     def find_uris(self, payload, uri_list, from_annotation):
         """
@@ -377,7 +396,14 @@ class SystemUnderTest(object):
                     continue
 
                 # If the item is a reference, go to the resource
-                if item == "@odata.id" or item == "Uri" or item == "Members@odata.nextLink" or item == "@Redfish.ActionInfo" or item == "DataSourceUri" or item == "TargetComponentURI":
+                if (
+                    item == "@odata.id"
+                    or item == "Uri"
+                    or item == "Members@odata.nextLink"
+                    or item == "@Redfish.ActionInfo"
+                    or item == "DataSourceUri"
+                    or item == "TargetComponentURI"
+                ):
                     if isinstance(payload[item], str):
                         if payload[item].startswith("/") and "#" not in payload[item]:
                             uri_list.append(payload[item])
@@ -425,13 +451,15 @@ class SystemUnderTest(object):
             match = re.match(r"^#(.+)Collection\..+Collection$", resource_type)
             if match and match[1] in self._collection_limits:
                 if "Members" in payload and isinstance(payload["Members"], list):
-                    payload["Members"] = payload["Members"][:self._collection_limits[match[1]]]
+                    payload["Members"] = payload["Members"][: self._collection_limits[match[1]]]
                 payload.pop("Members@odata.nextLink", None)
 
         # Validate the payload
         validate.validate_object(self, uri, payload, None, None, None, "")
         if resource["Mockup"]:
-            self.add_resource_result(uri, "", False, None, ("WARN", "Mockup Warning: Response was populated from a mockup file."))
+            self.add_resource_result(
+                uri, "", False, None, ("WARN", "Mockup Warning: Response was populated from a mockup file.")
+            )
         self.set_resource_validated(uri)
 
         # Go through its contents and get the next URIs to test

@@ -16,10 +16,11 @@ import re
 from redfish_service_validator import logger
 from redfish_service_validator import metadata
 
-ODATA_TYPE_PATTERN = r"^#.+$"   # Not comprehensive, but good enough to ensure we can look up definitions
+ODATA_TYPE_PATTERN = r"^#.+$"  # Not comprehensive, but good enough to ensure we can look up definitions
 ACTIONS_PATTERN = r"^/Actions/#[A-Za-z0-9_.]+$"
 OEM_ACTIONS_PATTERN = r"^/Actions/Oem/#[A-Za-z0-9_.]+$"
-BASIC_TYPES = [ "Integer", "Number", "String", "Boolean", "Primitive" ]
+BASIC_TYPES = ["Integer", "Number", "String", "Boolean", "Primitive"]
+
 
 def validate_response(resource):
     """
@@ -37,18 +38,25 @@ def validate_response(resource):
         return None, ("FAIL", "Resource Error: Exception when accessing the URI ({}).".format(resource["Exception"]))
     if resource["Response"].status != 200:
         # The response need to return a 200...
-        return None, ("FAIL", "Resource Error: Received HTTP {} when accessing the URI.".format(resource["Response"].status))
+        return None, (
+            "FAIL",
+            "Resource Error: Received HTTP {} when accessing the URI.".format(resource["Response"].status),
+        )
     payload = None
     try:
         payload = resource["Response"].dict
     except:
         # The response needs to pass JSON parsing...
-        return None, ("FAIL", "Resource Error: Invalid JSON received when accessing the URI.".format(resource["Response"].status))
+        return None, (
+            "FAIL",
+            "Resource Error: Invalid JSON received when accessing the URI.".format(resource["Response"].status),
+        )
     if not isinstance(payload, dict):
         # The response needs to be a JSON object...
         return None, ("FAIL", "Resource Error: Resource response does not contain a JSON object.")
 
     return payload, None
+
 
 def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop_path):
     """
@@ -70,44 +78,90 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
         lookup_object_type = object_type
     if lookup_object_type is None or result:
         # No initial mapping or the representation of @odata.type is incorrect
-        sut.add_resource_result(uri, prop_path + "/@odata.type", "@odata.type" in payload, payload.get("@odata.type"), result)
+        sut.add_resource_result(
+            uri, prop_path + "/@odata.type", "@odata.type" in payload, payload.get("@odata.type"), result
+        )
         return
 
     # Get the schema definition
     if prop_path == "":
         resource_type = lookup_object_type
     resource_type_name = resource_type.split(".")[-1]
-    definition = metadata.get_object_definition(resource_type, lookup_object_type, exact_version="@odata.type" in payload)
+    definition = metadata.get_object_definition(
+        resource_type, lookup_object_type, exact_version="@odata.type" in payload
+    )
     lookup_object_type_fallback = None
     if definition is None:
         # See if we can find a "best match" to at least perform some level of testing...
         definition, lookup_object_type_fallback = find_fallback_definition(resource_type, lookup_object_type)
     if definition is None:
         # Still can't find a type...
-        sut.add_resource_result(uri, prop_path, True, payload, ("FAIL", "Schema Error: Unable to locate the schema definition for the '{}' type.".format(lookup_object_type)))
+        sut.add_resource_result(
+            uri,
+            prop_path,
+            True,
+            payload,
+            (
+                "FAIL",
+                "Schema Error: Unable to locate the schema definition for the '{}' type.".format(lookup_object_type),
+            ),
+        )
         return
 
     # Check if the type can be used; this needs to take precedence over logging an error about the fallback type since we do not want to continue here
     if object_type is not None and object_type not in definition["TypeTree"]:
-        sut.add_resource_result(uri, prop_path, True, payload, ("FAIL", "Object Type Error: The object '{}' contains a value for '@odata.type' that is not valid for type '{}'.".format(prop_path.split("/")[-1], object_type)))
+        sut.add_resource_result(
+            uri,
+            prop_path,
+            True,
+            payload,
+            (
+                "FAIL",
+                "Object Type Error: The object '{}' contains a value for '@odata.type' that is not valid for type '{}'.".format(
+                    prop_path.split("/")[-1], object_type
+                ),
+            ),
+        )
         return
 
     # Check if we accepted a fallback type; if so, log an error, but continue to test the object
     if lookup_object_type_fallback is not None:
-        sut.add_resource_result(uri, prop_path, True, payload, ("FAIL", "Schema Error: Unable to locate the schema definition for the '{}' type; using the type '{}' as a fallback.".format(lookup_object_type, lookup_object_type_fallback)))
+        sut.add_resource_result(
+            uri,
+            prop_path,
+            True,
+            payload,
+            (
+                "FAIL",
+                "Schema Error: Unable to locate the schema definition for the '{}' type; using the type '{}' as a fallback.".format(
+                    lookup_object_type, lookup_object_type_fallback
+                ),
+            ),
+        )
 
     # Allow header check
     if prop_path == "":
         allow_header = sut.get_allow_header(uri)
         if allow_header is not None:
-            allow_header_split = [ allow.strip().upper() for allow in allow_header.split(",") ]
-            check_methods = [ "POST", "DELETE", "PUT", "PATCH" ]
+            allow_header_split = [allow.strip().upper() for allow in allow_header.split(",")]
+            check_methods = ["POST", "DELETE", "PUT", "PATCH"]
             for method in check_methods:
-                if method in [ "PATCH", "PUT" ] and "Oem" in payload:
+                if method in ["PATCH", "PUT"] and "Oem" in payload:
                     # PATCH and PUT could be supported for OEM extensions per the spec; ignore for these cases
                     continue
                 if method in allow_header_split and method not in definition["AllowedMethods"]:
-                    sut.add_resource_result(uri, "/[Allow Header]", True, allow_header, ("FAIL", "Allowed Method Error: The Allow header contains '{}', but the resource does not support this method.".format(method)))
+                    sut.add_resource_result(
+                        uri,
+                        "/[Allow Header]",
+                        True,
+                        allow_header,
+                        (
+                            "FAIL",
+                            "Allowed Method Error: The Allow header contains '{}', but the resource does not support this method.".format(
+                                method
+                            ),
+                        ),
+                    )
 
     # Go through each property in the payload
     for prop in payload:
@@ -116,7 +170,9 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             # Regular property
             # Skip OEM extensions if needed
             if prop == "Oem" and sut.no_oem:
-                sut.add_resource_result(uri, cur_path, True, payload[prop], ("SKIP", "Skip: OEM extension checking is disabled."))
+                sut.add_resource_result(
+                    uri, cur_path, True, payload[prop], ("SKIP", "Skip: OEM extension checking is disabled.")
+                )
                 continue
             cur_definition = definition["Properties"][prop]
         elif "@Redfish." in prop or "@odata." in prop:
@@ -124,19 +180,41 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             # TODO: Add support to verify annotations
             # @Redfish.Copyright is just for mockups (except for MessageRegistry resources)
             if prop == "@Redfish.Copyright" and resource_type_name != "MessageRegistry":
-                sut.add_resource_result(uri, cur_path, True, payload[prop], ("WARN", "Copyright Annotation Warning: The copyright annotation only intended for use in mockups."))
+                sut.add_resource_result(
+                    uri,
+                    cur_path,
+                    True,
+                    payload[prop],
+                    (
+                        "WARN",
+                        "Copyright Annotation Warning: The copyright annotation only intended for use in mockups.",
+                    ),
+                )
             continue
         elif re.match(ACTIONS_PATTERN, cur_path) or re.match(OEM_ACTIONS_PATTERN, cur_path):
             # Action
-            result = validate_action(sut, uri, prop, payload[prop], resource_type, cur_path, cur_path.startswith("/Actions/Oem/"))
+            result = validate_action(sut, uri, prop, payload[prop], resource_type, cur_path)
             sut.add_resource_result(uri, cur_path, True, payload[prop], result)
             continue
-        elif definition["DynamicProperties"].get("NamePattern") and re.match(definition["DynamicProperties"]["NamePattern"], prop):
+        elif definition["DynamicProperties"].get("NamePattern") and re.match(
+            definition["DynamicProperties"]["NamePattern"], prop
+        ):
             # Dynamic property
             cur_definition = definition["DynamicProperties"]
         else:
             # Unknown property
-            sut.add_resource_result(uri, cur_path, True, payload[prop], ("FAIL", "Unknown Property Error: The property '{}' is not defined in the '{}' type.".format(prop, lookup_object_type)))
+            sut.add_resource_result(
+                uri,
+                cur_path,
+                True,
+                payload[prop],
+                (
+                    "FAIL",
+                    "Unknown Property Error: The property '{}' is not defined in the '{}' type.".format(
+                        prop, lookup_object_type
+                    ),
+                ),
+            )
             continue
 
         # Check if this property is (and should be) an array
@@ -147,18 +225,53 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             # An array; validate the members
             for i, array_value in enumerate(payload[prop]):
                 curr_array_path = cur_path + "/" + str(i)
-                result = validate_value(sut, uri, payload, prop, array_value, resource_type, definition, cur_definition, excerpt, curr_array_path)
+                result = validate_value(
+                    sut,
+                    uri,
+                    payload,
+                    prop,
+                    array_value,
+                    resource_type,
+                    definition,
+                    cur_definition,
+                    excerpt,
+                    curr_array_path,
+                )
                 sut.add_resource_result(uri, curr_array_path, True, array_value, result)
         elif not isinstance(payload[prop], list) and not cur_definition["Array"]:
             # Singular; validate the individual property
-            result = validate_value(sut, uri, payload, prop, payload[prop], resource_type, definition, cur_definition, excerpt, cur_path)
+            result = validate_value(
+                sut, uri, payload, prop, payload[prop], resource_type, definition, cur_definition, excerpt, cur_path
+            )
             sut.add_resource_result(uri, cur_path, True, payload[prop], result)
         elif isinstance(payload[prop], list) and not cur_definition["Array"]:
             # Mismatch; error
-            sut.add_resource_result(uri, cur_path, True, payload[prop], ("FAIL", "Property Type Error: The property '{}' is not expected to be an array, but found an array.".format(prop)))
+            sut.add_resource_result(
+                uri,
+                cur_path,
+                True,
+                payload[prop],
+                (
+                    "FAIL",
+                    "Property Type Error: The property '{}' is not expected to be an array, but found an array.".format(
+                        prop
+                    ),
+                ),
+            )
         else:
             # Mismatch; error
-            sut.add_resource_result(uri, cur_path, True, payload[prop], ("FAIL", "Property Type Error: The property '{}' is expected to be an array, but did not find an array.".format(prop)))
+            sut.add_resource_result(
+                uri,
+                cur_path,
+                True,
+                payload[prop],
+                (
+                    "FAIL",
+                    "Property Type Error: The property '{}' is expected to be an array, but did not find an array.".format(
+                        prop
+                    ),
+                ),
+            )
 
     # Go through each property in the object definition
     for prop in definition["Properties"]:
@@ -173,7 +286,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
 
         # Override the required term for @odata.id on registry resources
         # These are not typical resources and vendors may copy the files as-is from the DMTF site
-        registry_list = [ "MessageRegistry", "PrivilegeRegistry", "AttributeRegistry" ]
+        registry_list = ["MessageRegistry", "PrivilegeRegistry", "AttributeRegistry"]
         if prop == "@odata.id" and resource_type_name in registry_list:
             definition["Properties"][prop]["Required"] = False
 
@@ -181,7 +294,18 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             if definition["Properties"][prop]["ExcerptCopyOnly"]:
                 continue
             if definition["Properties"][prop]["Required"]:
-                sut.add_resource_result(uri, cur_path, False, None, ("FAIL", "Required Property Error: The property '{}' is mandatory, but not present in the payload.".format(prop)))
+                sut.add_resource_result(
+                    uri,
+                    cur_path,
+                    False,
+                    None,
+                    (
+                        "FAIL",
+                        "Required Property Error: The property '{}' is mandatory, but not present in the payload.".format(
+                            prop
+                        ),
+                    ),
+                )
             else:
                 sut.add_resource_result(uri, cur_path, False, None, ("SKIP", "Skip: The property is not present."))
         else:
@@ -193,7 +317,8 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
 
     return
 
-def validate_action(sut, uri, prop_name, value, resource_type, prop_path, is_oem):
+
+def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
     """
     Validates the contents of an action object in a response
 
@@ -204,14 +329,18 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path, is_oem
         value: The action object to validate as a dictionary
         resource_type: The original type for the resource containing the object
         prop_path: The property path from the root of the response to this object
-        is_oem: Indicates if this action was found in an OEM object
 
     Returns:
         A tuple containing the results of the testing
     """
     # Check if it's an object
     if not isinstance(value, dict):
-        return ("FAIL", "Property Type Error: The property '{}' is expected to be an object, but found '{}'.".format(prop_name, type(value).__name__))
+        return (
+            "FAIL",
+            "Property Type Error: The property '{}' is expected to be an object, but found '{}'.".format(
+                prop_name, type(value).__name__
+            ),
+        )
 
     # Check if the action is defined
     action_def = metadata.get_action_definition(prop_name[1:])
@@ -219,15 +348,25 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path, is_oem
         return ("FAIL", "Schema Error: Unable to locate the schema definition for the '{}' action.".format(prop_name))
 
     # For standard actions, enforce the resource type matches (including version)
-    if not is_oem:
+    if not prop_path.startswith("/Actions/Oem/"):
         if prop_name[1:].split(".")[0] != resource_type.split(".")[0]:
-            return ("FAIL", "Unsupported Action Error: The action '{}' is not allowed in the '{}' resource.".format(prop_name, resource_type.split(".")[0]))
+            return (
+                "FAIL",
+                "Unsupported Action Error: The action '{}' is not allowed in the '{}' resource.".format(
+                    prop_name, resource_type.split(".")[0]
+                ),
+            )
 
         resource_version = metadata.get_version(resource_type)
         if resource_version:
             version_added = metadata.get_version(action_def["VersionAdded"], just_ver=True)
             if version_added and resource_version < version_added:
-                return ("FAIL", "Unsupported Action Error: The action '{}' requires the resource version to be '{}.{}.{}' or higher.".format(prop_name, version_added[0], version_added[1], version_added[2]))
+                return (
+                    "FAIL",
+                    "Unsupported Action Error: The action '{}' requires the resource version to be '{}.{}.{}' or higher.".format(
+                        prop_name, version_added[0], version_added[1], version_added[2]
+                    ),
+                )
     version_deprecated = metadata.get_version(action_def["VersionDeprecated"], just_ver=True)
 
     # The action object is valid; step into the object to test individual properties
@@ -237,23 +376,54 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path, is_oem
 
     # target is mandatory
     if "target" not in value:
-        sut.add_resource_result(uri, prop_path + "/target", False, None, ("FAIL", "Required Property Error: The property 'target' is mandatory, but not present in the action object."))
+        sut.add_resource_result(
+            uri,
+            prop_path + "/target",
+            False,
+            None,
+            (
+                "FAIL",
+                "Required Property Error: The property 'target' is mandatory, but not present in the action object.",
+            ),
+        )
 
     # Check for allowable properties
-    action_props = [ "target", "title" ]
+    action_props = ["target", "title"]
     for prop in value:
         cur_path = prop_path + "/" + prop
         if prop in action_props:
             # Check the data type; all properties are strings
             if not isinstance(value[prop], str):
-                sut.add_resource_result(uri, cur_path, True, value[prop], ("FAIL", "Property Type Error: The property '{}' is expected to be a string, but found '{}'.".format(prop, type(value[prop]).__name__)))
+                sut.add_resource_result(
+                    uri,
+                    cur_path,
+                    True,
+                    value[prop],
+                    (
+                        "FAIL",
+                        "Property Type Error: The property '{}' is expected to be a string, but found '{}'.".format(
+                            prop, type(value[prop]).__name__
+                        ),
+                    ),
+                )
                 continue
 
             # For target, check the URI
             if prop == "target":
                 exp_target = uri + prop_path.replace("#", "")
                 if value[prop] != exp_target:
-                    sut.add_resource_result(uri, cur_path, True, value[prop], ("FAIL", "Property Value Error: The target URI for the action is expected to be '{}'.".format(exp_target)))
+                    sut.add_resource_result(
+                        uri,
+                        cur_path,
+                        True,
+                        value[prop],
+                        (
+                            "FAIL",
+                            "Property Value Error: The target URI for the action is expected to be '{}'.".format(
+                                exp_target
+                            ),
+                        ),
+                    )
                     continue
             sut.add_resource_result(uri, cur_path, True, value[prop], ("PASS", "Pass: The property is valid."))
         elif "@Redfish." in prop:
@@ -262,7 +432,13 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path, is_oem
             continue
         else:
             # Unknown property
-            sut.add_resource_result(uri, cur_path, True, value[prop], ("FAIL", "Unknown Property Error: The property '{}' is not allowed in action objects.".format(prop)))
+            sut.add_resource_result(
+                uri,
+                cur_path,
+                True,
+                value[prop],
+                ("FAIL", "Unknown Property Error: The property '{}' is not allowed in action objects.".format(prop)),
+            )
             continue
 
     return pass_or_deprecated(version_deprecated)
@@ -311,7 +487,12 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
         if obj_definition:
             # Object
             if not isinstance(value, dict):
-                return ("FAIL", "Property Type Error: The property '{}' is expected to be an object, but found '{}'.".format(prop_name, type(value).__name__))
+                return (
+                    "FAIL",
+                    "Property Type Error: The property '{}' is expected to be an object, but found '{}'.".format(
+                        prop_name, type(value).__name__
+                    ),
+                )
 
             # Handle type-checking of navigation properties
             # Auto-expanded navigation properties are treated like any other object
@@ -326,9 +507,19 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
 
                     # Verify it contains @odata.id and it's the correct type
                     if "@odata.id" not in value:
-                        return ("FAIL", "Reference Object Error: The navigation property '{}' does not contain '@odata.id'.".format(prop_name))
+                        return (
+                            "FAIL",
+                            "Reference Object Error: The navigation property '{}' does not contain '@odata.id'.".format(
+                                prop_name
+                            ),
+                        )
                     if not isinstance(value["@odata.id"], str):
-                        return ("FAIL", "Reference Object Error: The navigation property '{}' does not contain a string for its '@odata.id' value.".format(prop_name))
+                        return (
+                            "FAIL",
+                            "Reference Object Error: The navigation property '{}' does not contain a string for its '@odata.id' value.".format(
+                                prop_name
+                            ),
+                        )
 
                     # Verify the referenced link contains the correct type of resource
                     if value["@odata.id"].startswith("/") and "#" not in value["@odata.id"]:
@@ -346,18 +537,33 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                             # See if we can find a fallback version; don't penalize this resource for it
                             link_def, _ = find_fallback_definition(link_type, link_type)
                         if link_def is None:
-                            return ("FAIL", "Schema Error: Unable to locate the schema definition for the '{}' type.".format(link_type))
+                            return (
+                                "FAIL",
+                                "Schema Error: Unable to locate the schema definition for the '{}' type.".format(
+                                    link_type
+                                ),
+                            )
                         # Check if the navigation property type is found in the type tree of the resource
                         if value_type not in link_def["TypeTree"]:
                             print(value_type)
                             print(link_def["TypeTree"])
-                            return ("FAIL", "Reference Object Error: The navigation property '{}' does not reference a resource of type '{}'.".format(prop_name, value_type))
+                            return (
+                                "FAIL",
+                                "Reference Object Error: The navigation property '{}' does not reference a resource of type '{}'.".format(
+                                    prop_name, value_type
+                                ),
+                            )
 
                     # TODO: Verify referencenced referenceable members
 
                     # Verify no other properties are present
                     if len(value) != 1:
-                        return ("FAIL", "Reference Object Error: The navigation property '{}' contains extra properties.".format(prop_name))
+                        return (
+                            "FAIL",
+                            "Reference Object Error: The navigation property '{}' contains extra properties.".format(
+                                prop_name
+                            ),
+                        )
 
                     return pass_or_deprecated(value_deprecated_ver)
 
@@ -376,14 +582,20 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
             value_maximum = type_definition["Maximum"]
         else:
             # Could not resolve the type
-            return ("FAIL", "Schema Error: Unable to locate the schema definition for the '{}' type.".format(value_type))
+            return (
+                "FAIL",
+                "Schema Error: Unable to locate the schema definition for the '{}' type.".format(value_type),
+            )
 
     # Excerpt check
     if excerpt is not None:
         # Inside of an excerpt; check that the current property is applicable
         if value_excerpt is None or (excerpt not in value_excerpt and value_excerpt != []):
             # The property is not part of an excerpt
-            return ("FAIL", "Unknown Property Error: The property '{}' is not part of the excerpt usage.".format(prop_name))
+            return (
+                "FAIL",
+                "Unknown Property Error: The property '{}' is not part of the excerpt usage.".format(prop_name),
+            )
     else:
         # Not an excerpt; check that the current property is not flagged as excerpt-only
         if value_excerpt_copy_only:
@@ -393,21 +605,39 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
     if value is None:
         if value_nullable:
             return pass_or_deprecated(value_deprecated_ver)
-        return ("FAIL", "Property Value Error: The property '{}' contains null, but null is not allowed.".format(prop_name))
+        return (
+            "FAIL",
+            "Property Value Error: The property '{}' contains null, but null is not allowed.".format(prop_name),
+        )
 
     # Permission check
     # Write-only properties always show null; should not have gotten this far
     if value_permissions == "None" or value_permissions == "Write":
-        return ("FAIL", "Property Value Error: The property '{}' is write-only and is expected to be null in responses.".format(prop_name))
+        return (
+            "FAIL",
+            "Property Value Error: The property '{}' is write-only and is expected to be null in responses.".format(
+                prop_name
+            ),
+        )
 
     # Basic type check
     allowed_types = [value_type]
     if value_type == "Number":
-        allowed_types.append("Integer")     # Floats can come in as integers
+        allowed_types.append("Integer")  # Floats can come in as integers
     elif value_type == "Primitive":
-        allowed_types = BASIC_TYPES         # Primitive can map to anything
-    if (type(value) is str and "String" not in allowed_types) or (type(value) is bool and "Boolean" not in allowed_types) or (type(value) is int and "Integer" not in allowed_types) or (type(value) is float and "Number" not in allowed_types):
-        return ("FAIL", "Property Type Error: The property '{}' is expected to be a {}, but found '{}'.".format(prop_name, value_type, type(value).__name__))
+        allowed_types = BASIC_TYPES  # Primitive can map to anything
+    if (
+        (type(value) is str and "String" not in allowed_types)
+        or (type(value) is bool and "Boolean" not in allowed_types)
+        or (type(value) is int and "Integer" not in allowed_types)
+        or (type(value) is float and "Number" not in allowed_types)
+    ):
+        return (
+            "FAIL",
+            "Property Type Error: The property '{}' is expected to be a {}, but found '{}'.".format(
+                prop_name, value_type, type(value).__name__
+            ),
+        )
 
     # Special case testing for when properties are cross-coupled or not covered by schema
 
@@ -431,18 +661,33 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
         uri_pattern, check = find_uri_pattern(payload.get("@odata.id"), obj_def)
         if uri_pattern is not None:
             if uri_pattern.endswith("+/?$") and payload["@odata.id"].strip("/").split("/")[-1] != value:
-                return ("FAIL", "Invalid Identifier Error: The identifier '{}' does not match the last URI segment for the resource.".format(value))
+                return (
+                    "FAIL",
+                    "Invalid Identifier Error: The identifier '{}' does not match the last URI segment for the resource.".format(
+                        value
+                    ),
+                )
 
     # @odata.id for embedded objects need to match the property path
     if prop_name == "@odata.id" and "MemberId" in payload:
         test_value = value + "/@odata.id"
         if not test_value.endswith("#" + prop_path):
-            return ("FAIL", "Property Value Error: The property '{}' does not contain a valid RFC6901 JSON pointer.".format(prop_name))
+            return (
+                "FAIL",
+                "Property Value Error: The property '{}' does not contain a valid RFC6901 JSON pointer.".format(
+                    prop_name
+                ),
+            )
 
     # MemberId needs to match the index position in the payload
     if prop_name == "MemberId":
         if value != prop_path.split("/")[-2]:
-            return ("FAIL", "Property Value Error: The property '{}' does not contain the last segment of the JSON path of the object.".format(prop_name))
+            return (
+                "FAIL",
+                "Property Value Error: The property '{}' does not contain the last segment of the JSON path of the object.".format(
+                    prop_name
+                ),
+            )
 
     # DurableName will have a pattern applied based on DurableNameFormat
     if prop_name == "DurableName":
@@ -464,13 +709,23 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
     if isinstance(value, str):
         # Regex pattern
         if value_pattern is not None and not re.match(value_pattern, value):
-            return ("FAIL", "Property Value Error: The property '{}' does not follow the regular expression pattern '{}'.".format(prop_name, value_pattern))
+            return (
+                "FAIL",
+                "Property Value Error: The property '{}' does not follow the regular expression pattern '{}'.".format(
+                    prop_name, value_pattern
+                ),
+            )
 
         # Allowable values
         if values_allowed_values is not None:
             # Check if the value is even defined
             if value not in values_allowed_values:
-                return ("FAIL", "Property Value Error: The property '{}' is not one of the listed allowable values: {}.".format(prop_name, ", ".join(values_allowed_values)))
+                return (
+                    "FAIL",
+                    "Property Value Error: The property '{}' is not one of the listed allowable values: {}.".format(
+                        prop_name, ", ".join(values_allowed_values)
+                    ),
+                )
             value_index = values_allowed_values.index(value)
 
             # Check versioning if the definition is from the same schema
@@ -478,30 +733,56 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
             if (resource_type.split(".")[0] == value_type_orig.split(".")[0]) and resource_version is not None:
                 version_added = metadata.get_version(values_version_added[value_index], just_ver=True)
                 if version_added and resource_version < version_added:
-                    return ("FAIL", "Property Value Error: The value '{}' for the property '{}' requires the resource version to be '{}.{}.{}' or higher.".format(value, prop_name, version_added[0], version_added[1], version_added[2]))
+                    return (
+                        "FAIL",
+                        "Property Value Error: The value '{}' for the property '{}' requires the resource version to be '{}.{}.{}' or higher.".format(
+                            value, prop_name, version_added[0], version_added[1], version_added[2]
+                        ),
+                    )
 
             # For deprecated values, always log
             # TODO: May want to consider a version check if the value is defined in the same schema as the resource
             version_deprecated = metadata.get_version(values_version_deprecated[value_index], just_ver=True)
             if version_deprecated:
-                return ("WARN", "Deprecated Value Warning: The value '{}' for the property '{}' was deprecated in version '{}.{}.{}' of the resource.".format(value, prop_name, version_deprecated[0], version_deprecated[1], version_deprecated[2]))
+                return (
+                    "WARN",
+                    "Deprecated Value Warning: The value '{}' for the property '{}' was deprecated in version '{}.{}.{}' of the resource.".format(
+                        value, prop_name, version_deprecated[0], version_deprecated[1], version_deprecated[2]
+                    ),
+                )
 
         # Empty-string check
         # Read-only strings shouldn't be empty; high chance this is a mistake
         if value_permissions == "Read" and value == "":
-            return ("WARN", "Property Value Warning: The property '{}' contains an empty string; services should omit properties that are not supported.".format(prop_name))
+            return (
+                "WARN",
+                "Property Value Warning: The property '{}' contains an empty string; services should omit properties that are not supported.".format(
+                    prop_name
+                ),
+            )
 
     # Number-specific checks
     if isinstance(value, int) or isinstance(value, float):
         # Min value check
         if value_minimum is not None and value < value_minimum:
-            return ("FAIL", "Property Value Error: The property '{}' is below the minimum allowed value '{}'.".format(prop_name, value_minimum))
+            return (
+                "FAIL",
+                "Property Value Error: The property '{}' is below the minimum allowed value '{}'.".format(
+                    prop_name, value_minimum
+                ),
+            )
 
         # Max value check
         if value_maximum is not None and value > value_maximum:
-            return ("FAIL", "Property Value Error: The property '{}' is above the maximum allowed value '{}'.".format(prop_name, value_maximum))
+            return (
+                "FAIL",
+                "Property Value Error: The property '{}' is above the maximum allowed value '{}'.".format(
+                    prop_name, value_maximum
+                ),
+            )
 
     return pass_or_deprecated(value_deprecated_ver)
+
 
 def get_payload_type(payload, link_check, required):
     """
@@ -523,18 +804,34 @@ def get_payload_type(payload, link_check, required):
     # Check if there's an @odata.type property present
     if "@odata.type" not in payload:
         if required:
-            return None, ("FAIL", "Required Property Error: The property '@odata.type'{}is mandatory, but not present in the payload.".format(link_msg))
+            return None, (
+                "FAIL",
+                "Required Property Error: The property '@odata.type'{}is mandatory, but not present in the payload.".format(
+                    link_msg
+                ),
+            )
         return None, None
 
     # Check @odata.type contains something valid
     # "Valid" in this case just means it's syntactically correct; not that it means it maps to a schema definition
     if not isinstance(payload["@odata.type"], str):
-        return None, ("FAIL", "Property Type Error: The property '@odata.type'{}is expected to be a string, but found '{}'.".format(link_msg, type(payload["@odata.type"]).__name__))
+        return None, (
+            "FAIL",
+            "Property Type Error: The property '@odata.type'{}is expected to be a string, but found '{}'.".format(
+                link_msg, type(payload["@odata.type"]).__name__
+            ),
+        )
     if not re.match(ODATA_TYPE_PATTERN, payload["@odata.type"]):
-        return None, ("FAIL", "Property Value Error: The property '@odata.type'{}does not follow the regular expression pattern '{}'.".format(link_msg, ODATA_TYPE_PATTERN))
+        return None, (
+            "FAIL",
+            "Property Value Error: The property '@odata.type'{}does not follow the regular expression pattern '{}'.".format(
+                link_msg, ODATA_TYPE_PATTERN
+            ),
+        )
 
     # Found; remove the leading # character
     return payload["@odata.type"][1:], None
+
 
 def pass_or_deprecated(deprecated):
     """
@@ -550,6 +847,7 @@ def pass_or_deprecated(deprecated):
         return ("WARN", "Deprecated Property Warning: The property is deprecated.")
     else:
         return ("PASS", "Pass: The property is valid.")
+
 
 def find_uri_pattern(uri, obj_def):
     """
@@ -577,6 +875,7 @@ def find_uri_pattern(uri, obj_def):
             return allowed_uri, True
     return None, True
 
+
 def find_fallback_definition(resource_type, object_type):
     """
     Attempts to find a fallback object definition
@@ -595,7 +894,9 @@ def find_fallback_definition(resource_type, object_type):
     if object_ver:
         object_type_split = object_type.split(".")
         for version_test in range(object_ver[1], -1, -1):
-            object_type_fallback = "{}.v{}_{}_0.{}".format(object_type_split[0], object_ver[0], version_test, object_type_split[-1])
+            object_type_fallback = "{}.v{}_{}_0.{}".format(
+                object_type_split[0], object_ver[0], version_test, object_type_split[-1]
+            )
             definition = metadata.get_object_definition(resource_type, object_type_fallback, exact_version=True)
             if definition:
                 # Found a fallback

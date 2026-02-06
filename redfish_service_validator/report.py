@@ -148,14 +148,16 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
         # Build the results summary for the URI
         uri_summary = "<div>Pass: {}</div>".format(sut._resources[uri]["Pass"])
         if sut._resources[uri]["Warn"]:
-            uri_summary += "<div class=\"warn\">Warning: {}</div>".format(sut._resources[uri]["Warn"])
+            uri_summary += '<div class="warn">Warning: {}</div>'.format(sut._resources[uri]["Warn"])
         if sut._resources[uri]["Fail"]:
-            uri_summary += "<div class=\"fail\">Failure: {}</div>".format(sut._resources[uri]["Fail"])
+            uri_summary += '<div class="fail">Failure: {}</div>'.format(sut._resources[uri]["Fail"])
 
         # Insert the URI results header
         results_id = "results{}".format(index)
         payload_id = "payload{}".format(index)
-        html += results_header_html.format(uri, resource_type, uri_summary, payload_id, results_id, payload_id, results_id)
+        html += results_header_html.format(
+            uri, resource_type, uri_summary, payload_id, results_id, payload_id, results_id
+        )
 
         # Insert the URI results details
         results_str = ""
@@ -171,13 +173,17 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
                 result_class = 'class="pass"'
             elif sut._resources[uri]["Results"][prop]["Result"] == "WARN":
                 result_class = 'class="warn"'
-                value_str += "<div class=\"warn\">{}</div>".format(sut._resources[uri]["Results"][prop]["Message"])
+                value_str += '<div class="warn">{}</div>'.format(sut._resources[uri]["Results"][prop]["Message"])
             elif sut._resources[uri]["Results"][prop]["Result"] == "FAIL":
                 result_class = 'class="fail"'
-                value_str += "<div class=\"fail\">{}</div>".format(sut._resources[uri]["Results"][prop]["Message"])
-            results_str += "<tr><td>{}</td><td>{}</td><td {}>{}</td></tr>".format(prop_str, value_str, result_class, sut._resources[uri]["Results"][prop]["Result"])
+                value_str += '<div class="fail">{}</div>'.format(sut._resources[uri]["Results"][prop]["Message"])
+            results_str += "<tr><td>{}</td><td>{}</td><td {}>{}</td></tr>".format(
+                prop_str, value_str, result_class, sut._resources[uri]["Results"][prop]["Result"]
+            )
         try:
-            payload_str = json.dumps( sut._resources[uri]["Response"].dict, sort_keys=True, indent=4, separators=(",", ": "))
+            payload_str = json.dumps(
+                sut._resources[uri]["Response"].dict, sort_keys=True, indent=4, separators=(",", ": ")
+            )
         except:
             payload_str = "Malformed JSON"
         html += results_detailed_html.format(results_id, results_str, payload_id, payload_str)

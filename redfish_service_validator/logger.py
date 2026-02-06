@@ -14,6 +14,7 @@ import logging
 
 logger = None
 
+
 def log_print(*args, **kwargs):
     """
     Prints to the console and adds an INFO entry to the debug log
@@ -27,6 +28,7 @@ def log_print(*args, **kwargs):
         logger.info(*args, **kwargs)
     print(*args, **kwargs)
 
+
 def debug(*args, **kwargs):
     """
     Adds a DEBUG entry to the debug log
@@ -38,6 +40,7 @@ def debug(*args, **kwargs):
     """
     if logger:
         logger.debug(*args, **kwargs)
+
 
 def info(*args, **kwargs):
     """
@@ -51,6 +54,7 @@ def info(*args, **kwargs):
     if logger:
         logger.info(*args, **kwargs)
 
+
 def warning(*args, **kwargs):
     """
     Adds a WARNING entry to the debug log
@@ -63,6 +67,7 @@ def warning(*args, **kwargs):
     if logger:
         logger.warning(*args, **kwargs)
 
+
 def error(*args, **kwargs):
     """
     Adds an ERROR entry to the debug log
@@ -74,6 +79,7 @@ def error(*args, **kwargs):
     """
     if logger:
         logger.error(*args, **kwargs)
+
 
 def critical(*args, **kwargs):
     """
