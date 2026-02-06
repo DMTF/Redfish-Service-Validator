@@ -54,7 +54,7 @@ jobs:
     - name: Update version numbers
       run: |
         sed -i -E 's/    version=.+,/    version="'${{github.event.inputs.version}}'",/' setup.py
-        sed -i -E 's/tool_version = .+/tool_version = '\'${{github.event.inputs.version}}\''/' redfish_service_validator/RedfishServiceValidator.py
+        sed -i -E 's/tool_version = .+/tool_version = "'${{github.event.inputs.version}}'"/' redfish_service_validator/console_scripts.py
     - name: Update the changelog
       run: |
         ex CHANGELOG.md <<eof
