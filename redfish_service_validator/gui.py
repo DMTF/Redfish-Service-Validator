@@ -5,105 +5,101 @@
 """
 Redfish Service Validator GUI
 
-File : RedfishServiceValidatorGui.py
+File : gui.py
 
-Brief : This file contains the GUI to interact with the RedfishServiceValidator
+Brief : This file contains the GUI to interact with the Redfish Service Validator
 """
 
 import configparser
 import os
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog as tkFileDialog
 import traceback
 import webbrowser
 
-import redfish_service_validator.RedfishLogo as logo
-import redfish_service_validator.RedfishServiceValidator as rsv
+import redfish_service_validator.redfish_logo as logo
+import redfish_service_validator.console_scripts as rsv
 
 g_config_file_name = "config/config.ini"
 
 g_config_defaults = {
-    "Tool": {
-        "verbose": {
-            "value": "",
-            "description": "Level of verbosity (0-3)"
-        }
-    },
-    "Host": {
-        "ip": {
+    "System Under Test": {
+        "Service": {
             "value": "http://localhost:8000",
-            "description": "Host of testing system, formatted as https:// ip : port (can use http as well)"
+            "description": "The address of the Redfish service (with scheme)",
+            "destination": "rhost"
         },
-        "username": {
+        "Username": {
             "value": "MyUser",
-            "description": "Username for Basic authentication"
+            "description": "The username for authentication",
+            "destination": "user"
         },
-        "password": {
+        "Password": {
             "value": "MyPass",
-            "description": "Username for Basic authentication"
+            "description": "The password for authentication",
+            "destination": "password"
         },
-        "description": {
-            "value": "MySystem",
-            "description": "Description of system being tested (optional)"
+        "Authorization": {
+            "value": "Session",
+            "description": "The authorization type",
+            "options": [ "Basic", "Session" ],
+            "destination": "authtype"
         },
-        "forceauth": {
-            "value": "False",
-            "description": "Force authentication even on http servers"
-        },
-        "authtype": {
-            "value": "Basic",
-            "description": "Authorization type (Basic | Session | Token | None)"
-        },
-        "token": {
-            "value": "False",
-            "description": "Token string for Token authentication"
-        },
-        "ext_http_proxy": {
+        "External HTTP Proxy": {
             "value": "",
-            "description": "URL of the HTTP proxy for accessing external sites"
+            "description": "The URL of the HTTP proxy for accessing external sites",
+            "destination": "ext_http_proxy"
         },
-        "ext_https_proxy": {
+        "External HTTPS Proxy": {
             "value": "",
-            "description": "URL of the HTTPS proxy for accessing external sites"
+            "description": "The URL of the HTTPS proxy for accessing external sites",
+            "destination": "ext_https_proxy"
         },
-        "serv_http_proxy": {
+        "Service HTTP Proxy": {
             "value": "",
-            "description": "URL of the HTTP proxy for accessing the service"
+            "description": "The URL of the HTTP proxy for accessing the Redfish service",
+            "destination": "serv_http_proxy"
         },
-        "serv_https_proxy": {
+        "Service HTTPS Proxy": {
             "value": "",
-            "description": "URL of the HTTPS proxy for accessing the service"
+            "description": "The URL of the HTTPS proxy for accessing the Redfish service",
+            "destination": "serv_https_proxy"
         }
     },
     "Validator": {
-        "payload": {
+        "Logs Directory": {
+            "value": "logs",
+            "description": "The directory for generated report files",
+            "destination": "logdir"
+        },
+        "Schema Directory": {
+            "value": "SchemaFiles",
+            "description": "Directory for local schema files; default",
+            "destination": "schema_directory"
+        },
+        "Mockup Directory": {
             "value": "",
-            "description": "Option to test a specific payload or resource tree (see README)"
+            "description": "Path to directory containing mockups to override responses from the service",
+            "destination": "mockup"
         },
-        "logdir": {
-            "value": "./logs",
-            "description": "Place to save logs and run configs"
-        },
-        "oemcheck": {
-            "value": "True",
-            "description": "Whether to check Oem items on service"
-        },
-        "debugging": {
-            "value": "False",
-            "description": "Whether to print debug to log"
-        },
-        "uricheck": {
-            "value": "False",
-            "description": "Whether to force urichecking if under RedfishVersion 1.6.0"
-        },
-        "schema_directory": {
-            "value": "./SchemaFiles/metadata",
-            "description": "Where schema is located/saved on system"
-        },
-        "mockup": {
+        "Payload": {
             "value": "",
-            "description": "Enables insertion of local mockup resources to replace payloads from the service"
+            "description": "Controls how much of the data model to test; see the README for details",
+            "destination": "payload"
+        },
+        "Skip OEM": {
+            "value": "False",
+            "description": "Don't check OEM items",
+            "options": [ "True", "False" ],
+            "destination": "nooemcheck"
+        },
+        "Debugging": {
+            "value": "False",
+            "description": "Controls the verbosity of the debugging output",
+            "options": [ "True", "False" ],
+            "destination": "debugging"
         }
     }
 }
@@ -170,7 +166,7 @@ class RSVGui:
         """
         Updates the System Under Test string
         """
-        self.system_under_test.set( "System Under Test: " + self.config["Host"]["ip"]["value"] )
+        self.system_under_test.set( "System Under Test: " + self.config["System Under Test"]["Service"]["value"] )
 
     def parse_config( self ):
         """
@@ -248,7 +244,7 @@ class RSVGui:
                 config_values[section][option].set( self.config[section][option]["value"] )
                 if "options" in self.config[section][option]:
                     option_menu = tk.OptionMenu( option_frame, config_values[section][option], *self.config[section][option]["options"] )
-                    option_menu.configure( width = 26 )    # Need a better way to fine tune this so it lines up nicely with the text boxes
+                    option_menu.configure( width = 26 )    # Need a better way to fine tune this so it lines up nicely with the text boxes; currently tuned for Windows
                     option_menu.pack( side = tk.LEFT )
                 else:
                     tk.Entry( option_frame, width = 32, textvariable = config_values[section][option] ).pack( side = tk.LEFT )
@@ -314,8 +310,9 @@ class RSVGui:
         run_scroll = tk.Scrollbar( run_text_frame )
         run_scroll.pack( side = tk.RIGHT, fill = tk.Y )
         run_text = tk.Text( run_text_frame, height = 48, width = 128, yscrollcommand = run_scroll.set )
-        rsv.my_logger.handlers[0].stream = RunOutput( run_text )
+        sys.stdout = RunOutput( run_text )
         run_text.pack( side = tk.TOP )
+        run_scroll["command"] = run_text.yview
         run_button_frame = tk.Frame( run_window )
         run_button_frame.pack( side = tk.BOTTOM )
         tk.Button( run_button_frame, text = "OK", command = run_window.destroy ).pack( side = tk.LEFT )
@@ -323,14 +320,28 @@ class RSVGui:
 
         # Launch the validator
         try:
-            rsv_config = self.build_config_parser( False )
-            status_code, last_results_page, exit_string = rsv.validate( configfile = rsv_config )
+            args = {"collectionlimit":["LogEntry", "20"]}
+            for section in self.config:
+                for option in self.config[section]:
+                    if self.config[section][option]["value"] == "":
+                        args[self.config[section][option]["destination"]] = None
+                    elif self.config[section][option]["value"] == "True":
+                        args[self.config[section][option]["destination"]] = True
+                    elif self.config[section][option]["value"] == "False":
+                        args[self.config[section][option]["destination"]] = False
+                    else:
+                        if option == "Payload":
+                            args[self.config[section][option]["destination"]] = self.config[section][option]["value"].split(" ")
+                        else:
+                            args[self.config[section][option]["destination"]] = self.config[section][option]["value"]
+            status_code, last_results_page = rsv.run_validator(args)
             if last_results_page is not None:
+                print(last_results_page)
                 webbrowser.open_new( last_results_page )
             else:
                 # The validation could not take place (for a controlled reason)
                 notification_window = tk.Toplevel()
-                tk.Label( notification_window, text = "Test aborted: " + exit_string, anchor = "center" ).pack( side = tk.TOP )
+                tk.Label( notification_window, text = "Test aborted", anchor = "center" ).pack( side = tk.TOP )
                 tk.Button( notification_window, text = "OK", command = notification_window.destroy ).pack( side = tk.BOTTOM )
         except:
             oops_window = tk.Toplevel()
@@ -342,6 +353,7 @@ class RSVGui:
             oops_text = tk.Text( oops_text_frame, height = 32, width = 64, yscrollcommand = oops_scroll.set )
             oops_text.insert( tk.END, traceback.format_exc() )
             oops_text.pack( side = tk.TOP )
+            oops_scroll["command"] = oops_text.yview
             oops_button_frame = tk.Frame( oops_window )
             oops_button_frame.pack( side = tk.BOTTOM )
             tk.Button( oops_button_frame, text = "OK", command = oops_window.destroy ).pack( side = tk.LEFT )
@@ -381,6 +393,12 @@ class RunOutput( object ):
         if self.output.winfo_exists():
             self.output.insert( tk.END, string )
             self.output.see( tk.END )
+
+    def flush(self):
+        """
+        Flushes the output buffer
+        """
+        pass
 
 def main():
     """

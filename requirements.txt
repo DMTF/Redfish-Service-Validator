@@ -1,4 +1,2 @@
 redfish>=3.1.5
 requests
-beautifulsoup4>=4.6.0
-lxml

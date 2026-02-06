@@ -3,7 +3,7 @@
 # License: BSD 3-Clause License. For full text see link:
 # https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
-from redfish_service_validator.RedfishServiceValidatorGui import main
+from redfish_service_validator.gui import main
 
 if __name__ == '__main__':
     main()
