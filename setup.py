@@ -28,8 +28,8 @@ setup(
     packages=["redfish_service_validator"],
     entry_points={
         "console_scripts": [
-            "rf_service_validator=redfish_service_validator.RedfishServiceValidator:main",
-            "rf_service_validator_gui=redfish_service_validator.RedfishServiceValidatorGui:main",
+            "rf_service_validator=redfish_service_validator.console_scripts:main",
+            "rf_service_validator_gui=redfish_service_validator.gui:main",
         ]
     },
     install_requires=["redfish>=3.1.5", "requests", "beautifulsoup4>=4.6.0", "lxml"],
