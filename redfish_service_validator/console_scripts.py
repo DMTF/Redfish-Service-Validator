@@ -103,6 +103,15 @@ def run_validator(args):
     else:
         traverse_mode, starting_uri = None, "/redfish/v1/"
 
+    # Set up external proxy info
+    proxies = None
+    if args["ext_http_proxy"] or args["ext_https_proxy"]:
+        proxies = {}
+        if args["ext_http_proxy"]:
+            proxies["http"] = args["ext_http_proxy"]
+        if args["ext_https_proxy"]:
+            proxies["https"] = args["ext_https_proxy"]
+
     # Create schema directory if needed
     schema_dir = Path(args["schema_directory"])
     if not schema_dir.is_dir():
@@ -127,16 +136,7 @@ def run_validator(args):
     logger.info("System: {}".format(args["rhost"]))
     logger.info("User: {}".format(args["user"]))
 
-    # Update the schema cache
-    schema_pack.update_dsp8010_files(args["schema_directory"], args["ext_http_proxy"], args["ext_https_proxy"])
-    schema_pack.update_service_metadata(
-        args["schema_directory"], args["rhost"], args["serv_http_proxy"], args["serv_https_proxy"]
-    )
-
-    # Build the schema database
-    metadata.parse_schema_files(args["schema_directory"])
-
-    # Set up the system and validate it
+    # Set up the system
     try:
         sut = SystemUnderTest(
             args["rhost"],
@@ -152,6 +152,15 @@ def run_validator(args):
     except Exception as err:
         logger.critical("Could not set up the service: {}".format(err))
         return 1, None
+
+    # Update the schema cache
+    schema_pack.update_dsp8010_files(args["schema_directory"], proxies)
+    schema_pack.update_service_metadata(args["schema_directory"], sut.session, proxies)
+
+    # Build the schema database
+    metadata.parse_schema_files(args["schema_directory"])
+
+    # Validate the service
     sut.validate(traverse_mode, starting_uri, starting_uri)
     sut.logout()
 

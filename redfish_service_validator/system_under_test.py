@@ -389,6 +389,9 @@ class SystemUnderTest(object):
             uri_list: The list of URIs to update with any URIs found
             from_annotation: Indicates if we're stepping through an annotation that can contain URIs
         """
+        if isinstance(payload, dict) and payload.get("@odata.type", "").startswith("#JsonSchemaFile."):
+            # Don't go to URIs for JSON Schemas
+            return
         for item in payload:
             if isinstance(payload, dict):
                 # Skip OEM extensions if needed

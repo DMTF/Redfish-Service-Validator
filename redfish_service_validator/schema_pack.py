@@ -25,26 +25,16 @@ dsp8010_zip_version = "https://redfish.dmtf.org/schemas/v1/info.json"
 metadata_uri = "/redfish/v1/$metadata"
 
 
-def update_dsp8010_files(schema_dir, http_proxy=None, https_proxy=None):
+def update_dsp8010_files(schema_dir, proxies):
     """
     Download schema files from the DMTF site
 
     Args:
         schema_dir: The local schema repository
-        http_proxy: The HTTP proxy for accessing external sites
-        https_proxy: The HTTPS proxy for accessing external sites
+        proxies: HTTP proxy information for accessing external sites
     """
 
     logger.log_print("Checking schema cache against dmtf.org...")
-
-    # Set up proxies if needed
-    proxies = None
-    if http_proxy or https_proxy:
-        proxies = {}
-        if http_proxy:
-            proxies["http"] = http_proxy
-        if https_proxy:
-            proxies["https"] = https_proxy
 
     # Get the current bundle version of the schema files
     current_ver = "0000.0"
@@ -99,40 +89,30 @@ def update_dsp8010_files(schema_dir, http_proxy=None, https_proxy=None):
         logger.log_print("Cached DSP8010 up to date ({})\n".format(current_ver))
 
 
-def update_service_metadata(schema_dir, rhost, http_proxy=None, https_proxy=None):
+def update_service_metadata(schema_dir, redfish_obj, proxies):
     """
     Download schema files from the DMTF site
 
     Args:
         schema_dir: The local schema repository
-        rhost: The address of the Redfish service (with scheme)
-        http_proxy: The HTTP proxy for accessing the service
-        https_proxy: The HTTPS proxy for accessing the service
+        redfish_obj: The Redfish object for accessing the service
+        proxies: HTTP proxy information for accessing external sites
     """
 
     logger.log_print("Checking schema cache against the service...")
 
-    # Set up proxies if needed
-    proxies = None
-    if http_proxy or https_proxy:
-        proxies = {}
-        if http_proxy:
-            proxies["http"] = http_proxy
-        if https_proxy:
-            proxies["https"] = https_proxy
-
     # Get $metadata from the service
-    uri = rhost + metadata_uri
+    uri = metadata_uri
     root = None
     try:
-        response = requests.get(uri, proxies=proxies, verify=False)
-        if response.status_code != 200:
-            logger.critical("Could not access {}; HTTP status: {}\n".format(uri, response.status_code))
+        response = redfish_obj.get(metadata_uri)
+        if response.status != 200:
+            logger.critical("Could not access {}; HTTP status: {}\n".format(metadata_uri, response.status))
             return
         else:
-            root = ET.fromstring(response.content)
+            root = ET.fromstring(response.text)
     except Exception as err:
-        logger.critical("Could not access or unpack {}; {}\n".format(uri, err))
+        logger.critical("Could not access or unpack {}; {}\n".format(metadata_uri, err))
         return
 
     # Go through each reference and download the file, if needed
@@ -153,19 +133,22 @@ def update_service_metadata(schema_dir, rhost, http_proxy=None, https_proxy=None
             # TODO: May want to consider adding logic to see if the schema cache needs an updated copy
             continue
 
-        if schema_uri.startswith("/"):
-            # Get the file from the service
-            schema_uri = rhost + schema_uri
-
         # Download and save the file
         logger.log_print("Downloading {}...".format(schema_uri))
         try:
-            response = requests.get(schema_uri, proxies=proxies, verify=False)
-            if response.status_code != 200:
-                logger.critical("Could not access {}; HTTP status: {}".format(schema_uri, response.status_code))
+            if schema_uri.startswith("/"):
+                # Local file; use the Redfish object with auth to the service
+                response = redfish_obj.get(schema_uri)
+                status = response.status
             else:
-                with open(schema_dir + os.path.sep + filename, "wb") as f:
-                    f.write(response.content)
+                # Remote file; use requests
+                response = requests.get(schema_uri, proxies=proxies, verify=False)
+                status = response.status_code
+            if status != 200:
+                logger.critical("Could not access {}; HTTP status: {}".format(schema_uri, status))
+            else:
+                with open(schema_dir + os.path.sep + filename, "w") as f:
+                    f.write(response.text)
         except Exception as err:
             logger.critical("Could not access or unpack {}; {}".format(schema_uri, err))
 

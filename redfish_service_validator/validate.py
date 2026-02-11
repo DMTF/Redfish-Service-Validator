@@ -71,13 +71,20 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
         excerpt: For excerpts, the type of excerpt for this object
         prop_path: The property path from the root of the response to this object
     """
+    schema_err_result = "FAIL"
+    if object_type == "Resource.OemObject":
+        # TODO: For now, downgrade bad OEM extensions to warnings...
+        schema_err_result = "WARN"
     # Determine the type to lookup
     # If @odata.type is present, use that, otherwise fall back on the generic type provided by the caller
-    lookup_object_type, result = get_payload_type(payload, False, object_type is None)
+    lookup_object_type, result = get_payload_type(payload, False, object_type is None or object_type == "Resource.OemObject")
     if lookup_object_type is None:
         lookup_object_type = object_type
     if lookup_object_type is None or result:
         # No initial mapping or the representation of @odata.type is incorrect
+        if object_type == "Resource.OemObject":
+            # TODO: For now, downgrade bad OEM extensions to warnings...
+            result = ("WARN", result[1])
         sut.add_resource_result(
             uri, prop_path + "/@odata.type", "@odata.type" in payload, payload.get("@odata.type"), result
         )
@@ -102,7 +109,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             True,
             payload,
             (
-                "FAIL",
+                schema_err_result,
                 "Schema Error: Unable to locate the schema definition for the '{}' type.".format(lookup_object_type),
             ),
         )
@@ -116,13 +123,15 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             True,
             payload,
             (
-                "FAIL",
+                schema_err_result,
                 "Object Type Error: The object '{}' contains a value for '@odata.type' that is not valid for type '{}'.".format(
                     prop_path.split("/")[-1], object_type
                 ),
             ),
         )
-        return
+        if object_type != "Resource.OemObject":
+            # TODO: For now, allow OEM extensions to continue testing...
+            return
 
     # Check if we accepted a fallback type; if so, log an error, but continue to test the object
     if lookup_object_type_fallback is not None:
@@ -132,7 +141,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             True,
             payload,
             (
-                "FAIL",
+                schema_err_result,
                 "Schema Error: Unable to locate the schema definition for the '{}' type; using the type '{}' as a fallback.".format(
                     lookup_object_type, lookup_object_type_fallback
                 ),
@@ -333,6 +342,10 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
     Returns:
         A tuple containing the results of the testing
     """
+    schema_err_result = "FAIL"
+    if prop_path.startswith("/Actions/Oem/"):
+        # TODO: For now, downgrade bad OEM extensions to warnings...
+        schema_err_result = "WARN"
     # Check if it's an object
     if not isinstance(value, dict):
         return (
@@ -345,7 +358,7 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
     # Check if the action is defined
     action_def = metadata.get_action_definition(prop_name[1:])
     if action_def is None:
-        return ("FAIL", "Schema Error: Unable to locate the schema definition for the '{}' action.".format(prop_name))
+        return (schema_err_result, "Schema Error: Unable to locate the schema definition for the '{}' action.".format(prop_name))
 
     # For standard actions, enforce the resource type matches (including version)
     if not prop_path.startswith("/Actions/Oem/"):
@@ -411,7 +424,19 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
             # For target, check the URI
             if prop == "target":
                 exp_target = uri + prop_path.replace("#", "")
-                if value[prop] != exp_target:
+                if value[prop] == exp_target + "/":
+                    sut.add_resource_result(
+                        uri,
+                        cur_path,
+                        True,
+                        value[prop],
+                        (
+                            "WARN",
+                            "Trailing Slash Warning: The target URI for the action has an unexpected trailing slash.",
+                        ),
+                    )
+                    continue
+                elif value[prop] != exp_target:
                     sut.add_resource_result(
                         uri,
                         cur_path,
@@ -545,8 +570,6 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                             )
                         # Check if the navigation property type is found in the type tree of the resource
                         if value_type not in link_def["TypeTree"]:
-                            print(value_type)
-                            print(link_def["TypeTree"])
                             return (
                                 "FAIL",
                                 "Reference Object Error: The navigation property '{}' does not reference a resource of type '{}'.".format(
