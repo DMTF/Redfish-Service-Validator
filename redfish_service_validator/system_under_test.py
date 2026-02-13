@@ -55,6 +55,8 @@ class SystemUnderTest(object):
         self._warn_count = 0
         self._fail_count = 0
         self._skip_count = 0
+        self._error_classes = {}
+        self._warning_classes = {}
 
         # Find the manager to populate service info
         self._product = None
@@ -361,6 +363,18 @@ class SystemUnderTest(object):
                 self._pass_count += 1
                 self._resources[uri]["Pass"] += 1
                 logger.info(combined_msg)
+            # Update the error bucket
+            if result[0] == "FAIL" or result[0] == "WARN":
+                try:
+                    error_type = result[1].split(":")[0]
+                    dest = self._error_classes
+                    if result[0] == "WARN":
+                        dest = self._warning_classes
+                    if error_type not in dest:
+                        dest[error_type] = 0
+                    dest[error_type] += 1
+                except:
+                    logger.critical("Error message string '{}' is not formatted correctly".format(result[1]))
 
     def set_resource_validated(self, uri):
         """
@@ -461,7 +475,7 @@ class SystemUnderTest(object):
         validate.validate_object(self, uri, payload, None, None, None, "")
         if resource["Mockup"]:
             self.add_resource_result(
-                uri, "", False, None, ("WARN", "Mockup Warning: Response was populated from a mockup file.")
+                uri, "", False, None, ("WARN", "Mockup Used Warning: Response was populated from a mockup file.")
             )
         self.set_resource_validated(uri)
 

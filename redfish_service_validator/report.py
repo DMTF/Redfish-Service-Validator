@@ -33,6 +33,7 @@ html_template = """
       .results {{transition: visibility 0s, opacity 0.5s linear; display: none;
                  opacity: 0}}
       .resultsShow {{display: block; opacity: 1}}
+      .summarycolumn {{width: 33.3%; float: left; text-align:left;}}
       body {{background-color:lightgrey; border: 1pt solid; text-align:center;
              margin-left:auto; margin-right:auto}}
       th {{text-align:center; background-color:beige; border: 1pt solid}}
@@ -66,14 +67,21 @@ html_template = """
       </th>
     </tr>
     <tr>
-      <td>
+      <td class="titlesub">
         <center><b>Results Summary</b></center>
         <center>Pass: {}, Warning: {}, Fail: {}, Not tested: {}</center>
+        {}
+        {}
       </td>
     </tr>
     {}
   </table>
 </html>
+"""
+
+error_tally_html = """
+        &nbsp;
+        <center><div class="summarycolumn">{}</div><div class="summarycolumn">{}</div><div class="summarycolumn">{}</div></center>
 """
 
 results_header_html = """
@@ -111,6 +119,40 @@ results_detailed_html = """
 """
 
 
+def build_error_tally(error_classes):
+    """
+    Creates a summary of error types logged
+
+    Args:
+        error_classes: A dictionary containing the counts of types of errors
+
+    Returns:
+        The HTML string to insert in the results summary
+    """
+    tally = ""
+    # Only produce the section if there are errors to log
+    if len(error_classes) != 0:
+        error_types = sorted(error_classes.keys())
+        # Append spaces so it aligns properly for 3 columns
+        if len(error_types) % 3 == 1:
+            error_types.append("&nbsp;")
+            error_types.append("&nbsp;")
+        elif len(error_types) % 3 == 2:
+            error_types.append("&nbsp;")
+        # Break the list into 3 equal-length lists
+        error_types = [error_types[i::3] for i in range(3)]
+        # Build the strings for the report
+        for i in range(len(error_types)):
+            for j in range(len(error_types[i])):
+                cur_type = error_types[i][j]
+                if cur_type != "&nbsp;":
+                    error_types[i][j] = "{}s: {}".format(cur_type, error_classes[cur_type])
+        tally = error_tally_html.format(
+            "<br/>".join(error_types[0]), "<br/>".join(error_types[1]), "<br/>".join(error_types[2])
+        )
+    return tally
+
+
 def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
     """
     Creates the HTML report for the system under test
@@ -126,6 +168,12 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
     """
     file = report_dir / datetime.strftime(time, "RedfishServiceValidatorReport_%m_%d_%Y_%H%M%S.html")
     html = ""
+
+    # Build the error summary details
+    error_tally = build_error_tally(sut._error_classes)
+    warning_tally = build_error_tally(sut._warning_classes)
+
+    # Build the URI results
     uris = sorted(list(sut._resources.keys()), key=str.lower)
     for index, uri in enumerate(uris):
         if not sut._resources[uri]["Validated"]:
@@ -205,6 +253,8 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
                 sut.warn_count,
                 sut.fail_count,
                 sut.skip_count,
+                error_tally,
+                warning_tally,
                 html,
             )
         )

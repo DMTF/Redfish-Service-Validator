@@ -77,7 +77,9 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
         schema_err_result = "WARN"
     # Determine the type to lookup
     # If @odata.type is present, use that, otherwise fall back on the generic type provided by the caller
-    lookup_object_type, result = get_payload_type(payload, False, object_type is None or object_type == "Resource.OemObject")
+    lookup_object_type, result = get_payload_type(
+        payload, False, object_type is None or object_type == "Resource.OemObject"
+    )
     if lookup_object_type is None:
         lookup_object_type = object_type
     if lookup_object_type is None or result:
@@ -195,8 +197,8 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
                     True,
                     payload[prop],
                     (
-                        "WARN",
-                        "Copyright Annotation Warning: The copyright annotation only intended for use in mockups.",
+                        "FAIL",
+                        "Copyright Annotation Error: The copyright annotation is only intended for use in mockups.",
                     ),
                 )
             continue
@@ -358,7 +360,10 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
     # Check if the action is defined
     action_def = metadata.get_action_definition(prop_name[1:])
     if action_def is None:
-        return (schema_err_result, "Schema Error: Unable to locate the schema definition for the '{}' action.".format(prop_name))
+        return (
+            schema_err_result,
+            "Schema Error: Unable to locate the schema definition for the '{}' action.".format(prop_name),
+        )
 
     # For standard actions, enforce the resource type matches (including version)
     if not prop_path.startswith("/Actions/Oem/"):
@@ -423,7 +428,7 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
 
             # For target, check the URI
             if prop == "target":
-                exp_target = uri + prop_path.replace("#", "")
+                exp_target = uri.rstrip("/") + prop_path.replace("#", "")
                 if value[prop] == exp_target + "/":
                     sut.add_resource_result(
                         uri,
@@ -504,6 +509,29 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
     value_excerpt = prop_def["Excerpt"]
     value_excerpt_copy_only = prop_def["ExcerptCopyOnly"]
     value_deprecated_ver = prop_def["VersionDeprecated"]
+
+    # Excerpt check
+    if excerpt is not None:
+        # Inside of an excerpt; check that the current property is applicable
+        if value_excerpt is None or (excerpt not in value_excerpt and value_excerpt != []):
+            # The property is not part of an excerpt
+            return (
+                "FAIL",
+                "Unknown Property Error: The property '{}' is not part of the excerpt usage.".format(prop_name),
+            )
+    else:
+        # Not an excerpt; check that the current property is not flagged as excerpt-only
+        if value_excerpt_copy_only:
+            return ("FAIL", "Unknown Property Error: The property '{}' is only allowed in excerpts.".format(prop_name))
+
+    # Null check
+    if value is None:
+        if value_nullable:
+            return pass_or_deprecated(value_deprecated_ver)
+        return (
+            "FAIL",
+            "Property Value Error: The property '{}' contains null, but null is not allowed.".format(prop_name),
+        )
 
     if value_type not in BASIC_TYPES:
         # Check if this is an object or a typedef
@@ -610,29 +638,6 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                 "Schema Error: Unable to locate the schema definition for the '{}' type.".format(value_type),
             )
 
-    # Excerpt check
-    if excerpt is not None:
-        # Inside of an excerpt; check that the current property is applicable
-        if value_excerpt is None or (excerpt not in value_excerpt and value_excerpt != []):
-            # The property is not part of an excerpt
-            return (
-                "FAIL",
-                "Unknown Property Error: The property '{}' is not part of the excerpt usage.".format(prop_name),
-            )
-    else:
-        # Not an excerpt; check that the current property is not flagged as excerpt-only
-        if value_excerpt_copy_only:
-            return ("FAIL", "Unknown Property Error: The property '{}' is only allowed in excerpts.".format(prop_name))
-
-    # Null check
-    if value is None:
-        if value_nullable:
-            return pass_or_deprecated(value_deprecated_ver)
-        return (
-            "FAIL",
-            "Property Value Error: The property '{}' contains null, but null is not allowed.".format(prop_name),
-        )
-
     # Permission check
     # Write-only properties always show null; should not have gotten this far
     if value_permissions == "None" or value_permissions == "Write":
@@ -680,7 +685,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
             return ("WARN", "Trailing Slash Warning: The URI for the resource has an unexpected trailing slash.")
 
     # Id needs to match the last segment of the URI if part of a collection
-    if prop_path == "/Id":
+    if prop_path == "/Id" and not sut.is_uri_from_annotation(value):
         uri_pattern, check = find_uri_pattern(payload.get("@odata.id"), obj_def)
         if uri_pattern is not None:
             if uri_pattern.endswith("+/?$") and payload["@odata.id"].strip("/").split("/")[-1] != value:
