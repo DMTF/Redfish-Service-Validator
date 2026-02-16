@@ -190,7 +190,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             # Payload annotation
             # TODO: Add support to verify annotations
             # @Redfish.Copyright is just for mockups (except for MessageRegistry resources)
-            if prop == "@Redfish.Copyright" and resource_type_name != "MessageRegistry":
+            if prop == "@Redfish.Copyright" and resource_type_name != "MessageRegistry" and not sut.is_mockup(uri):
                 sut.add_resource_result(
                     uri,
                     cur_path,
@@ -698,22 +698,26 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
 
     # @odata.id for embedded objects need to match the property path
     if prop_name == "@odata.id" and "MemberId" in payload:
-        test_value = value + "/@odata.id"
-        if not test_value.endswith("#" + prop_path):
+        expected_value = uri + "#" + prop_path
+        expected_value = expected_value.rsplit("/", 1)[0]
+        if value != expected_value:
             return (
                 "FAIL",
-                "Property Value Error: The property '{}' does not contain a valid RFC6901 JSON pointer.".format(
-                    prop_name
+                "Property Value Error: The property '{}' does not contain a valid RFC6901 JSON pointer; expected the value '{}'.".format(
+                    prop_name,
+                    expected_value,
                 ),
             )
 
     # MemberId needs to match the index position in the payload
     if prop_name == "MemberId":
-        if value != prop_path.split("/")[-2]:
+        expected_value = prop_path.split("/")[-2]
+        if value != expected_value:
             return (
                 "FAIL",
-                "Property Value Error: The property '{}' does not contain the last segment of the JSON path of the object.".format(
-                    prop_name
+                "Property Value Error: The property '{}' does not contain the last segment of the JSON path of the object; expected the value '{}'.".format(
+                    prop_name,
+                    expected_value,
                 ),
             )
 

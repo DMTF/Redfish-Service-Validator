@@ -306,6 +306,20 @@ class SystemUnderTest(object):
             return None
         return self._resources[uri]["Response"].getheader("Allow")
 
+    def is_mockup(self, uri):
+        """
+        Determines if a URI came from a mockup
+
+        Args:
+            uri: The URI to get
+
+        Returns:
+            A boolean indicating if the response is from a mockup
+        """
+        if uri not in self._resources:
+            return False
+        return self._resources[uri]["Mockup"]
+
     def add_resource_result(self, uri, prop, present, value, result):
         """
         Adds test results to a resource

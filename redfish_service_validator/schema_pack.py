@@ -35,6 +35,7 @@ def update_dsp8010_files(schema_dir, proxies):
     """
 
     logger.log_print("Checking schema cache against dmtf.org...")
+    dsp8010_file = schema_dir + os.path.sep + "DSP8010.zip"
 
     # Get the current bundle version of the schema files
     current_ver = "0000.0"
@@ -64,7 +65,7 @@ def update_dsp8010_files(schema_dir, proxies):
         return
 
     # Update the schema pack if the DMTF site has a newer version
-    if dmtf_ver > current_ver:
+    if dmtf_ver > current_ver or not os.path.isfile(dsp8010_file):
         logger.log_print("New DSP8010 bundle ({}) found on dmtf.org; downloading...\n".format(dmtf_ver))
         try:
             response = requests.get(dsp8010_zip_uri, proxies=proxies)
@@ -73,7 +74,20 @@ def update_dsp8010_files(schema_dir, proxies):
                     "Could not access DSP8010.zip on dmtf.org; HTTP status: {}\n".format(response.status_code)
                 )
                 return
-            zf = zipfile.ZipFile(BytesIO(response.content))
+            with open(dsp8010_file, "wb") as f:
+                f.write(response.content)
+            logger.log_print("Finished downloading new DSP8010 bundle\n")
+        except Exception as err:
+            logger.critical("Could not access DSP8010.zip on dmtf.org; {}\n".format(err))
+            return
+    else:
+        logger.log_print("Cached DSP8010 up to date ({})\n".format(current_ver))
+
+    # Unzip the schema pack
+    logger.log_print("Unpacking DSP8010.zip...")
+    try:
+        with open(dsp8010_file, "rb") as f:
+            zf = zipfile.ZipFile(BytesIO(f.read()))
             zf.testzip()
             for name in zf.namelist():
                 if ".xml" in name or "info.json" in name:
@@ -82,11 +96,10 @@ def update_dsp8010_files(schema_dir, proxies):
                         f.write(item.read())
                     item.close()
             zf.close()
-        except Exception as err:
-            logger.critical("Could not access or unpack DSP8010.zip on dmtf.org; {}\n".format(err))
-            return
-    else:
-        logger.log_print("Cached DSP8010 up to date ({})\n".format(current_ver))
+    except Exception as err:
+        logger.critical("Could not unpack DSP8010.zip; {}\n".format(err))
+        return
+    logger.log_print("Finished unpacking DSP8010.zip\n")
 
 
 def update_service_metadata(schema_dir, redfish_obj, proxies):
@@ -127,8 +140,8 @@ def update_service_metadata(schema_dir, redfish_obj, proxies):
             # Skip OData schemas
             continue
 
-        filename = schema_uri.split("/")[-1]
-        if os.path.isfile(schema_dir + os.path.sep + filename):
+        filename = schema_dir + os.path.sep + schema_uri.split("/")[-1]
+        if os.path.isfile(filename) and not schema_uri.startswith("/"):
             # Skip files that are already cached
             # TODO: May want to consider adding logic to see if the schema cache needs an updated copy
             continue
@@ -147,7 +160,7 @@ def update_service_metadata(schema_dir, redfish_obj, proxies):
             if status != 200:
                 logger.critical("Could not access {}; HTTP status: {}".format(schema_uri, status))
             else:
-                with open(schema_dir + os.path.sep + filename, "w") as f:
+                with open(filename, "w") as f:
                     f.write(response.text)
         except Exception as err:
             logger.critical("Could not access or unpack {}; {}".format(schema_uri, err))
