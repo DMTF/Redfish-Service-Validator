@@ -685,7 +685,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
             return ("WARN", "Trailing Slash Warning: The URI for the resource has an unexpected trailing slash.")
 
     # Id needs to match the last segment of the URI if part of a collection
-    if prop_path == "/Id" and not sut.is_uri_from_annotation(value):
+    if prop_path == "/Id" and not sut.is_uri_from_annotation(uri):
         uri_pattern, check = find_uri_pattern(payload.get("@odata.id"), obj_def)
         if uri_pattern is not None:
             if uri_pattern.endswith("+/?$") and payload["@odata.id"].strip("/").split("/")[-1] != value:
