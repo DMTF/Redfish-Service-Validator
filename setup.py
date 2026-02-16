@@ -32,5 +32,5 @@ setup(
             "rf_service_validator_gui=redfish_service_validator.gui:main",
         ]
     },
-    install_requires=["redfish>=3.1.5", "requests", "beautifulsoup4>=4.6.0", "lxml"],
+    install_requires=["redfish>=3.1.5", "requests", "colorama"],
 )
