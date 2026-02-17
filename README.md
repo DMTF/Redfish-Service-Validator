@@ -52,7 +52,7 @@ usage: rf_service_validator [-h] --user USER --password PASSWORD --rhost RHOST
                             [--collectionlimit COLLECTIONLIMIT [COLLECTIONLIMIT ...]]
                             [--nooemcheck] [--debugging]
 
-Validate Redfish services against schemas; Version 3.0.0
+Validate Redfish services against schemas
 
 options:
   -h, --help            show this help message and exit

@@ -34,9 +34,7 @@ def main():
     """
 
     # Get the input arguments
-    argget = argparse.ArgumentParser(
-        description="Validate Redfish services against schemas; Version {}".format(tool_version)
-    )
+    argget = argparse.ArgumentParser(description="Validate Redfish services against schemas")
     argget.add_argument(
         "--user", "-u", "-user", "--username", type=str, required=True, help="The username for authentication"
     )
