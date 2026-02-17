@@ -449,7 +449,7 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
                         value[prop],
                         (
                             "FAIL",
-                            "Property Value Error: The target URI for the action is expected to be '{}'.".format(
+                            "Action URI Error: The target URI for the action is expected to be '{}'.".format(
                                 exp_target
                             ),
                         ),
@@ -530,7 +530,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
             return pass_or_deprecated(value_deprecated_ver)
         return (
             "FAIL",
-            "Property Value Error: The property '{}' contains null, but null is not allowed.".format(prop_name),
+            "Null Error: The property '{}' contains null, but null is not allowed.".format(prop_name),
         )
 
     if value_type not in BASIC_TYPES:
@@ -643,7 +643,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
     if value_permissions == "None" or value_permissions == "Write":
         return (
             "FAIL",
-            "Property Value Error: The property '{}' is write-only and is expected to be null in responses.".format(
+            "Null Error: The property '{}' is write-only and is expected to be null in responses.".format(
                 prop_name
             ),
         )
@@ -703,7 +703,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
         if value != expected_value:
             return (
                 "FAIL",
-                "Property Value Error: The property '{}' does not contain a valid RFC6901 JSON pointer; expected the value '{}'.".format(
+                "JSON Pointer Error: The property '{}' does not contain a valid RFC6901 JSON pointer; expected the value '{}'.".format(
                     prop_name,
                     expected_value,
                 ),
@@ -715,7 +715,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
         if value != expected_value:
             return (
                 "FAIL",
-                "Property Value Error: The property '{}' does not contain the last segment of the JSON path of the object; expected the value '{}'.".format(
+                "Invalid Identifier Error: The property '{}' does not contain the last segment of the JSON path of the object; expected the value '{}'.".format(
                     prop_name,
                     expected_value,
                 ),
@@ -788,7 +788,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
         if value_permissions == "Read" and value == "":
             return (
                 "WARN",
-                "Property Value Warning: The property '{}' contains an empty string; services should omit properties that are not supported.".format(
+                "Empty String Warning: The property '{}' contains an empty string; services should omit properties that are not supported.".format(
                     prop_name
                 ),
             )
@@ -799,7 +799,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
         if value_minimum is not None and value < value_minimum:
             return (
                 "FAIL",
-                "Property Value Error: The property '{}' is below the minimum allowed value '{}'.".format(
+                "Numeric Range Error: The property '{}' is below the minimum allowed value '{}'.".format(
                     prop_name, value_minimum
                 ),
             )
@@ -808,7 +808,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
         if value_maximum is not None and value > value_maximum:
             return (
                 "FAIL",
-                "Property Value Error: The property '{}' is above the maximum allowed value '{}'.".format(
+                "Numeric Range Error: The property '{}' is above the maximum allowed value '{}'.".format(
                     prop_name, value_maximum
                 ),
             )
