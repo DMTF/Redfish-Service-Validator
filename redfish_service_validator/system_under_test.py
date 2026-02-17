@@ -78,6 +78,7 @@ class SystemUnderTest(object):
         # Set up the resource cache
         self._resources = {}
         self._annotation_uris = []
+        self._collection_capabilities_uris = []
 
         # Build collection limits
         self._collection_limits = {}
@@ -235,6 +236,18 @@ class SystemUnderTest(object):
             A boolean indicating if the URI is from an annotation
         """
         return uri in self._annotation_uris
+
+    def is_uri_from_collection_capabilities(self, uri):
+        """
+        Checks if a URI was discovered from the colleciton capabilities annotation
+
+        Args:
+            uri: The URI to check
+
+        Returns:
+            A boolean indicating if the URI is from a collection capabilities annotation
+        """
+        return uri in self._collection_capabilities_uris
 
     def get_resource(self, uri):
         """
@@ -408,7 +421,7 @@ class SystemUnderTest(object):
                 )
             )
 
-    def find_uris(self, payload, uri_list, from_annotation):
+    def find_uris(self, payload, uri_list, from_annotation, from_collection_capabilities):
         """
         Finds URIs in a payload
 
@@ -416,6 +429,7 @@ class SystemUnderTest(object):
             payload: The payload to scan
             uri_list: The list of URIs to update with any URIs found
             from_annotation: Indicates if we're stepping through an annotation that can contain URIs
+            from_collection_capabilities: Indicates if we're stepping through a collection capabilities annotation
         """
         if isinstance(payload, dict) and payload.get("@odata.type", "").startswith("#JsonSchemaFile."):
             # Don't go to URIs for JSON Schemas
@@ -440,17 +454,21 @@ class SystemUnderTest(object):
                             uri_list.append(payload[item])
                             if from_annotation and payload[item] not in self._annotation_uris:
                                 self._annotation_uris.append(payload[item])
+                            if from_collection_capabilities and payload[item] not in self._collection_capabilities_uris:
+                                self._collection_capabilities_uris.append(payload[item])
 
                 # If the item is an object or array, scan one level deeper
                 elif isinstance(payload[item], dict) or isinstance(payload[item], list):
                     if item == "CapabilitiesObject" or item == "SettingsObject":
                         from_annotation = True
-                    self.find_uris(payload[item], uri_list, from_annotation)
+                    if item == "CapabilitiesObject":
+                        from_collection_capabilities = True
+                    self.find_uris(payload[item], uri_list, from_annotation, from_collection_capabilities)
 
             # If the object is a list, see if the member needs to be scanned
             elif isinstance(payload, list):
                 if isinstance(item, dict) or isinstance(item, list):
-                    self.find_uris(item, uri_list, from_annotation)
+                    self.find_uris(item, uri_list, from_annotation, from_collection_capabilities)
 
     def validate(self, mode, start_uri, uri):
         """
@@ -498,7 +516,7 @@ class SystemUnderTest(object):
             # Nothing else to do; don't scan deeper
             return
         next_uris = []
-        self.find_uris(payload, next_uris, False)
+        self.find_uris(payload, next_uris, False, False)
         for next_uri in next_uris:
             if mode == "Tree" and not next_uri.startswith(start_uri):
                 # In 'Tree' mode, skip URIs that are not subordinate to the starting URI

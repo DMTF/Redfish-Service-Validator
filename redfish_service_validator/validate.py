@@ -304,7 +304,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
         if excerpt is None:
             if definition["Properties"][prop]["ExcerptCopyOnly"]:
                 continue
-            if definition["Properties"][prop]["Required"]:
+            if definition["Properties"][prop]["Required"] and not sut.is_uri_from_collection_capabilities(uri):
                 sut.add_resource_result(
                     uri,
                     cur_path,
