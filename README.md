@@ -1,6 +1,12 @@
+# Redfish Service Validator
+
 Copyright 2016-2025 DMTF.  All rights reserved.
 
-# Redfish Service Validator
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md)
+[![PyPI](https://img.shields.io/pypi/v/redfish-service-validator)](https://pypi.org/project/redfish-service-validator/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg?style=flat)](https://github.com/psf/black)
+[![GitHub stars](https://img.shields.io/github/stars/DMTF/Redfish-Service-Validator.svg?style=flat-square&label=github%20stars)](https://github.com/DMTF/Redfish-Service-Validator)
+[![GitHub Contributors](https://img.shields.io/github/contributors/DMTF/Redfish-Service-Validator.svg?style=flat-square)](https://github.com/DMTF/Redfish-Service-Validator/graphs/contributors)
 
 ## About
 
