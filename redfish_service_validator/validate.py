@@ -72,7 +72,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
         prop_path: The property path from the root of the response to this object
     """
     schema_err_result = "FAIL"
-    if object_type == "Resource.OemObject":
+    if object_type == "Resource.OemObject" or "/Oem/" in value:
         # TODO: For now, downgrade bad OEM extensions to warnings...
         schema_err_result = "WARN"
     # Determine the type to lookup
@@ -111,7 +111,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             True,
             payload,
             (
-                "WARN",    # TODO: For now, downgrade to warning to cover OEM resources with no CSDL...
+                schema_err_result,
                 "Schema Error: Unable to locate the schema definition for the '{}' type.".format(lookup_object_type),
             ),
         )
