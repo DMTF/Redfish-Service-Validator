@@ -111,7 +111,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             True,
             payload,
             (
-                schema_err_result,
+                "WARN",    # TODO: For now, downgrade to warning to cover OEM resources with no CSDL...
                 "Schema Error: Unable to locate the schema definition for the '{}' type.".format(lookup_object_type),
             ),
         )
