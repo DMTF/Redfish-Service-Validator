@@ -153,15 +153,17 @@ Example: do not test more than 10 `Sensor` resources and 20 `LogEntry` resources
 
     `--collectionlimit Sensor 10 LogEntry 20`
 
-## Types of Errors and Warnings
+## Test Results: Types of Errors and Warnings
+
+This section details the various types of error or warning messages that the tool can produce as a result of the testing process.
 
 ### Resource Error
 
-Indicates the validator was unable to get any sort of proper response from the service.  There are several reasons this can happen.
+Indicates the validator was unable to receive a proper response from the service.  There are several reasons this can happen.
 
 * A network error occurred when performing a `GET` operation to access the resource.
 * The service returned a non-200 HTTP status code for the `GET` request.
-* The `GET` response for the resource did not return a JSON object.
+* The `GET` response for the resource did not return a JSON document, or the JSON document was invalid.
 
 ### Schema Error
 
@@ -173,9 +175,9 @@ For objects and resources, ensure the `@odata.type` property contains the correc
 For actions, ensure the name of the action is correct.
 Action names are formatted as `#<Namespace>.<ActionName>`.
 
-Ensure all necessary schema files are cached.
-By default, the validator will attempt to download the latest DSP8010 bundle to cover standard definitions.
-Any OEM extensions need to be specified in the `/redfish/v1/$metadata` URI so the validator is able to download and resolve these definitions.
+Ensure all necessary schema files are available to the tool.
+By default, the validator will attempt to download the latest DSP8010 bundle from the DMTF's publication site to cover standard definitions.
+A valid download location for any OEM extensions need to be specified in the service at the `/redfish/v1/$metadata` URI so the validator is able to download and resolve these definitions.
 
 For OEM extensions, verify the construction of the OEM schema is correct.
 
@@ -183,7 +185,7 @@ For OEM extensions, verify the construction of the OEM schema is correct.
 
 Indicates the service is not using the correct data type for an object.
 
-This can happen when the service specifies an `@odata.type` value that doesn't match what's permitted.
+This can happen when the service specifies an `@odata.type` value that doesn't match what's permitted by the schema definition.
 For example, if the schema calls out `Resource.Status` for the common status object, but the service is attempting to overload it with `Resource.Location`.
 
 This can also happen when an OEM object is not defined properly.
@@ -191,8 +193,8 @@ All OEM objects are required to be defined with the `ComplexType` definition in 
 
 ### Allowed Method Error
 
-Indicates an incorrect method is supported for the resource as shown in the `Allow` header.
-For example, if a `ComputerSystem` resource contains `POST` in its `Allow` header.
+Indicates an incorrect method, according to the schema definition, is shown as supported for the resource in the value of the `Allow` header.
+For example, if a `ComputerSystem` resource contains `POST` in its `Allow` header.  This is not allowed per the schema definition.
 
 Each schema file contains allowable capabilities for the resource.
 
@@ -216,16 +218,16 @@ Indicates a property is not defined in the schema definition for the resource or
 
 ### Required Property Error
 
-Indicates a property is marked in the schema as required, with the `Redfish.Required` annotation, but the response does not contain the property.
+Indicates a property is marked in the schema as required, using the `Redfish.Required` annotation, but the response does not contain the property.
 
 ### Property Type Error
 
 Indicates the property is using an incorrect data type.
 Some examples:
 
-* An array property contains a singleton number.
-* An object property contains a string.
-* A string property contains a number.
+* An array property contains a single value, not contained as a JSON array.  For example, "Blue" instead of ["Blue"]
+* An object property contains a string, as if it was a simple property, not a JSON object.
+* A string property contains a number.  For example, `5754` instead of `"5754"`.
 
 ### Unsupported Action Error
 
@@ -234,8 +236,8 @@ Indicates the validator was able to locate the action definition, but the action
 For standard actions, ensure the action belongs to the matching resource.
 For example, it's not allowed to use `#ComputerSystem.Reset` in a `Manager` resource.
 
-For standard actions, ensure the resource version is high enough for the action.
-For example, the `#ComputerSystem.Decommission` action was added in version 1.21.0 of the `ComputerSystem` resource, so the version of the resource needs to be 1.21.0 or higher.
+For standard actions, ensure the resource's version, as specified in `@odata.type` is high enough for the action.
+For example, the `#ComputerSystem.Decommission` action was added in version 1.21.0 of the `ComputerSystem` schema, so the version of the resource needs to be 1.21.0 or higher.
 
 ### Action URI Error
 
@@ -253,10 +255,10 @@ For OEM actions, the 'OEM actions' clause of the Redfish Specification dictates 
 
 ### Null Error
 
-Indicates an unexpected usage of `null` or `null` was expected for the property value.
+Indicates an unexpected usage of `null`, or `null` was the expected property value.
 
-* Check the nullable term on the property to see if `null` is allowed.
-* Properties with write-only permissions are required to be `null` in responses.
+* Check the nullable term on the property in the schema definition to see if `null` is allowed.
+* Properties with write-only permissions, such as `Password`, are required to be `null` in responses.
 
 ### Reference Object Error
 
@@ -264,12 +266,12 @@ Indicates a reference object is not used properly.
 Reference objects provide links to other resources.
 Each reference object contains a single `@odata.id` property to link to another resource.
 
-* Ensure that only `@odata.id` is present in the object.
+* Ensure that only `@odata.id` is present in the object.  No other properties are allowed.
 * Ensure the URI specified by `@odata.id` is valid and references a resource of the correct type.
 
 ### Undefined URI Error
 
-Indicates the URI of the resource is not defined in the schema file for the resource.
+Indicates the URI of the resource is not listed as a supported URI in the schema file for the resource.
 To conform with the 'Resource URI patterns annotation' clause of the Redfish Specification, URIs are required to match the patterns defined for the resource.
 
 ### Invalid Identifier Error
@@ -285,7 +287,7 @@ To conform with the 'Universal Resource Identifiers' clause of the Redfish Speci
 
 ### Property Value Error
 
-Indicates that a string property does not contain a valid value.
+Indicates that a string property does not contain a valid value as defined in the schema for that property.
 
 Some properties specify a regular expression or a regular expression is inferred based on the data type of the property.
 Ensure the value matches the regular expression requirements.
@@ -298,7 +300,7 @@ Check that the version of the resource is high enough for the value.
 
 ### Numeric Range Error
 
-Indicates that a numeric property is out of range.
+Indicates that a numeric property is out of range based on the definition in the schema for that property.
 The `Redfish.Minimum` and `Redfish.Maximum` annotations of the property define the bounds for the range.
 
 ### Trailing Slash Warning
@@ -319,8 +321,8 @@ OEM usage of standard resources is permitted, but it's expected that the schema 
 
 ### Deprecated Value Warning
 
-Indicates that a string property is using a deprecated enumeration.
-Unless needed for supporting existing clients, it's recommended to use the replacement value.
+Indicates that a string property is using a deprecated enumeration value.
+Unless needed for supporting existing clients, it's recommended to use the replacement value as specified in the schema.
 
 ### Empty String Warning
 
