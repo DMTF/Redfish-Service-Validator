@@ -12,7 +12,7 @@ Copyright 2016-2025 DMTF.  All rights reserved.
 
 The Redfish Service Validator is a Python3 tool for checking conformance of any Redfish service against Redfish CSDL schema.
 The tool is designed to be implementation-agnostic and is driven based on the Redfish specifications and schema.
-The scope of this tool is to only perform GET requests and verify their respective responses.
+The scope of this tool is to only perform `GET` requests and verify their respective responses.
 
 ## Installation
 
@@ -134,10 +134,10 @@ This option takes a single string parameter.
 The parameter specifies a local directory path to the `ServiceRoot` resource of a Redfish mockup tree.
 
 The mockup files follow the Redfish mockup style, with the directory tree matching the URI segments under `/redfish/v1`, and with a single `index.json` file in each subdirectory as desired.
-For examples of full mockups, see the Redfish Mockup Bundle (DSP2043) at https://www.dmtf.org/sites/default/files/standards/documents/DSP2043_2024.1.zip.
+For examples of full mockups, see the Redfish Mockups Bundle (DSP2043) at https://www.dmtf.org/dsp/DSP2043.
 
 Populate the mockup directory tree with `index.json` files wherever problematic resources need to be replaced.
-Any replaced resource will report a Warning in the report to indicate a workaround was used.
+Any replaced resource will report a warning in the report to indicate a workaround was used.
 
 ### Collection Limit Option
 
@@ -152,6 +152,189 @@ If this option is not specified, the validator defaults to applying a limit of 2
 Example: do not test more than 10 `Sensor` resources and 20 `LogEntry` resources in a given collection
 
     `--collectionlimit Sensor 10 LogEntry 20`
+
+## Types of Errors and Warnings
+
+### Resource Error
+
+Indicates the validator was unable to get any sort of proper response from the service.  There are several reasons this can happen.
+
+* A network error occurred when performing a `GET` operation to access the resource.
+* The service returned a non-200 HTTP status code for the `GET` request.
+* The `GET` response for the resource did not return a JSON object.
+
+### Schema Error
+
+Indicates the validator was not able to locate the schema definition for the resource, object, or action.  There are several things to check in these cases.
+
+For objects and resources, ensure the `@odata.type` property contains the correct value.
+`@odata.type` is a string formatted as `#<Namespace>.<TypeName>`.
+
+For actions, ensure the name of the action is correct.
+Action names are formatted as `#<Namespace>.<ActionName>`.
+
+Ensure all necessary schema files are cached.
+By default, the validator will attempt to download the latest DSP8010 bundle to cover standard definitions.
+Any OEM extensions need to be specified in the `/redfish/v1/$metadata` URI so the validator is able to download and resolve these definitions.
+
+For OEM extensions, verify the construction of the OEM schema is correct.
+
+### Object Type Error
+
+Indicates the service is not using the correct data type for an object.
+
+This can happen when the service specifies an `@odata.type` value that doesn't match what's permitted.
+For example, if the schema calls out `Resource.Status` for the common status object, but the service is attempting to overload it with `Resource.Location`.
+
+This can also happen when an OEM object is not defined properly.
+All OEM objects are required to be defined with the `ComplexType` definition in CSDL and specify `Resource.OemObject` as its base type.
+
+### Allowed Method Error
+
+Indicates an incorrect method is supported for the resource as shown in the `Allow` header.
+For example, if a `ComputerSystem` resource contains `POST` in its `Allow` header.
+
+Each schema file contains allowable capabilities for the resource.
+
+* `Capabilities.InsertRestrictions` shows if `POST` is allowed.
+* `Capabilities.UpdateRestrictions` shows if `PATCH` and `PUT` are allowed.
+* `Capabilities.DeleteRestrictions` shows if `DELETE` is allowed.
+
+### Copyright Annotation Error
+
+Indicates the resource contains the `@Redfish.Copyright` annotation.
+This term is only allowed in mockups.
+Live services are not permitted to use this term.
+
+### Unknown Property Error
+
+Indicates a property is not defined in the schema definition for the resource or object.
+
+* Check that the spelling and casing of the letters in the property are correct.
+* Check that the version of the resource or object is correct.
+* For excerpts, check that the property is allowed in the excerpt usage.
+
+### Required Property Error
+
+Indicates a property is marked in the schema as required, with the `Redfish.Required` annotation, but the response does not contain the property.
+
+### Property Type Error
+
+Indicates the property is using an incorrect data type.
+Some examples:
+
+* An array property contains a singleton number.
+* An object property contains a string.
+* A string property contains a number.
+
+### Unsupported Action Error
+
+Indicates the validator was able to locate the action definition, but the action is not supported by the resource.
+
+For standard actions, ensure the action belongs to the matching resource.
+For example, it's not allowed to use `#ComputerSystem.Reset` in a `Manager` resource.
+
+For standard actions, ensure the resource version is high enough for the action.
+For example, the `#ComputerSystem.Decommission` action was added in version 1.21.0 of the `ComputerSystem` resource, so the version of the resource needs to be 1.21.0 or higher.
+
+### Action URI Error
+
+Indicates the URI for performing the action, specified by the `target` property, is not constructed properly.
+
+For standard actions, the 'POST (action)' clause of the Redfish Specification dictates action URIs take the form of `<ResourceURI>/Actions/<QualifiedActionName>`, where:
+
+* `<ResourceURI>` is the URI of the resource that supports the action.
+* `<QualifiedActionName>` is the qualified name of the action, including the resource type.
+
+For OEM actions, the 'OEM actions' clause of the Redfish Specification dictates OEM action URIs take the form of `<ResourceURI>/Actions/Oem/<OEMSchemaName>.<Action>`, where:
+
+* `<ResourceURI>` is the URI of the resource that supports invoking the action.
+* `<OEMSchemaName>.<Action>` is the name of the schema containing the OEM extension followed by the action name.
+
+### Null Error
+
+Indicates an unexpected usage of `null` or `null` was expected for the property value.
+
+* Check the nullable term on the property to see if `null` is allowed.
+* Properties with write-only permissions are required to be `null` in responses.
+
+### Reference Object Error
+
+Indicates a reference object is not used properly.
+Reference objects provide links to other resources.
+Each reference object contains a single `@odata.id` property to link to another resource.
+
+* Ensure that only `@odata.id` is present in the object.
+* Ensure the URI specified by `@odata.id` is valid and references a resource of the correct type.
+
+### Undefined URI Error
+
+Indicates the URI of the resource is not defined in the schema file for the resource.
+To conform with the 'Resource URI patterns annotation' clause of the Redfish Specification, URIs are required to match the patterns defined for the resource.
+
+### Invalid Identifier Error
+
+Indicates either `Id` or `MemberId` do not contain expected values as defined by the 'Resource URI patterns annotation' clause of the Redfish Specification
+For `Id` properties, members of resource collections are required to use the last segment of the URI for the property value.
+For `MemberId` properties in referenceable member objects, the value is required to be the last segment of the JSON property path to the object.
+
+### JSON Pointer Error
+
+Indicates the `@odata.id` property for a referenceable member object does not contain a valid JSON pointer.
+To conform with the 'Universal Resource Identifiers' clause of the Redfish Specification, `@odata.id` is expected to contain an RFC6901-defined URI fragment that points to the object in the payload.
+
+### Property Value Error
+
+Indicates that a string property does not contain a valid value.
+
+Some properties specify a regular expression or a regular expression is inferred based on the data type of the property.
+Ensure the value matches the regular expression requirements.
+Date-time and duration properties need to follow ISO8601 requirements.
+
+Some properties are defined as enumerations with a set of allowed values.
+Ensure the value belongs to the enumeration list for the property.
+Check that the spelling and casing of the letters of the value are correct.
+Check that the version of the resource is high enough for the value.
+
+### Numeric Range Error
+
+Indicates that a numeric property is out of range.
+The `Redfish.Minimum` and `Redfish.Maximum` annotations of the property define the bounds for the range.
+
+### Trailing Slash Warning
+
+Indicates the URI contains a trailing slash.
+To conform with the 'Resource URI patterns annotation' clause of the Redfish Specification, trailing slashes are not expected, except for `/redfish/v1/`.
+
+### Deprecated URI Warning
+
+Indicates the URI is valid, but marked as deprecated in the schema of the resource.
+Unless needed for supporting existing clients, it's recommended to use the replacement URI.
+
+### Undefined URI Warning
+
+Indicates the URI of the resource is not defined in the schema file for the resource, but is being used in an OEM-manner.
+To conform with the 'Resource URI patterns annotation' clause of the Redfish Specification, URIs are required to match the patterns defined for the resource.
+OEM usage of standard resources is permitted, but it's expected that the schema is updated to include the OEM usage, as allowed by the 'Schema modification rules' clause of the Redfish Specification.
+
+### Deprecated Value Warning
+
+Indicates that a string property is using a deprecated enumeration.
+Unless needed for supporting existing clients, it's recommended to use the replacement value.
+
+### Empty String Warning
+
+Indicates a read-only string is empty and removing the property should be considered.
+For example, it's better to remove a property like `SerialNumber` entirely if the resource does not support reporting a serial number rather than using an empty string.
+
+### Deprecated Property Warning
+
+Indicates the property is deprecated.
+Unless needed for supporting existing clients, it's recommended to use the replacement property.
+
+### Mockup Used Warning
+
+Indicates the resource that was tested used response data from a mockup that was provided by the `--mockup` argument.
 
 ## Building a Standalone Windows Executable
 
