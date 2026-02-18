@@ -274,7 +274,7 @@ To conform with the 'Resource URI patterns annotation' clause of the Redfish Spe
 
 ### Invalid Identifier Error
 
-Indicates either `Id` or `MemberId` do not contain expected values as defined by the 'Resource URI patterns annotation' clause of the Redfish Specification
+Indicates either `Id` or `MemberId` do not contain expected values as defined by the 'Resource URI patterns annotation' clause of the Redfish Specification.
 For `Id` properties, members of resource collections are required to use the last segment of the URI for the property value.
 For `MemberId` properties in referenceable member objects, the value is required to be the last segment of the JSON property path to the object.
 
