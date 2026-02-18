@@ -163,7 +163,7 @@ Indicates the validator was unable to receive a proper response from the service
 
 * A network error occurred when performing a `GET` operation to access the resource.
 * The service returned a non-200 HTTP status code for the `GET` request.
-* The `GET` response for the resource did not return a JSON document, or the JSON document was invalid.
+* The `GET` response for the resource did not return a valid JSON object.
 
 ### Schema Error
 
@@ -176,7 +176,7 @@ For actions, ensure the name of the action is correct.
 Action names are formatted as `#<Namespace>.<ActionName>`.
 
 Ensure all necessary schema files are available to the tool.
-By default, the validator will attempt to download the latest DSP8010 bundle from the DMTF's publication site to cover standard definitions.
+By default, the validator will attempt to download the latest DSP8010 bundle from DMTF's publication site to cover standard definitions.
 A valid download location for any OEM extensions need to be specified in the service at the `/redfish/v1/$metadata` URI so the validator is able to download and resolve these definitions.
 
 For OEM extensions, verify the construction of the OEM schema is correct.
