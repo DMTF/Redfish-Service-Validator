@@ -25,7 +25,7 @@ from redfish_service_validator import metadata
 from redfish_service_validator import report
 from redfish_service_validator import schema_pack
 
-tool_version = "3.0.2"
+tool_version = "3.0.3"
 
 
 def main():
