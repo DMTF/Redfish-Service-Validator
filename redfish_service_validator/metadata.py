@@ -2,497 +2,734 @@
 # Copyright 2016-2025 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
+"""
+Metadata
+
+File : metadata.py
+
+Brief : This file contains the definitions and functionalities for building
+        the data model definitions from the schema cache.
+"""
+
+import copy
 import os
-import logging
-from collections import Counter, OrderedDict, defaultdict
-from collections import namedtuple
-from bs4 import BeautifulSoup
-from functools import lru_cache
-import os.path
+import re
+import xml.etree.ElementTree as ET
 
-from redfish_service_validator.helper import getNamespace, getNamespaceUnversioned
+from redfish_service_validator import logger
 
-my_logger = logging.getLogger('rsv')
-my_logger.setLevel(logging.DEBUG)
+# OData markup strings
+ODATA_TAG_REFERENCE = "{http://docs.oasis-open.org/odata/ns/edmx}Reference"
+ODATA_TAG_INCLUDE = "{http://docs.oasis-open.org/odata/ns/edmx}Include"
+ODATA_TAG_SCHEMA = "{http://docs.oasis-open.org/odata/ns/edm}Schema"
+ODATA_TAG_ENTITY = "{http://docs.oasis-open.org/odata/ns/edm}EntityType"
+ODATA_TAG_COMPLEX = "{http://docs.oasis-open.org/odata/ns/edm}ComplexType"
+ODATA_TAG_ENUM = "{http://docs.oasis-open.org/odata/ns/edm}EnumType"
+ODATA_TAG_ACTION = "{http://docs.oasis-open.org/odata/ns/edm}Action"
+ODATA_TAG_TYPE_DEF = "{http://docs.oasis-open.org/odata/ns/edm}TypeDefinition"
+ODATA_TAG_ANNOTATION = "{http://docs.oasis-open.org/odata/ns/edm}Annotation"
+ODATA_TAG_PROPERTY = "{http://docs.oasis-open.org/odata/ns/edm}Property"
+ODATA_TAG_NAV_PROPERTY = "{http://docs.oasis-open.org/odata/ns/edm}NavigationProperty"
+ODATA_TAG_PARAMETER = "{http://docs.oasis-open.org/odata/ns/edm}Parameter"
+ODATA_TAG_MEMBER = "{http://docs.oasis-open.org/odata/ns/edm}Member"
+ODATA_TAG_RECORD = "{http://docs.oasis-open.org/odata/ns/edm}Record"
+ODATA_TAG_PROP_VAL = "{http://docs.oasis-open.org/odata/ns/edm}PropertyValue"
+ODATA_TAG_COLLECTION = "{http://docs.oasis-open.org/odata/ns/edm}Collection"
+ODATA_TAG_STRING = "{http://docs.oasis-open.org/odata/ns/edm}String"
+ODATA_TAG_RETURN = "{http://docs.oasis-open.org/odata/ns/edm}ReturnType"
 
-EDM_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edm"
-EDMX_NAMESPACE = "http://docs.oasis-open.org/odata/ns/edmx"
-EDM_TAGS = ['Action', 'Annotation', 'Collection', 'ComplexType', 'EntityContainer', 'EntityType', 'EnumType', 'Key',
-            'Member', 'NavigationProperty', 'Parameter', 'Property', 'PropertyRef', 'PropertyValue', 'Record',
-            'Schema', 'Singleton', 'Term', 'TypeDefinition']
-EDMX_TAGS = ['DataServices', 'Edmx', 'Include', 'Reference']
+URI_ID_REGEX = r"\{[A-Za-z0-9]+\}"
+VALID_ID_REGEX = r"([A-Za-z0-9.!#$&-;=?\[\]_~])+"
 
+VERSION_REGEX = r"\.v([0-9]+)_([0-9]+)_([0-9]+)\."
+VERSION_REGEX_SM = r"v([0-9]+)_([0-9]+)_([0-9]+)"
 
-def bad_edm_tags(tag):
-    return tag.namespace == EDM_NAMESPACE and tag.name not in EDM_TAGS
-
-
-def bad_edmx_tags(tag):
-    return tag.namespace == EDMX_NAMESPACE and tag.name not in EDMX_TAGS
-
-
-def other_ns_tags(tag):
-    return tag.namespace != EDM_NAMESPACE and tag.namespace != EDMX_NAMESPACE
-
-
-def reference_missing_uri_attr(tag):
-    return tag.name == 'Reference' and tag.get('Uri') is None
+parsed_schemas = []
 
 
-def include_missing_namespace_attr(tag):
-    return tag.name == 'Include' and tag.get('Namespace') is None
+class Metadata:
+    """
+    Class for describing the data  model for a single schema file
 
+    Args:
+        root: The ET object of the schema file
+        name: The name of the schema file
+    """
 
-def format_tag_string(tag):
-    tag_name = tag.name if tag.prefix is None else tag.prefix + ':' + tag.name
-    tag_attr = ''
-    for attr in tag.attrs:
-        tag_attr += '{}="{}" '.format(attr, tag.attrs[attr])
-    return (tag_name + ' ' + tag_attr).strip()
+    def __init__(self, root, name):
+        self._root = root
+        self._name = name.replace("_v1", "").replace(".xml", "")
+        self._namespace_under_process = ""
+        self._versions = []
+        self._objects = {}
+        self._typedefs = {}
+        self._actions = {}
 
+        # Go through each namespace and pull out definitions
+        for schema in self._root.iter(ODATA_TAG_SCHEMA):
+            self._namespace_under_process = self._get_attrib(schema, "Namespace")
 
-def list_html(entries):
-    html_str = '<ul>'
-    for entry in entries:
-        html_str += '<li>{}</li>'.format(entry)
-    html_str += '</ul>'
-    return html_str
+            # Go through each element in the namespace
+            for child in schema:
+                if (child.tag == ODATA_TAG_ENTITY) or (child.tag == ODATA_TAG_COMPLEX):
+                    self._add_object(child)
+                elif child.tag == ODATA_TAG_ACTION:
+                    self._add_action(child)
+                elif (child.tag == ODATA_TAG_ENUM) or (child.tag == ODATA_TAG_TYPE_DEF):
+                    self._add_typedef(child)
 
+    def get_name(self):
+        """
+        Gets the schema name
 
-def tag_list_html(tags_dict):
-    html_str = '<ul>'
-    for tag in tags_dict:
-        html_str += '<li>{} {}</li>' \
-            .format(tag, '(' + str(tags_dict[tag]) + ' occurrences)' if tags_dict[tag] > 1 else '')
-    html_str += '</ul>'
-    return html_str
+        Returns:
+            The name of the schema
+        """
+        return self._name
 
+    def find_object(self, typename, highest_version, exact_version=False):
+        """
+        Finds the definition of a specified object
 
-class Metadata(object):
-    metadata_uri = '/redfish/v1/$metadata'
-    schema_type = '$metadata'
+        Args:
+            typename: The name of the object to locate
+            highest_version: The highest version of the object allowed
+            exact_version: If an exact match is required
 
-    def __init__(self, data, service):
-        my_logger.info('Constructing metadata...')
-        self.success_get = False
-        self.service = service
-        self.uri_to_namespaces = defaultdict(list)
-        self.metadata_namespaces = set()
-        self.service_namespaces = set()
-        self.bad_tags = dict()
-        self.bad_tag_ns = dict()
-        self.refs_missing_uri = dict()
-        self.includes_missing_ns = dict()
-        self.bad_schema_uris = set()
-        self.bad_namespace_include = set()
-        self.counter = OrderedCounter()
-        self.redfish_extensions_alias_ok = False
-
-        self.md_soup = None
-        self.service_refs = None
-        uri = Metadata.metadata_uri
-
-        self.elapsed_secs = -1
-        self.schema_obj = None
-        if data:
-            self.md_soup = BeautifulSoup(data, "xml")
-            self.service_refs = getReferenceDetails(self.md_soup)
-            self.success_get = True
-            # set of namespaces included in $metadata
-            self.metadata_namespaces = {k for k in self.service_refs.keys()}
-            # create map of schema URIs to namespaces from $metadata
-            for k in self.service_refs.keys():
-                self.uri_to_namespaces[self.service_refs[k][1]].append(self.service_refs[k][0])
-            my_logger.debug('Metadata: uri = {}'.format(uri))
-            my_logger.debug('Metadata: metadata_namespaces: {} = {}'
-                         .format(type(self.metadata_namespaces), self.metadata_namespaces))
-            # check for Redfish alias for RedfishExtensions.v1_0_0
-            ref = self.service_refs.get('Redfish')
-            if ref is not None and ref[0] == 'RedfishExtensions.v1_0_0':
-                self.redfish_extensions_alias_ok = True
-            my_logger.debug('Metadata: redfish_extensions_alias_ok = {}'.format(self.redfish_extensions_alias_ok))
-            # check for XML tag problems
-            self.check_tags()
-            # check that all namespace includes are found in the referenced schema
-            my_logger.debug('Metadata: bad_tags = {}'.format(self.bad_tags))
-            my_logger.debug('Metadata: bad_tag_ns = {}'.format(self.bad_tag_ns))
-            my_logger.debug('Metadata: refs_missing_uri = {}'.format(self.refs_missing_uri))
-            my_logger.debug('Metadata: includes_missing_ns = {}'.format(self.includes_missing_ns))
-            my_logger.debug('Metadata: bad_schema_uris = {}'.format(self.bad_schema_uris))
-            my_logger.debug('Metadata: bad_namespace_include = {}'.format(self.bad_namespace_include))
-            for ref in self.service_refs:
-                name, uri = self.service_refs[ref]
-                success, soup, origin = getSchemaDetails(service, getNamespace(name), uri)
-            getSchemaDetails.cache_clear()
-            self.check_namespaces_in_schemas()
+        Returns:
+            The matching object definition
+        """
+        matched_def = None
+        found_name = None
+        if exact_version:
+            # Exact match required
+            matched_def = self._objects.get(typename, None)
+            found_name = typename
         else:
-            my_logger.warning('Metadata Warning: getSchemaDetails() did not return success')
+            # Find the best definition based on the version info
+            matched_ver = None
+            space = typename.split(".")[0]
+            name = typename.split(".")[-1]
+            for obj in self._objects:
+                if (obj.split(".")[0]) == space and (obj.split(".")[-1] == name):
+                    # Matching object; inspect versions
+                    obj_version = get_version(obj)
+                    if obj_version is None and matched_def is None:
+                        # Unversioned; still a potential match...
+                        matched_def = self._objects[obj]
+                        found_name = obj
+                    elif highest_version is None:
+                        # Get the absolute highest version from the schema; no capping
+                        if matched_ver is None or (obj_version > matched_ver):
+                            matched_def = self._objects[obj]
+                            found_name = obj
+                    elif obj_version <= highest_version:
+                        # Within the version range
+                        # Needs to be newer than what we've already matched
+                        if matched_ver is None or (obj_version > matched_ver):
+                            matched_def = self._objects[obj]
+                            found_name = obj
+        if matched_def is None:
+            return matched_def
 
-    def get_schema_obj(self):
-        return self.schema_obj
+        # Append previous versions if available from this schema
+        matched_def = copy.deepcopy(matched_def)
+        matched_def["TypeTree"] = [found_name]
+        while matched_def["BaseType"] is not None:
+            base_type = matched_def["BaseType"]
+            if base_type not in self._objects:
+                # Either the definition jumps schema files (ideally) or it's a bad reference...
+                break
+            # The update will bring over the next base type to inspect
+            matched_def["TypeTree"].append(base_type)
+            matched_def["BaseType"] = self._objects[base_type]["BaseType"]
+            matched_def["Properties"].update(self._objects[base_type]["Properties"])
+            matched_def["DynamicProperties"].update(self._objects[base_type]["DynamicProperties"])
+            if matched_def["AllowedURIs"] is None:
+                matched_def["AllowedURIs"] = self._objects[base_type]["AllowedURIs"]
+            if matched_def["DeprecatedURIs"] is None:
+                matched_def["DeprecatedURIs"] = self._objects[base_type]["DeprecatedURIs"]
+            if matched_def["AllowedMethods"] is None:
+                matched_def["AllowedMethods"] = self._objects[base_type]["AllowedMethods"]
 
-    def get_soup(self):
-        return self.md_soup
+        # Check other schema files for additional definitions...
+        if matched_def["BaseType"] is not None:
+            additional_defs = get_object_definition("", matched_def["BaseType"], exact_version=True)
+            if additional_defs is not None:
+                matched_def["TypeTree"] = matched_def["TypeTree"] + additional_defs["TypeTree"]
+                matched_def["BaseType"] = additional_defs["BaseType"]
+                matched_def["Properties"].update(additional_defs["Properties"])
+                matched_def["DynamicProperties"].update(additional_defs["DynamicProperties"])
+                if matched_def["AllowedURIs"] is None:
+                    matched_def["AllowedURIs"] = additional_defs["AllowedURIs"]
+                if matched_def["DeprecatedURIs"] is None:
+                    matched_def["DeprecatedURIs"] = additional_defs["DeprecatedURIs"]
+                if matched_def["AllowedMethods"] is None:
+                    matched_def["AllowedMethods"] = additional_defs["AllowedMethods"]
 
-    def get_service_refs(self):
-        return self.service_refs
+        return matched_def
 
-    def get_metadata_namespaces(self):
-        return self.metadata_namespaces
+    def find_typedef(self, typename):
+        """
+        Finds the definition of a specified type
 
-    def get_service_namespaces(self):
-        return self.service_namespaces
+        Args:
+            typename: The name of the type definition to locate
 
-    def add_service_namespace(self, namespace):
-        self.service_namespaces.add(namespace)
+        Returns:
+            The matching type definition
+        """
+        return self._typedefs.get(typename, None)
 
-    def get_missing_namespaces(self):
-        return self.service_namespaces - self.metadata_namespaces
+    def find_action(self, action_name):
+        """
+        Finds the definition of a specified action
 
-    def get_schema_uri(self, namespace):
-        ref = self.service_refs.get(namespace)
-        if ref is not None:
-            return ref[1]
+        Args:
+            action_name: The name of the action to locate
+
+        Returns:
+            The matching action
+        """
+        return self._actions.get(action_name, None)
+
+    def _get_attrib(self, element, name, required=True, default=None):
+        """
+        Gets a given attribute from an ET element in a safe manner
+
+        Args:
+            element: The element with the attribute
+            name: The name of the attribute
+            required: Flag indicating if the attribute is expected to be present
+            default: The value to return if not found
+
+        Returns:
+            The attribute value
+        """
+        if name in element.attrib:
+            return element.attrib[name]
         else:
-            return None
+            if required:
+                logger.critical("Missing '{}' attribute for tag '{}'".format(name, element.tag.split("}")[-1]))
+        return default
 
-    def check_tags(self):
+    def _get_version_details(self, object):
         """
-        Perform some checks on the tags in the $metadata XML looking for unrecognized tags,
-        tags missing required attributes, etc.
+        Gets the version info for a given object
+
+        Args:
+            object: The object to parse
+
+        Returns:
+            The version added string
+            The version deprecated string
         """
-        try:
-            for tag in self.md_soup.find_all(bad_edm_tags):
-                tag_str = format_tag_string(tag)
-                self.bad_tags[tag_str] = self.bad_tags.get(tag_str, 0) + 1
-            for tag in self.md_soup.find_all(bad_edmx_tags):
-                tag_str = format_tag_string(tag)
-                self.bad_tags[tag_str] = self.bad_tags.get(tag_str, 0) + 1
-            for tag in self.md_soup.find_all(reference_missing_uri_attr):
-                tag_str = format_tag_string(tag)
-                self.refs_missing_uri[tag_str] = self.refs_missing_uri.get(tag_str, 0) + 1
-            for tag in self.md_soup.find_all(include_missing_namespace_attr):
-                tag_str = format_tag_string(tag)
-                self.includes_missing_ns[tag_str] = self.includes_missing_ns.get(tag_str, 0) + 1
-            for tag in self.md_soup.find_all(other_ns_tags):
-                tag_str = tag.name if tag.prefix is None else tag.prefix + ':' + tag.name
-                tag_ns = 'xmlns{}="{}"'.format(':' + tag.prefix if tag.prefix is not None else '', tag.namespace)
-                tag_str = tag_str + ' ' + tag_ns
-                self.bad_tag_ns[tag_str] = self.bad_tag_ns.get(tag_str, 0) + 1
-        except Exception as e:
-            my_logger.warning('Metadata Warning: Problem parsing $metadata document: {}'.format(e))
+        version_added = None
+        version_deprecated = None
 
-    def check_namespaces_in_schemas(self):
+        # Go through each annotation and find the Redfish.Revisions term
+        for child in object:
+            if child.tag == ODATA_TAG_ANNOTATION:
+                term = self._get_attrib(child, "Term")
+                if term == "Redfish.Revisions":
+                    for collection in child.iter(ODATA_TAG_COLLECTION):
+                        for record in collection.iter(ODATA_TAG_RECORD):
+                            revision_kind = None
+                            revision_string = None
+                            for prop_val in record.iter(ODATA_TAG_PROP_VAL):
+                                property = self._get_attrib(prop_val, "Property")
+                                if property == "Kind":
+                                    revision_kind = self._get_attrib(prop_val, "EnumMember")
+                                elif property == "Version":
+                                    revision_string = self._get_attrib(prop_val, "String")
+                            if revision_string is not None:
+                                if revision_kind == "Redfish.RevisionKind/Added":
+                                    version_added = revision_string
+                                elif revision_kind == "Redfish.RevisionKind/Deprecated":
+                                    version_deprecated = revision_string
+        return version_added, version_deprecated
+
+    def _get_type_info(self, csdl_type):
         """
-        Check that all namespaces included from a schema URI are actually in that schema
+        Performs mapping of a CSDL type to the validator's type with a potential pattern
+
+        Args:
+            csdl_type: The CSDL data type to map
+
+        Returns:
+            The data type
+            The pattern for a string type, if applicable
         """
-        for k in self.uri_to_namespaces.keys():
-            schema_uri = k
-            if '#' in schema_uri:
-                schema_uri, frag = k.split('#', 1)
-            schema_type = os.path.basename(os.path.normpath(k)).strip('.xml').strip('_v1')
-            success, soup, _ = getSchemaDetails(self.service, getNamespace(schema_type), schema_uri)
-            if success:
-                for namespace in self.uri_to_namespaces[k]:
-                    if soup.find('Schema', attrs={'Namespace': namespace}) is None:
-                        msg = 'Namespace {} not found in schema {}'.format(namespace, k)
-                        my_logger.debug('Metadata: {}'.format(msg))
-                        self.bad_namespace_include.add(msg)
-            else:
-                my_logger.error('Metadata Warning: failure opening schema {} of type {}'.format(schema_uri, schema_type))
-                self.bad_schema_uris.add(schema_uri)
+        return_type = None
+        return_pattern = None
 
-    def get_counter(self):
-        """
-        Create a Counter instance containing the counts of any errors found
-        """
-        counter = OrderedCounter()
-        # informational counters
-        counter['metadataNamespaces'] = len(self.metadata_namespaces)
-        counter['serviceNamespaces'] = len(self.service_namespaces)
-        # error counters
-        counter['missingRedfishAlias'] = 0 if self.redfish_extensions_alias_ok else 1
-        counter['missingNamespaces'] = len(self.get_missing_namespaces())
-        counter['badTags'] = len(self.bad_tags)
-        counter['missingUriAttr'] = len(self.refs_missing_uri)
-        counter['missingNamespaceAttr'] = len(self.includes_missing_ns)
-        counter['badTagNamespaces'] = len(self.bad_tag_ns)
-        counter['badSchemaUris'] = len(self.bad_schema_uris)
-        counter['badNamespaceInclude'] = len(self.bad_namespace_include)
-        self.counter = counter
-        return self.counter
-
-    def to_html(self):
-        """
-        Convert the $metadata validation results to HTML
-        """
-        time_str = 'response time {}s'.format(self.elapsed_secs)
-        section_title = '{} ({})'.format(Metadata.metadata_uri, time_str)
-
-        counter = self.get_counter()
-
-        html_str = ''
-        html_str += '<tr><th class="titlerow bluebg"><b>{}</b></th></tr>'\
-            .format(section_title)
-        html_str += '<tr><td class="titlerow"><table class="titletable"><tr>'
-        html_str += '<td class="title" style="width:30%"><div>{}</div>\
-                        <div class="button warn" onClick="document.getElementById(\'resMetadata\').classList.toggle(\'resultsShow\');">Show results</div>\
-                        </td>'.format('')
-        html_str += '<td class="titlesub log" style="width:30%"><div><b>Schema File:</b> {}</div><div><b>Resource Type:</b> {}</div></td>'\
-            .format(Metadata.metadata_uri, Metadata.schema_type)
-        html_str += '<td style="width:10%"' + \
-            ('class="pass"> GET Success' if self.success_get else 'class="fail"> GET Failure') + '</td>'
-        html_str += '<td style="width:10%">'
-
-        errors_found = False
-        for count_type in counter.keys():
-            style = 'class=log'
-            if 'bad' in count_type or 'missing' in count_type:
-                if counter[count_type] > 0:
-                    errors_found = True
-                    style = 'class="fail log"'
-            if counter.get(count_type, 0) > 0:
-                html_str += '<div {style}>{p}: {q}</div>'.format(
-                        p=count_type, q=counter.get(count_type, 0), style=style)
-
-        html_str += '</td></tr>'
-        html_str += '</table></td></tr>'
-        html_str += '<tr><td class="results" id=\'resMetadata\'><table><tr><th>$metadata validation results</th></tr>'
-
-        if self.success_get and not errors_found:
-            html_str += '<tr><td class="pass log">Validation successful</td></tr>'
-        elif not self.success_get:
-            html_str += '<tr><td class="fail log">ERROR - Unable to retrieve $metadata resource at {}</td></tr>'\
-                .format(Metadata.metadata_uri)
+        # Type mapping
+        if (
+            (csdl_type == "Edm.SByte")
+            or (csdl_type == "Edm.Int16")
+            or (csdl_type == "Edm.Int32")
+            or (csdl_type == "Edm.Int64")
+        ):
+            return_type = "Integer"
+        elif (csdl_type == "Edm.Decimal") or (csdl_type == "Edm.Double"):
+            return_type = "Number"
+        elif (
+            (csdl_type == "Edm.String")
+            or (csdl_type == "Edm.DateTimeOffset")
+            or (csdl_type == "Edm.Duration")
+            or (csdl_type == "Edm.TimeOfDay")
+            or (csdl_type == "Edm.Guid")
+        ):
+            return_type = "String"
+        elif csdl_type == "Edm.Boolean":
+            return_type = "Boolean"
+        elif (csdl_type == "Edm.PrimitiveType") or (csdl_type == "Edm.Primitive"):
+            return_type = "Primitive"
         else:
-            if not self.redfish_extensions_alias_ok:
-                html_str += '<tr><td class="fail log">ERROR - $metadata does not include the required "RedfishExtensions.v1_0_0" namespace with an alias of "Redfish"</td></tr>'
-            if len(self.get_missing_namespaces()) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following namespaces are referenced by the service, but are not included in $metadata:<ul>'
-                for ns in self.get_missing_namespaces():
-                    html_str += '<li>{}</li>'.format(ns)
-                html_str += '</ul></td></tr>'
-            if len(self.bad_tags) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following tag names in $metadata are unrecognized (check spelling or case):'
-                html_str += tag_list_html(self.bad_tags)
-                html_str += '</td></tr>'
-            if len(self.refs_missing_uri) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following Reference tags in $metadata are missing the expected Uri attribute (check spelling or case):'
-                html_str += tag_list_html(self.refs_missing_uri)
-                html_str += '</td></tr>'
-            if len(self.includes_missing_ns) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following Include tags in $metadata are missing the expected Namespace attribute (check spelling or case):'
-                html_str += tag_list_html(self.includes_missing_ns)
-                html_str += '</td></tr>'
-            if len(self.bad_tag_ns) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following tags in $metadata have an unexpected namespace:'
-                html_str += tag_list_html(self.bad_tag_ns)
-                html_str += '</td></tr>'
-            if len(self.bad_schema_uris) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following schema URIs referenced from $metadata could not be retrieved:'
-                html_str += list_html(self.bad_schema_uris)
-                html_str += '</td></tr>'
-            if len(self.bad_namespace_include) > 0:
-                html_str += '<tr><td class="fail log">ERROR - The following namespaces included in $metadata could not be found in the referenced schema URI:'
-                html_str += list_html(self.bad_namespace_include)
-                html_str += '</td></tr>'
-        html_str += '</table>'
+            # Other types are tracked in the data model
+            return_type = csdl_type
 
-        return html_str
+        # Type-specific patterns
+        if csdl_type == "Edm.DateTimeOffset":
+            return_pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|(\+|-)\d{2}:\d{2})$"
+        elif csdl_type == "Edm.Duration":
+            return_pattern = r"^P(\d+D)?(T(\d+H)?(\d+M)?(\d+(.\d+)?S)?)?$"
+        elif csdl_type == "Edm.TimeOfDay":
+            return_pattern = r"^([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])(.[0-9]{1,12})?$"
+        elif csdl_type == "Edm.Guid":
+            return_pattern = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
+        return return_type, return_pattern
 
-class OrderedCounter(Counter, OrderedDict):
-    """Counter that remembers the order elements are first encountered"""
+    def _create_default_property_obj(self):
+        """
+        Creates a new property template with default data
 
-    def __repr__(self):
-        return '%s(%r)' % (self.__class__.__name__, OrderedDict(self))
+        Returns:
+            A dictionary of the new property template
+        """
+        new_prop = {
+            "Array": False,
+            "Nullable": True,
+            "Required": False,
+            "Pattern": None,
+            "Minimum": None,
+            "Maximum": None,
+            "Permissions": None,
+            "AutoExpand": False,
+            "Navigation": False,
+            "VersionAdded": "v1_0_0",
+            "VersionDeprecated": None,
+            "Type": None,
+            "ExcerptCopy": None,
+            "Excerpt": None,
+            "ExcerptCopyOnly": None,
+        }
+        return new_prop
 
-    def __reduce__(self):
-        return self.__class__, (OrderedDict(self),)
+    def _add_object(self, object):
+        """
+        Adds an object definition to the data model
 
+        Args:
+            object: The object definition to add
+        """
+        obj_name = self._get_attrib(object, "Name")
+        if obj_name is None:
+            return
+        obj_name = self._namespace_under_process + "." + obj_name
 
-def storeSchemaToLocal(xml_data, origin, service):
-    """storeSchemaToLocal
+        # Base object definition
+        self._objects[obj_name] = {}
+        self._objects[obj_name]["BaseType"] = self._get_attrib(object, "BaseType", required=False, default=None)
+        self._objects[obj_name]["Abstract"] = self._get_attrib(object, "Abstract", required=False, default=False)
+        if self._objects[obj_name]["Abstract"] == "true":
+            self._objects[obj_name]["Abstract"] = True
+        self._objects[obj_name]["Properties"] = {}
+        self._objects[obj_name]["DynamicProperties"] = {}
+        self._objects[obj_name]["AllowedURIs"] = None
+        self._objects[obj_name]["DeprecatedURIs"] = None
+        self._objects[obj_name]["AllowedMethods"] = None
 
-    Moves data pulled from service/online to local schema storage
+        # Add OData properties based on the reported type
+        odata_props = []
+        if (obj_name == "Resource.v1_0_0.Resource") or (obj_name == "Resource.v1_0_0.ResourceCollection"):
+            odata_props = ["@odata.id", "@odata.etag", "@odata.type", "@odata.context"]
+        elif obj_name == "Resource.v1_0_0.ReferenceableMember":
+            odata_props = ["@odata.id"]
+        elif obj_name == "Resource.OemObject":
+            odata_props = ["@odata.type"]
+        for prop in odata_props:
+            required = False
+            pattern = None
+            if (prop == "@odata.id") or (prop == "@odata.type"):
+                required = True
+            if prop == "@odata.context":
+                # Very loose pattern; doesn't necessarily map to all proper OData usage, but the value in Redfish is low
+                pattern = r"^/redfish/v1/\$metadata#.+$"
+            self._objects[obj_name]["Properties"][prop] = self._create_default_property_obj()
+            self._objects[obj_name]["Properties"][prop]["Type"] = "String"
+            self._objects[obj_name]["Properties"][prop]["Required"] = required
+            self._objects[obj_name]["Properties"][prop]["Pattern"] = pattern
+            self._objects[obj_name]["Properties"][prop]["Permissions"] = "Read"
+            self._objects[obj_name]["Properties"][prop]["Nullable"] = False
 
-    Does NOT do so if preferonline is specified
-
-    :param xml_data: data being transferred
-    :param origin: origin of xml pulled
-    """
-    config = service.config
-    SchemaLocation = config['metadatafilepath']
-    if not os.path.isdir(SchemaLocation):
-        os.makedirs(SchemaLocation)
-    if 'localFile' not in origin and '$metadata' not in origin:
-        __, xml_name = origin.rsplit('/', 1)
-        new_file = os.path.join(SchemaLocation, xml_name)
-        if not os.path.isfile(new_file):
-            with open(new_file, "w") as filehandle:
-                filehandle.write(xml_data)
-                my_logger.info('Writing online XML to file: {}'.format(xml_name))
-        else:
-            my_logger.info('NOT writing online XML to file: {}'.format(xml_name))
-
-
-@lru_cache(maxsize=64)
-def getSchemaDetails(service, SchemaType, SchemaURI):
-    """
-    Find Schema file for given Namespace.
-
-    param SchemaType: Schema Namespace, such as ServiceRoot
-    param SchemaURI: uri to grab schema, given LocalOnly is False
-    return: (success boolean, a Soup object, origin)
-    """
-    my_logger.debug('getting Schema of {} {}'.format(SchemaType, SchemaURI))
-
-    if SchemaType is None:
-        return False, None, None
-
-    if service is None:
-        return getSchemaDetailsLocal(SchemaType, SchemaURI, {})
-
-    success, soup, origin = getSchemaDetailsLocal(SchemaType, SchemaURI, service.config)
-    if success:
-        return success, soup, origin
-
-    xml_suffix = '_v1.xml'
-
-    if (SchemaURI is not None) or (SchemaURI is not None and '/redfish/v1/$metadata' in SchemaURI):
-        # Get our expected Schema file here
-        # if success, generate Soup, then check for frags to parse
-        #   start by parsing references, then check for the refLink
-        if '#' in SchemaURI:
-            base_schema_uri, frag = tuple(SchemaURI.rsplit('#', 1))
-        else:
-            base_schema_uri, frag = SchemaURI, None
-        success, data, response, elapsed = service.callResourceURI(base_schema_uri)
-        if success:
-            soup = BeautifulSoup(data, "xml")
-            # if frag, look inside xml for real target as a reference
-            if frag is not None:
-                # prefer type over frag, truncated down
-                # using frag, check references
-                frag = getNamespace(SchemaType)
-                frag = frag.split('.', 1)[0]
-                refType, refLink = getReferenceDetails(
-                    soup, name=base_schema_uri).get(frag, (None, None))
-                if refLink is not None:
-                    success, linksoup, newlink = getSchemaDetails(service, refType, refLink)
-                    if success:
-                        return True, linksoup, newlink
-                    else:
-                        my_logger.error("Metadata Error: SchemaURI couldn't call reference link {} inside {}".format(frag, base_schema_uri))
-                else:
-                    my_logger.error("Metadata Error: SchemaURI missing reference link {} inside {}".format(frag, base_schema_uri))
-                    # error reported; assume likely schema uri to allow continued validation
-                    uri = 'http://redfish.dmtf.org/schemas/v1/{}{}'.format(frag, xml_suffix)
-                    my_logger.info("Continue assuming schema URI for {} is {}".format(SchemaType, uri))
-                    return getSchemaDetails(service, SchemaType, uri)
-            else:
-                storeSchemaToLocal(data, base_schema_uri, service)
-                return True, soup, base_schema_uri
-        else:
-            my_logger.debug("SchemaURI called unsuccessfully: {}".format(base_schema_uri))
-    return getSchemaDetailsLocal(SchemaType, SchemaURI, service.config)
-
-
-def getSchemaDetailsLocal(SchemaType, SchemaURI, config):
-    """
-    Find Schema file for given Namespace, from local directory
-
-    param SchemaType: Schema Namespace, such as ServiceRoot
-    param SchemaURI: uri to grab schem (generate information from it)
-    return: (success boolean, a Soup object, origin)
-    """
-    Alias = getNamespaceUnversioned(SchemaType)
-    SchemaLocation, SchemaSuffix = config['metadatafilepath'], '_v1.xml'
-    if SchemaURI is not None:
-        uriparse = SchemaURI.split('/')[-1].split('#')
-        xml = uriparse[0]
-    else:
-        my_logger.warning("Metadata Warning: SchemaURI was empty, must generate xml name from type {}".format(SchemaType)),
-        return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix, config)
-    my_logger.debug(('local', SchemaType, SchemaURI, SchemaLocation + '/' + xml))
-    filestring = Alias + SchemaSuffix if xml is None else xml
-    try:
-        # get file
-        with open(SchemaLocation + '/' + xml, "r") as filehandle:
-            data = filehandle.read()
-
-        # get tags
-        soup = BeautifulSoup(data, "xml")
-        edmxTag = soup.find('Edmx', recursive=False)
-        parentTag = edmxTag.find('DataServices', recursive=False)
-        child = parentTag.find('Schema', recursive=False)
-        SchemaNamespace = child['Namespace']
-        FoundAlias = SchemaNamespace.split(".")[0]
-        my_logger.debug(FoundAlias)
-
-        if FoundAlias in Alias:
-            return True, soup, "localFile:" + SchemaLocation + '/' + filestring
-
-    except FileNotFoundError:
-        # if we're looking for $metadata locally... ditch looking for it, go straight to file
-        if '/redfish/v1/$metadata' in SchemaURI and Alias != '$metadata':
-            my_logger.debug("Unable to find a xml of {} at {}, defaulting to {}".format(SchemaURI, SchemaLocation, Alias + SchemaSuffix))
-            return getSchemaDetailsLocal(SchemaType, Alias + SchemaSuffix, config)
-        else:
-            my_logger.warning("Schema file {} not found in {}".format(filestring, SchemaLocation))
-            if Alias == '$metadata':
-                my_logger.warning("Metadata Warning: If $metadata cannot be found, Annotations may be unverifiable")
-    except Exception as ex:
-        my_logger.error("Metadata Error: A problem when getting a local schema has occurred {}".format(SchemaURI))
-        my_logger.error("output: ", exc_info=True)
-    return False, None, None
-
-
-def check_redfish_extensions_alias(name, namespace, alias):
-    """
-    Check that edmx:Include for Namespace RedfishExtensions has the expected 'Redfish' Alias attribute
-    :param name: the name of the resource
-    :param item: the edmx:Include item for RedfishExtensions
-    :return: bool
-    """
-    if alias is None or alias != 'Redfish':
-        msg = ("Metadata Error: In the resource {}, the {} namespace must have an alias of 'Redfish'. The alias is {}. " +
-               "This may cause properties of the form [PropertyName]@Redfish.TermName to be unrecognized.")
-        my_logger.error(msg.format(name, namespace, 'missing' if alias is None else "'" + str(alias) + "'"))
-        return False
-    return True
-
-
-def getReferenceDetails(soup, metadata_dict=None, name='xml'):
-    """
-    Create a reference dictionary from a soup file
-
-    param arg1: soup
-    param metadata_dict: dictionary of service metadata, compare with
-    return: dictionary
-    """
-    includeTuple = namedtuple('include', ['Namespace', 'Uri'])
-    refDict = {}
-
-    maintag = soup.find("Edmx", recursive=False)
-    reftags = maintag.find_all('Reference', recursive=False)
-    for ref in reftags:
-        includes = ref.find_all('Include', recursive=False)
-        for item in includes:
-            uri = ref.get('Uri')
-            ns, alias = (item.get(x) for x in ['Namespace', 'Alias'])
-            if ns is None or uri is None:
-                my_logger.error("Metadata Error: Reference incorrect for: {}".format(item))
+        # Go through each property
+        for prop in object:
+            if (prop.tag != ODATA_TAG_PROPERTY) and (prop.tag != ODATA_TAG_NAV_PROPERTY):
                 continue
-            if alias is None:
-                alias = ns
-            refDict[alias] = includeTuple(ns, uri)
-            # Check for proper Alias for RedfishExtensions
-            if name == '$metadata' and ns.startswith('RedfishExtensions.'):
-                check_bool = check_redfish_extensions_alias(name, ns, alias)
+            prop_name = self._get_attrib(prop, "Name")
+            prop_type = self._get_attrib(prop, "Type")
+            if (prop_name is None) or (prop_type is None):
+                continue
 
-    cntref = len(refDict)
-    if metadata_dict is not None:
-        refDict.update(metadata_dict)
-    my_logger.debug("METADATA: References generated from {}: {} out of {}".format(name, cntref, len(refDict)))
-    return refDict
+            # Basic property info
+            self._objects[obj_name]["Properties"][prop_name] = self._create_default_property_obj()
+            if prop_type.startswith("Collection("):
+                self._objects[obj_name]["Properties"][prop_name]["Array"] = True
+                prop_type = prop_type[11:-1]
+            if self._get_attrib(prop, "Nullable", False, "true") == "false":
+                self._objects[obj_name]["Properties"][prop_name]["Nullable"] = False
+            self._objects[obj_name]["Properties"][prop_name]["Navigation"] = prop.tag == ODATA_TAG_NAV_PROPERTY
+            self._objects[obj_name]["Properties"][prop_name]["VersionAdded"] = self._namespace_under_process.split(".")[
+                -1
+            ]
+            _, self._objects[obj_name]["Properties"][prop_name]["VersionDeprecated"] = self._get_version_details(prop)
+
+            # Type mapping
+            (
+                self._objects[obj_name]["Properties"][prop_name]["Type"],
+                self._objects[obj_name]["Properties"][prop_name]["Pattern"],
+            ) = self._get_type_info(prop_type)
+
+            # Extract other info about the property for from annotations
+            for annotation in prop.iter(ODATA_TAG_ANNOTATION):
+                term = self._get_attrib(annotation, "Term")
+                if term is None:
+                    continue
+                if term == "Redfish.Required":
+                    self._objects[obj_name]["Properties"][prop_name]["Required"] = True
+                elif (term == "OData.AutoExpand") and (prop.tag == ODATA_TAG_NAV_PROPERTY):
+                    self._objects[obj_name]["Properties"][prop_name]["AutoExpand"] = True
+                elif term == "Validation.Pattern":
+                    self._objects[obj_name]["Properties"][prop_name]["Pattern"] = self._get_attrib(annotation, "String")
+                elif term == "Validation.Minimum":
+                    self._objects[obj_name]["Properties"][prop_name]["Minimum"] = int(
+                        self._get_attrib(annotation, "Int")
+                    )
+                elif term == "Validation.Maximum":
+                    self._objects[obj_name]["Properties"][prop_name]["Maximum"] = int(
+                        self._get_attrib(annotation, "Int")
+                    )
+                elif term == "OData.Permissions":
+                    self._objects[obj_name]["Properties"][prop_name]["Permissions"] = self._get_attrib(
+                        annotation, "EnumMember"
+                    ).split("/")[-1]
+                elif term == "Redfish.ExcerptCopy":
+                    self._objects[obj_name]["Properties"][prop_name]["ExcerptCopy"] = self._get_attrib(
+                        annotation, "String", required=False, default=""
+                    )
+                elif term == "Redfish.Excerpt":
+                    excerpt = self._get_attrib(annotation, "String", required=False, default="")
+                    if excerpt == "":
+                        excerpt = []
+                    else:
+                        excerpt = excerpt.split(",")
+                    self._objects[obj_name]["Properties"][prop_name]["Excerpt"] = excerpt
+                elif term == "Redfish.ExcerptCopyOnly":
+                    self._objects[obj_name]["Properties"][prop_name]["ExcerptCopyOnly"] = True
+                    self._objects[obj_name]["Properties"][prop_name]["Excerpt"] = []
+
+            # Special cases for Members@odata.count and Members@odata.nextLink
+            if (prop_name == "Members") and (
+                self._objects[obj_name]["BaseType"] == "Resource.v1_0_0.ResourceCollection"
+            ):
+                self._objects[obj_name]["Properties"]["Members@odata.count"] = self._create_default_property_obj()
+                self._objects[obj_name]["Properties"]["Members@odata.count"]["Required"] = True
+                self._objects[obj_name]["Properties"]["Members@odata.count"]["Type"] = "Integer"
+                self._objects[obj_name]["Properties"]["Members@odata.count"]["Minimum"] = 0
+                self._objects[obj_name]["Properties"]["Members@odata.count"]["Nullable"] = False
+                self._objects[obj_name]["Properties"]["Members@odata.nextLink"] = self._create_default_property_obj()
+                self._objects[obj_name]["Properties"]["Members@odata.nextLink"]["Type"] = "String"
+                self._objects[obj_name]["Properties"]["Members@odata.nextLink"]["Nullable"] = False
+
+        # Check for other terms
+        for annotation in object.iter(ODATA_TAG_ANNOTATION):
+            # Dynamic Properties
+            # NOTE: Currently assumes ONE pattern allowed per object.  Technically it's possible to have multiple patterns, but this does not seem realistic
+            if self._get_attrib(annotation, "Term") == "Redfish.DynamicPropertyPatterns":
+                for collection in annotation.iter(ODATA_TAG_COLLECTION):
+                    for record in collection.iter(ODATA_TAG_RECORD):
+                        dynamic_pattern = None
+                        dynamic_type = None
+                        for prop_val in record.iter(ODATA_TAG_PROP_VAL):
+                            if self._get_attrib(prop_val, "Property") == "Pattern":
+                                dynamic_pattern = self._get_attrib(prop_val, "String")
+                            elif self._get_attrib(prop_val, "Property") == "Type":
+                                dynamic_type = self._get_attrib(prop_val, "String")
+                        if dynamic_pattern and dynamic_type:
+                            # Found a valid definition
+                            self._objects[obj_name]["DynamicProperties"] = self._create_default_property_obj()
+                            self._objects[obj_name]["DynamicProperties"]["NamePattern"] = dynamic_pattern
+                            if dynamic_type.startswith("Collection("):
+                                self._objects[obj_name]["DynamicProperties"]["Array"] = True
+                                dynamic_type = dynamic_type[11:-1]
+                            self._objects[obj_name]["DynamicProperties"]["VersionAdded"] = (
+                                self._namespace_under_process.split(".")[-1]
+                            )
+                            (
+                                self._objects[obj_name]["DynamicProperties"]["Type"],
+                                self._objects[obj_name]["DynamicProperties"]["Pattern"],
+                            ) = self._get_type_info(dynamic_type)
+
+            # Allowed URIs
+            if self._get_attrib(annotation, "Term") == "Redfish.Uris":
+                self._objects[obj_name]["AllowedURIs"] = []
+                for collection in annotation.iter(ODATA_TAG_COLLECTION):
+                    for string in collection.iter(ODATA_TAG_STRING):
+                        self._objects[obj_name]["AllowedURIs"].append(
+                            re.sub(URI_ID_REGEX, VALID_ID_REGEX, r"^{}/?$".format(string.text))
+                        )
+
+            # Deprecated URIs
+            if self._get_attrib(annotation, "Term") == "Redfish.DeprecatedUris":
+                self._objects[obj_name]["DeprecatedURIs"] = []
+                for collection in annotation.iter(ODATA_TAG_COLLECTION):
+                    for string in collection.iter(ODATA_TAG_STRING):
+                        self._objects[obj_name]["DeprecatedURIs"].append(
+                            re.sub(URI_ID_REGEX, VALID_ID_REGEX, r"^{}/?$".format(string.text))
+                        )
+
+            # Capabilities
+            if self._get_attrib(annotation, "Term").startswith("Capabilities."):
+                if self._objects[obj_name]["AllowedMethods"] is None:
+                    self._objects[obj_name]["AllowedMethods"] = []
+                for record in annotation.iter(ODATA_TAG_RECORD):
+                    for prop_val in record.iter(ODATA_TAG_PROP_VAL):
+                        capability_type = self._get_attrib(prop_val, "Property")
+                        capability_allowed = self._get_attrib(prop_val, "Bool")
+                        if capability_allowed == "true":
+                            if capability_type == "Insertable":
+                                self._objects[obj_name]["AllowedMethods"].append("POST")
+                            elif capability_type == "Updatable":
+                                self._objects[obj_name]["AllowedMethods"].append("PATCH")
+                                self._objects[obj_name]["AllowedMethods"].append("PUT")
+                            elif capability_type == "Deletable":
+                                self._objects[obj_name]["AllowedMethods"].append("DELETE")
+
+    def _add_action(self, action):
+        """
+        Adds an action definition to the data model
+
+        Args:
+            action: The action definition to add
+        """
+        action_name = self._get_attrib(action, "Name")
+        if action_name is None:
+            return
+        action_name = self._namespace_under_process + "." + action_name
+
+        self._actions[action_name] = {}
+        self._actions[action_name]["VersionAdded"], self._actions[action_name]["VersionDeprecated"] = (
+            self._get_version_details(action)
+        )
+
+        # TODO: Parameters (for annotation checks)
+
+    def _add_typedef(self, typedef):
+        """
+        Adds a type definition to the data model
+
+        Args:
+            typedef: The type definition to add
+        """
+        typedef_name = self._get_attrib(typedef, "Name")
+        if typedef_name is None:
+            return
+        typedef_name = self._namespace_under_process + "." + typedef_name
+
+        # Base definition
+        self._typedefs[typedef_name] = {}
+        self._typedefs[typedef_name]["Type"] = None
+        self._typedefs[typedef_name]["Values"] = None
+        self._typedefs[typedef_name]["ValuesVersionAdded"] = None
+        self._typedefs[typedef_name]["ValuesVersionDeprecated"] = None
+        self._typedefs[typedef_name]["Pattern"] = None
+        self._typedefs[typedef_name]["Minimum"] = None
+        self._typedefs[typedef_name]["Maximum"] = None
+
+        if typedef.tag == ODATA_TAG_ENUM:
+            # Enums are strings with specific values
+            self._typedefs[typedef_name]["Type"] = "String"
+            self._typedefs[typedef_name]["Values"] = []
+            self._typedefs[typedef_name]["ValuesVersionAdded"] = []
+            self._typedefs[typedef_name]["ValuesVersionDeprecated"] = []
+            for member in typedef.iter(ODATA_TAG_MEMBER):
+                member_name = self._get_attrib(member, "Name")
+                if member_name is not None:
+                    self._typedefs[typedef_name]["Values"].append(member_name)
+                    ver_added, ver_deprecated = self._get_version_details(member)
+                    self._typedefs[typedef_name]["ValuesVersionAdded"].append(ver_added)
+                    self._typedefs[typedef_name]["ValuesVersionDeprecated"].append(ver_deprecated)
+        else:
+            # Full type definitions use annotations to describe what's allowed
+            underlying_type = self._get_attrib(typedef, "UnderlyingType")
+            if underlying_type is None:
+                # Remove the type... Can't use it
+                self._typedefs.pop(typedef_name)
+                return
+
+            self._typedefs[typedef_name]["Type"], self._typedefs[typedef_name]["Pattern"] = self._get_type_info(
+                underlying_type
+            )
+
+            for annotation in typedef.iter(ODATA_TAG_ANNOTATION):
+                term = self._get_attrib(annotation, "Term")
+                if term is None:
+                    continue
+                if term == "Validation.Pattern":
+                    self._typedefs[typedef_name]["Pattern"] = self._get_attrib(annotation, "String")
+                elif term == "Validation.Minimum":
+                    self._typedefs[typedef_name]["Minimum"] = int(self._get_attrib(annotation, "Int"))
+                elif term == "Validation.Maximum":
+                    self._typedefs[typedef_name]["Maximum"] = int(self._get_attrib(annotation, "Int"))
+                elif term == "Redfish.Enumeration":
+                    self._typedefs[typedef_name]["Values"] = []
+                    self._typedefs[typedef_name]["ValuesVersionAdded"] = []
+                    self._typedefs[typedef_name]["ValuesVersionDeprecated"] = []
+                    for record in annotation.iter(ODATA_TAG_RECORD):
+                        member_name = None
+                        for prop_val in record.iter(ODATA_TAG_PROP_VAL):
+                            if self._get_attrib(prop_val, "Property") == "Member":
+                                member_name = self._get_attrib(prop_val, "String")
+                        if member_name is not None:
+                            self._typedefs[typedef_name]["Values"].append(member_name)
+                            ver_added, ver_deprecated = self._get_version_details(record)
+                            self._typedefs[typedef_name]["ValuesVersionAdded"].append(ver_added)
+                            self._typedefs[typedef_name]["ValuesVersionDeprecated"].append(ver_deprecated)
+
+
+def parse_schema_files(schema_dir):
+    """
+    Parse the schema files to build the data model definitions
+
+    Args:
+        schema_dir: The local schema repository
+    """
+    logger.debug("Parsing schema files")
+    for filename in os.listdir(schema_dir):
+        if not filename.lower().endswith(".xml"):
+            # Skip non-XML files
+            continue
+
+        logger.debug("Parsing {}...".format(filename))
+
+        # Read the schema file into an ET object
+        try:
+            tree = ET.parse(schema_dir + os.path.sep + filename)
+            root = tree.getroot()
+        except ET.ParseError:
+            logger.critical("{} is a malformed XML document".format(filename))
+        except Exception as err:
+            logger.critical("Could not open {}; {}".format(filename, err))
+
+        # Parse the schema file and update the data model list
+        try:
+            new_schema = Metadata(root, filename)
+            parsed_schemas.append(new_schema)
+        except Exception as err:
+            logger.critical("Could not build data model definitions for {}; {}".format(filename, err))
+    logger.debug("Done parsing schema files\n")
+
+
+def get_object_definition(resource_type, object_type, exact_version=False):
+    """
+    Gets the definition for an object based on its typename and inheritance tree
+
+    Args:
+        resource_type: The type reported from the root of the resource
+        object_type: The type referenced from the property definition in schema
+        exact_version: Indicates if an exact match it required for this lookup
+
+    Returns:
+        An dictionary with the object's definition
+    """
+    logger.debug("Locating {} for {} (Exact = {})".format(object_type, resource_type, exact_version))
+
+    # If the object type is in the same schema as the resource, need to find the latest applicable version
+    highest_version = None
+    if not exact_version:
+        if resource_type.split(".")[0] == object_type.split(".")[0]:
+            highest_version = get_version(resource_type)
+
+    # Find the object definition
+    for schema in parsed_schemas:
+        object_def = schema.find_object(object_type, highest_version, exact_version)
+        if object_def:
+            return object_def
+
+    return None
+
+
+def get_type_definition(typename):
+    """
+    Gets the type definition for a typename
+
+    Args:
+        typename: The type referenced from the property definition in schema
+
+    Returns:
+        An dictionary with the type definition's information
+    """
+    logger.debug("Locating {}".format(typename))
+
+    # Find the type definition
+    for schema in parsed_schemas:
+        type_def = schema.find_typedef(typename)
+        if type_def:
+            return type_def
+
+    return None
+
+
+def get_action_definition(action_name):
+    """
+    Gets the definition for an action based on its name
+
+    Args:
+        action_name: The name of the action
+
+    Returns:
+        An dictionary with the action definition's information
+    """
+    logger.debug("Locating {}".format(action_name))
+
+    # Find the action
+    for schema in parsed_schemas:
+        action_def = schema.find_action(action_name)
+        if action_def:
+            return action_def
+
+    return None
+
+
+def get_version(typename, just_ver=False):
+    """
+    Pulls the version numbers from a typename
+
+    Args:
+        typename: The typename containing the version
+        just_ver: Indicates if the typename parameter only contains the version segment
+
+    Returns:
+        A tuple with the version numbers if found
+    """
+    regex_str = VERSION_REGEX
+    if just_ver:
+        regex_str = VERSION_REGEX_SM
+    try:
+        groups = re.search(regex_str, typename)
+        return (int(groups.group(1)), int(groups.group(2)), int(groups.group(3)))
+    except:
+        pass
+    return None

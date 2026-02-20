@@ -5,7 +5,7 @@
 """
 Redfish Logo
 
-File : RedfishLogo.py
+File : redfish_logo.py
 
 Brief : This file contains the Base64 encoded image data for the Redfish Logo
 """

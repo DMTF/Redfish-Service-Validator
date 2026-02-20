@@ -16,26 +16,21 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="DMTF, https://www.dmtf.org/standards/feedback",
-    license="BSD 3-clause \"New\" or \"Revised License\"",
+    license='BSD 3-clause "New" or "Revised License"',
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: BSD License",
         "Programming Language :: Python",
-        "Topic :: Communications"
+        "Topic :: Communications",
     ],
     keywords="Redfish",
     url="https://github.com/DMTF/Redfish-Protocol-Validator",
     packages=["redfish_service_validator"],
     entry_points={
-        'console_scripts': [
-            'rf_service_validator=redfish_service_validator.RedfishServiceValidator:main',
-            'rf_service_validator_gui=redfish_service_validator.RedfishServiceValidatorGui:main'
+        "console_scripts": [
+            "rf_service_validator=redfish_service_validator.console_scripts:main",
+            "rf_service_validator_gui=redfish_service_validator.gui:main",
         ]
     },
-    install_requires=[
-      "redfish>=3.1.5",
-      "requests",
-      "beautifulsoup4>=4.6.0",
-      "lxml"
-    ]
+    install_requires=["redfish>=3.1.5", "requests", "colorama"],
 )
