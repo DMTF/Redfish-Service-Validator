@@ -44,7 +44,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install setuptools==68.1.2 wheel twine black
+        pip install setuptools wheel twine black
     - name: Build the changelog text
       run: |
         echo 'CHANGES<<EOF' >> $GITHUB_ENV
@@ -92,18 +92,18 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
-    - name: Build Windows GUI executable
-      uses: JackMcKew/pyinstaller-action-windows@main
-      with:
-        path: .
-    - name: Package the Windows GUI executable
-      run: |
-        mkdir Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
-        cp dist/windows/RedfishServiceValidator.exe Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
-        cp README.md  Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
-        zip -r Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
+#    - name: Build Windows GUI executable
+#      uses: JackMcKew/pyinstaller-action-windows@main
+#      with:
+#        path: .
+#    - name: Package the Windows GUI executable
+#      run: |
+#        mkdir Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
+#        cp dist/windows/RedfishServiceValidator.exe Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
+#        cp README.md  Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
+#        zip -r Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
     - name: Make the release
       env:
         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
       run: |
-        gh release create ${{github.event.inputs.version}} -t ${{github.event.inputs.version}} -n "Changes since last release:"$'\n\n'"$CHANGES" *.zip 
+        gh release create ${{github.event.inputs.version}} -t ${{github.event.inputs.version}} -n "Changes since last release:"$'\n\n'"$CHANGES"

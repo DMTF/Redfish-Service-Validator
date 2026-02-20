@@ -1,8 +1,5 @@
 # Change Log
 
-## [3.0.3] - 2026-02-20
-- Major updates to improve test flow, tracing, and reports
-
 ## [2.5.1] - 2025-07-15
 - Cleaned up error and warning reporting
 - Added test results summary to the top of the results file
