@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2016-2025 DMTF. All rights reserved.
+# Copyright 2016-2026 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 """
@@ -643,9 +643,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
     if value_permissions == "None" or value_permissions == "Write":
         return (
             "FAIL",
-            "Null Error: The property '{}' is write-only and is expected to be null in responses.".format(
-                prop_name
-            ),
+            "Null Error: The property '{}' is write-only and is expected to be null in responses.".format(prop_name),
         )
 
     # Basic type check

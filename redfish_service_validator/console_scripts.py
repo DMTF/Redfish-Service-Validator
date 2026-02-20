@@ -1,5 +1,5 @@
 # Copyright Notice:
-# Copyright 2016-2025 DMTF. All rights reserved.
+# Copyright 2016-2026 DMTF. All rights reserved.
 # License: BSD 3-Clause License. For full text see link: https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md
 
 """
@@ -25,7 +25,7 @@ from redfish_service_validator import metadata
 from redfish_service_validator import report
 from redfish_service_validator import schema_pack
 
-tool_version = "2.5.1"
+tool_version = "3.0.0"
 
 
 def main():

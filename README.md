@@ -1,6 +1,6 @@
 # Redfish Service Validator
 
-Copyright 2016-2025 DMTF.  All rights reserved.
+Copyright 2016-2026 DMTF.  All rights reserved.
 
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/DMTF/Redfish-Service-Validator/blob/main/LICENSE.md)
 [![PyPI](https://img.shields.io/pypi/v/redfish-service-validator)](https://pypi.org/project/redfish-service-validator/)
