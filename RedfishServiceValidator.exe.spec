@@ -16,7 +16,7 @@ a = Analysis(['RedfishServiceValidatorGui.py'],
              win_private_assemblies=False,
              cipher=block_cipher,
              noarchive=False,
-             hiddenimports=['pkg_resources.extern'])
+             hiddenimports=['pkg_resources'])
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
 
