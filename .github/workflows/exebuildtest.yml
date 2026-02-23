@@ -52,6 +52,7 @@ jobs:
       uses: JackMcKew/pyinstaller-action-windows@main
       with:
         path: .
+        requirements: exerequirements.txt
     - name: Package the Windows GUI executable
       run: |
         mkdir Redfish-Service-Validator-${{github.event.inputs.version}}-Windows

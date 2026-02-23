@@ -1,0 +1,4 @@
+redfish>=3.1.5
+requests
+colorama
+setuptools<70.0.0
