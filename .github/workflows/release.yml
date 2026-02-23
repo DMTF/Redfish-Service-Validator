@@ -92,16 +92,17 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
-#    - name: Build Windows GUI executable
-#      uses: JackMcKew/pyinstaller-action-windows@main
-#      with:
-#        path: .
-#    - name: Package the Windows GUI executable
-#      run: |
-#        mkdir Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
-#        cp dist/windows/RedfishServiceValidator.exe Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
-#        cp README.md  Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
-#        zip -r Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
+    - name: Build Windows GUI executable
+      uses: JackMcKew/pyinstaller-action-windows@main
+      with:
+        path: .
+        requirements: exerequirements.txt
+    - name: Package the Windows GUI executable
+      run: |
+        mkdir Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
+        cp dist/windows/RedfishServiceValidator.exe Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
+        cp README.md  Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
+        zip -r Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
     - name: Make the release
       env:
         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
