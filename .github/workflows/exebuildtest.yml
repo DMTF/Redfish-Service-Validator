@@ -1,0 +1,60 @@
+name: Test EXE Building
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number'
+        required: true
+      changes_1:
+        description: 'Change entry'
+        required: true
+      changes_2:
+        description: 'Change entry'
+        required: false
+      changes_3:
+        description: 'Change entry'
+        required: false
+      changes_4:
+        description: 'Change entry'
+        required: false
+      changes_5:
+        description: 'Change entry'
+        required: false
+      changes_6:
+        description: 'Change entry'
+        required: false
+      changes_7:
+        description: 'Change entry'
+        required: false
+      changes_8:
+        description: 'Change entry'
+        required: false
+jobs:
+  release_build:
+    name: Test EXE Building
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        token: ${{secrets.GITHUB_TOKEN}}
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install setuptools wheel twine black
+    - name: Build the distribution
+      run: |
+        python setup.py sdist bdist_wheel
+    - name: Build Windows GUI executable
+      uses: JackMcKew/pyinstaller-action-windows@main
+      with:
+        path: .
+    - name: Package the Windows GUI executable
+      run: |
+        mkdir Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
+        cp dist/windows/RedfishServiceValidator.exe Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
+        cp README.md  Redfish-Service-Validator-${{github.event.inputs.version}}-Windows/.
+        zip -r Redfish-Service-Validator-${{github.event.inputs.version}}-Windows.zip Redfish-Service-Validator-${{github.event.inputs.version}}-Windows
