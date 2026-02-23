@@ -1,8 +1,5 @@
 # Change Log
 
-## [3.0.5] - 2026-02-23
-- Rebuilding with GUI EXE packaged; no functional changes
-
 ## [3.0.4] - 2026-02-20
 - Major updates to improve test flow, tracing, and reports
 
