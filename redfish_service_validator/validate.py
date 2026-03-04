@@ -153,7 +153,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
     # Allow header check
     if prop_path == "":
         allow_header = sut.get_allow_header(uri)
-        if allow_header is not None:
+        if allow_header is not None and definition["AllowedMethods"] is not None:
             allow_header_split = [allow.strip().upper() for allow in allow_header.split(",")]
             check_methods = ["POST", "DELETE", "PUT", "PATCH"]
             for method in check_methods:
