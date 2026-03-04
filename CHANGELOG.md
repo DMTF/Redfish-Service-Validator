@@ -1,5 +1,8 @@
 # Change Log
 
+## [3.0.7] - 2026-03-04
+- Fix to prevent crashes when performing 'Allow' header checks, but the schema never defined resource capabilities
+
 ## [3.0.6] - 2026-02-23
 - Rebuilding with GUI EXE packaged; no functional changes
 
