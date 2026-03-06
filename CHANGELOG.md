@@ -1,5 +1,8 @@
 # Change Log
 
+## [3.0.8] - 2026-03-06
+- Corrected action object checking to account for expanded resources
+
 ## [3.0.7] - 2026-03-04
 - Fix to prevent crashes when performing 'Allow' header checks, but the schema never defined resource capabilities
 
