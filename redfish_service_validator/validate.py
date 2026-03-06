@@ -17,8 +17,8 @@ from redfish_service_validator import logger
 from redfish_service_validator import metadata
 
 ODATA_TYPE_PATTERN = r"^#.+$"  # Not comprehensive, but good enough to ensure we can look up definitions
-ACTIONS_PATTERN = r"^/Actions/#[A-Za-z0-9_.]+$"
-OEM_ACTIONS_PATTERN = r"^/Actions/Oem/#[A-Za-z0-9_.]+$"
+ACTIONS_PATTERN = r"^(.+)?/Actions/#[A-Za-z0-9_.]+$"
+OEM_ACTIONS_PATTERN = r"^(.+)?/Actions/Oem/#[A-Za-z0-9_.]+$"
 BASIC_TYPES = ["Integer", "Number", "String", "Boolean", "Primitive"]
 
 
@@ -345,7 +345,8 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
         A tuple containing the results of the testing
     """
     schema_err_result = "FAIL"
-    if prop_path.startswith("/Actions/Oem/"):
+    oem_action = "/Actions/Oem/" in prop_path
+    if oem_action:
         # TODO: For now, downgrade bad OEM extensions to warnings...
         schema_err_result = "WARN"
     # Check if it's an object
@@ -366,7 +367,7 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
         )
 
     # For standard actions, enforce the resource type matches (including version)
-    if not prop_path.startswith("/Actions/Oem/"):
+    if not oem_action:
         if prop_name[1:].split(".")[0] != resource_type.split(".")[0]:
             return (
                 "FAIL",
@@ -427,7 +428,10 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
                 continue
 
             # For target, check the URI
-            if prop == "target":
+            # Only check if the action object is not from an auto-expanded resource; covering this gap would required
+            # tracking of the "most recent" @odata.id.  For now, we can rely on the subsequent inspection of the
+            # resource itself to ensure the URI is valid.
+            if prop == "target" and prop_path.startswith("/Actions/"):
                 exp_target = uri.rstrip("/") + prop_path.replace("#", "")
                 if value[prop] == exp_target + "/":
                     sut.add_resource_result(
