@@ -111,7 +111,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
             True,
             payload,
             (
-                schema_err_result,
+                "WARN",
                 "Schema Error: Unable to locate the schema definition for the '{}' type.".format(lookup_object_type),
             ),
         )
@@ -362,7 +362,7 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
     action_def = metadata.get_action_definition(prop_name[1:])
     if action_def is None:
         return (
-            schema_err_result,
+            "WARN",
             "Schema Error: Unable to locate the schema definition for the '{}' action.".format(prop_name),
         )
 
@@ -595,7 +595,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                             link_def, _ = find_fallback_definition(link_type, link_type)
                         if link_def is None:
                             return (
-                                "FAIL",
+                                "WARN",
                                 "Schema Error: Unable to locate the schema definition for the '{}' type.".format(
                                     link_type
                                 ),
