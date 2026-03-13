@@ -1,5 +1,8 @@
 # Change Log
 
+## [3.0.9] - 2026-03-13
+- Downgraded top-level schema errors to 'Warning'
+
 ## [3.0.8] - 2026-03-06
 - Corrected action object checking to account for expanded resources
 
