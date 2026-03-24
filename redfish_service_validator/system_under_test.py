@@ -431,9 +431,11 @@ class SystemUnderTest(object):
             from_annotation: Indicates if we're stepping through an annotation that can contain URIs
             from_collection_capabilities: Indicates if we're stepping through a collection capabilities annotation
         """
-        if isinstance(payload, dict) and payload.get("@odata.type", "").startswith("#JsonSchemaFile."):
-            # Don't go to URIs for JSON Schemas
-            return
+        if isinstance(payload, dict):
+            odata_type = payload.get("@odata.type")
+            if isinstance(odata_type, str) and odata_type.startswith("#JsonSchemaFile."):
+                # Don't go to URIs for JSON Schemas
+                return
         for item in payload:
             if isinstance(payload, dict):
                 # Skip OEM extensions if needed
