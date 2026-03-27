@@ -1,5 +1,9 @@
 # Change Log
 
+## [3.1.0] - 2026-03-27
+- Large enhancement to HTML report UI
+- Fixed URI discovery to protect against cases where '@odata.type' is an incorrect data type
+
 ## [3.0.9] - 2026-03-13
 - Downgraded top-level schema errors to 'Warning'
 

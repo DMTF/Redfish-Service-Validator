@@ -660,6 +660,7 @@ html_template = """
 
 error_tally_html = ""  # unused placeholder kept for compatibility
 
+
 def build_resource_header(uri, resource_type, uri_summary, payload_id, results_id):
     """Builds the enterprise-styled resource card header row."""
     return """
@@ -681,8 +682,13 @@ def build_resource_header(uri, resource_type, uri_summary, payload_id, results_i
         </span>
       </div>
     </div>
-""".format(uri=html_mod.escape(uri), rtype=html_mod.escape(resource_type),
-            badges=uri_summary, pid=payload_id, rid=results_id)
+""".format(
+        uri=html_mod.escape(uri),
+        rtype=html_mod.escape(resource_type),
+        badges=uri_summary,
+        pid=payload_id,
+        rid=results_id,
+    )
 
 
 def build_resource_detail(results_id, results_str, payload_id, payload_str):
@@ -710,8 +716,7 @@ def build_resource_detail(results_id, results_str, payload_id, payload_str):
       <pre class="payload-panel" id="{pid}-inner">{payload}</pre>
     </div>
   </div>
-""".format(rid=results_id, rows=results_str, pid=payload_id,
-            payload=html_mod.escape(payload_str))
+""".format(rid=results_id, rows=results_str, pid=payload_id, payload=html_mod.escape(payload_str))
 
 
 def build_not_tested_section(sut, uris):
@@ -734,16 +739,14 @@ def build_error_tally(error_classes, panel_title=None):
         return ""
     rows = ""
     for etype in sorted(error_classes.keys()):
-        rows += "<tr><td>{}</td><td>{}</td></tr>".format(
-            html_mod.escape(etype + "s"), error_classes[etype]
-        )
-    heading = '<h3>{}</h3>'.format(html_mod.escape(panel_title)) if panel_title else ''
+        rows += "<tr><td>{}</td><td>{}</td></tr>".format(html_mod.escape(etype + "s"), error_classes[etype])
+    heading = "<h3>{}</h3>".format(html_mod.escape(panel_title)) if panel_title else ""
     return (
         '<div class="tally-panel">{}'
         '<table class="tally-table">'
         '<tr><th>Type</th><th style="text-align:right;width:80px">Count</th></tr>'
-        '{}'
-        '</table></div>'
+        "{}"
+        "</table></div>"
     ).format(heading, rows)
 
 
@@ -796,7 +799,9 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
         if sut._resources[uri]["Warn"]:
             uri_summary += ' <span class="badge badge-warn">&#9888; Warn: {}</span>'.format(sut._resources[uri]["Warn"])
         if sut._resources[uri]["Fail"]:
-            uri_summary += ' <span class="badge badge-fail">&#10007; Fail: {}</span>'.format(sut._resources[uri]["Fail"])
+            uri_summary += ' <span class="badge badge-fail">&#10007; Fail: {}</span>'.format(
+                sut._resources[uri]["Fail"]
+            )
 
         # Insert the URI results header
         results_id = "results{}".format(index)
@@ -818,10 +823,14 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
                 result_class = 'class="res-pass"'
             elif sut._resources[uri]["Results"][prop]["Result"] == "WARN":
                 result_class = 'class="res-warn"'
-                value_str += '<div class="msg-warn">{}</div>'.format(html_mod.escape(sut._resources[uri]["Results"][prop]["Message"]))
+                value_str += '<div class="msg-warn">{}</div>'.format(
+                    html_mod.escape(sut._resources[uri]["Results"][prop]["Message"])
+                )
             elif sut._resources[uri]["Results"][prop]["Result"] == "FAIL":
                 result_class = 'class="res-fail"'
-                value_str += '<div class="msg-fail">{}</div>'.format(html_mod.escape(sut._resources[uri]["Results"][prop]["Message"]))
+                value_str += '<div class="msg-fail">{}</div>'.format(
+                    html_mod.escape(sut._resources[uri]["Results"][prop]["Message"])
+                )
             elif sut._resources[uri]["Results"][prop]["Result"] == "SKIP":
                 result_class = 'class="res-skip"'
             results_str += "<tr><td>{}</td><td>{}</td><td {}>{}</td></tr>".format(
