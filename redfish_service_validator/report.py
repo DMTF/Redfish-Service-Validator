@@ -673,11 +673,11 @@ def build_resource_header(uri, resource_type, uri_summary, payload_id, results_i
       <div class="resource-badges">{badges}</div>
       <div class="btn-group">
         <span class="btn btn-results"
-          onclick="(function(){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}');p.classList.remove('resultsShow');r.classList.toggle('resultsShow');}})()">
+          onclick="(function(){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}');r.classList.toggle('resultsShow');}})()">
           &#9776; Results
         </span>
         <span class="btn btn-payload"
-          onclick="(function(){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}');r.classList.remove('resultsShow');p.classList.toggle('resultsShow');}})()">
+          onclick="(function(){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}');p.classList.toggle('resultsShow');}})()">
           &#123;&#125; Payload
         </span>
       </div>
