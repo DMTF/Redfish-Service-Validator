@@ -223,7 +223,10 @@ class SystemUnderTest(object):
         """
         Logs out of the Redfish service
         """
-        self._redfish_obj.logout()
+        try:
+            self._redfish_obj.logout()
+        except Exception:
+            pass
 
     def is_uri_from_annotation(self, uri):
         """

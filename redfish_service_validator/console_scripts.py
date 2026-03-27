@@ -160,13 +160,14 @@ def run_validator(args):
 
     # Validate the service
     sut.validate(traverse_mode, starting_uri, starting_uri)
-    sut.logout()
 
     # Results
     logger.log_print("")
     print_summary(sut)
     results_file = report.html_report(sut, report_dir, test_time, tool_version)
     logger.log_print("HTML Report: {}".format(results_file))
+
+    sut.logout()
 
     return int(sut.fail_count > 0), str(results_file)
 
