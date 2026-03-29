@@ -320,6 +320,11 @@ html_template = """
         box-shadow: 0 2px 5px rgba(73,80,87,0.3);
       }}
       .btn-payload:hover {{ background: #343a40; }}
+      .btn-both {{
+        background: #198754; color: #fff;
+        box-shadow: 0 2px 5px rgba(25,135,84,0.3);
+      }}
+      .btn-both:hover {{ background: #157347; }}
       .btn-group {{ display: flex; gap: 6px; flex-wrap: wrap; }}
 
       /* Resource card */
@@ -673,12 +678,16 @@ def build_resource_header(uri, resource_type, uri_summary, payload_id, results_i
       <div class="resource-badges">{badges}</div>
       <div class="btn-group">
         <span class="btn btn-results"
-          onclick="(function(){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}');p.classList.remove('resultsShow');r.classList.toggle('resultsShow');}})()">
+          onclick="(function(btn){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}'),b=btn.parentNode.querySelector('.btn-both');p.classList.remove('resultsShow');r.classList.add('resultsShow');if(b){{b.setAttribute('data-state','');b.innerHTML='&#9783; Both';}}}})(this)">
           &#9776; Results
         </span>
         <span class="btn btn-payload"
-          onclick="(function(){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}');r.classList.remove('resultsShow');p.classList.toggle('resultsShow');}})()">
+          onclick="(function(btn){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}'),b=btn.parentNode.querySelector('.btn-both');r.classList.remove('resultsShow');p.classList.add('resultsShow');if(b){{b.setAttribute('data-state','');b.innerHTML='&#9783; Both';}}}})(this)">
           &#123;&#125; Payload
+        </span>
+        <span class="btn btn-both"
+          onclick="(function(btn){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}');if(btn.getAttribute('data-state')==='both'){{r.classList.remove('resultsShow');p.classList.remove('resultsShow');btn.setAttribute('data-state','');btn.innerHTML='&#9783; Both';}}else{{r.classList.add('resultsShow');p.classList.add('resultsShow');btn.setAttribute('data-state','both');btn.innerHTML='&#9650; Hide';}}}})(this)">
+          &#9783; Both
         </span>
       </div>
     </div>
