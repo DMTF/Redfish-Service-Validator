@@ -6,6 +6,10 @@ import html as html_mod
 import json
 from datetime import datetime
 
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
 from redfish_service_validator import metadata
 from redfish_service_validator import redfish_logo
 from redfish_service_validator.system_under_test import SystemUnderTest
@@ -878,3 +882,212 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
             )
         )
     return file
+
+
+def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
+    """
+    Creates an XLSX report for the system under test alongside the HTML report.
+
+    Args:
+        sut: The system under test
+        report_dir: The directory for the report
+        time: The time the tests finished
+        tool_version: The version of the tool
+
+    Returns:
+        The path to the XLSX report
+    """
+    xlsx_file = report_dir / datetime.strftime(time, "RedfishServiceValidatorReport_%m_%d_%Y_%H%M%S.xlsx")
+
+    # ── Colour palette ──────────────────────────────────────────────────
+    C_HEADER_BG   = "1565C0"
+    C_HEADER_FG   = "FFFFFF"
+    C_PASS_BG     = "D4EDDA"
+    C_PASS_FG     = "145A32"
+    C_FAIL_BG     = "F8D7DA"
+    C_FAIL_FG     = "7B241C"
+    C_WARN_BG     = "FFF3CD"
+    C_WARN_FG     = "7D6008"
+    C_SKIP_BG     = "F5F7FA"
+    C_SKIP_FG     = "7F8C8D"
+    C_ALT_BG      = "F0F4F8"
+    C_URI_BG      = "E8F0FE"
+    C_SUMMARY_LBL = "2C3E50"
+
+    def _fill(hex_color):
+        return PatternFill(fill_type="solid", fgColor=hex_color)
+
+    def _font(bold=False, color="000000", size=11):
+        return Font(bold=bold, color=color, size=size)
+
+    def _border():
+        thin = Side(style="thin", color="C8D3E0")
+        return Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def _center():
+        return Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    def _left():
+        return Alignment(horizontal="left", vertical="top", wrap_text=True)
+
+    # ── Header row helper ────────────────────────────────────────────────
+    def _write_header(ws, row, cols):
+        for col_idx, label in enumerate(cols, start=1):
+            cell = ws.cell(row=row, column=col_idx, value=label)
+            cell.fill = _fill(C_HEADER_BG)
+            cell.font = _font(bold=True, color=C_HEADER_FG, size=11)
+            cell.alignment = _center()
+            cell.border = _border()
+
+    wb = openpyxl.Workbook()
+
+    # ════════════════════════════════════════════════════════════════════
+    # Sheet 1 — Summary
+    # ════════════════════════════════════════════════════════════════════
+    ws_summary = wb.active
+    ws_summary.title = "Summary"
+    ws_summary.column_dimensions["A"].width = 22
+    ws_summary.column_dimensions["B"].width = 45
+
+    summary_rows = [
+        ("Tool Version",    str(tool_version)),
+        ("Generated",       time.strftime("%c")),
+        ("Host",            str(sut.rhost)),
+        ("User",            str(sut.username)),
+        ("Product",         str(sut.product)),
+        ("Manufacturer",    str(sut.manufacturer)),
+        ("Model",           str(sut.model)),
+        ("Firmware",        str(sut.firmware_version)),
+        (None, None),
+        ("Pass",            sut.pass_count),
+        ("Warning",         sut.warn_count),
+        ("Fail",            sut.fail_count),
+        ("Not Tested",      sut.skip_count),
+    ]
+
+    result_colors = {
+        "Pass":        (C_PASS_BG,  C_PASS_FG),
+        "Warning":     (C_WARN_BG,  C_WARN_FG),
+        "Fail":        (C_FAIL_BG,  C_FAIL_FG),
+        "Not Tested":  (C_SKIP_BG,  C_SKIP_FG),
+    }
+
+    ws_summary.merge_cells("A1:B1")
+    title_cell = ws_summary["A1"]
+    title_cell.value = "Redfish Service Validator — Summary"
+    title_cell.fill = _fill(C_HEADER_BG)
+    title_cell.font = _font(bold=True, color=C_HEADER_FG, size=13)
+    title_cell.alignment = _center()
+    title_cell.border = _border()
+    ws_summary.row_dimensions[1].height = 22
+
+    for r_idx, (label, value) in enumerate(summary_rows, start=2):
+        if label is None:
+            continue
+        ca = ws_summary.cell(row=r_idx, column=1, value=label)
+        cb = ws_summary.cell(row=r_idx, column=2, value=value)
+        ca.font = _font(bold=True, color=C_SUMMARY_LBL)
+        cb.font = _font()
+        ca.alignment = _left()
+        cb.alignment = _left()
+        ca.border = _border()
+        cb.border = _border()
+        if label in result_colors:
+            bg, fg = result_colors[label]
+            ca.fill = _fill(bg); ca.font = _font(bold=True, color=fg)
+            cb.fill = _fill(bg); cb.font = _font(bold=True, color=fg)
+        else:
+            ca.fill = _fill(C_ALT_BG)
+
+    # ════════════════════════════════════════════════════════════════════
+    # Sheet 2 — Detailed Results
+    # ════════════════════════════════════════════════════════════════════
+    ws = wb.create_sheet(title="Results")
+
+    # Column widths
+    col_widths = [55, 30, 35, 50, 12, 60]
+    for ci, w in enumerate(col_widths, start=1):
+        ws.column_dimensions[get_column_letter(ci)].width = w
+
+    _write_header(ws, 1, ["URI", "Resource Type", "Property", "Value", "Result", "Message"])
+    ws.row_dimensions[1].height = 18
+    ws.freeze_panes = "A2"
+
+    row_num = 2
+    uris = sorted(sut._resources.keys(), key=str.lower)
+
+    result_fill = {
+        "PASS": (_fill(C_PASS_BG), _font(bold=True, color=C_PASS_FG)),
+        "FAIL": (_fill(C_FAIL_BG), _font(bold=True, color=C_FAIL_FG)),
+        "WARN": (_fill(C_WARN_BG), _font(bold=True, color=C_WARN_FG)),
+        "SKIP": (_fill(C_SKIP_BG), _font(color=C_SKIP_FG)),
+    }
+
+    for uri in uris:
+        resource = sut._resources[uri]
+        if not resource["Validated"]:
+            continue
+
+        # Resource type
+        try:
+            rtype = resource["Response"].dict["@odata.type"][1:].split(".")[0]
+            try:
+                rv = metadata.get_version(resource["Response"].dict["@odata.type"])
+                rtype += " v{}.{}.{}".format(rv[0], rv[1], rv[2])
+            except Exception:
+                pass
+        except Exception:
+            rtype = "Unknown"
+
+        props = sorted(resource["Results"].keys(), key=str.lower)
+        first_row = True  # first property row of this URI — render bold
+
+        for prop in props:
+            prop_name = "-" if prop == "" else prop[1:]
+            res_data = resource["Results"][prop]
+            result   = res_data.get("Result", "")
+            raw_val  = res_data.get("Value")
+            message  = res_data.get("Message", "") or ""
+
+            val_str = str(raw_val) if raw_val is not None else ""
+            # Strip "[Link to: ...]" wrapper — show the bare path instead
+            if val_str.startswith("[Link to: ") and val_str.endswith("]"):
+                val_str = val_str[len("[Link to: "):-1]
+
+            # Always fill URI and Resource Type on every row
+            uri_cell   = ws.cell(row=row_num, column=1, value=uri)
+            rtype_cell = ws.cell(row=row_num, column=2, value=rtype)
+            prop_cell  = ws.cell(row=row_num, column=3, value=prop_name)
+            val_cell   = ws.cell(row=row_num, column=4, value=val_str)
+            res_cell   = ws.cell(row=row_num, column=5, value=result)
+            msg_cell   = ws.cell(row=row_num, column=6, value=message)
+
+            # URI / type columns — bold + darker background on first row of each URI group
+            for c in (uri_cell, rtype_cell):
+                c.fill = _fill("C7D9F1" if not first_row else C_URI_BG)
+                c.font = _font(bold=first_row, color="0D1B2A")
+                c.alignment = _left()
+                c.border = _border()
+
+            prop_cell.alignment = _left()
+            prop_cell.border = _border()
+            val_cell.alignment = _left()
+            val_cell.border = _border()
+            msg_cell.alignment = _left()
+            msg_cell.border = _border()
+
+            # Result cell colouring
+            fill, font = result_fill.get(result, (_fill("FFFFFF"), _font()))
+            res_cell.fill = fill
+            res_cell.font = font
+            res_cell.alignment = _center()
+            res_cell.border = _border()
+
+            first_row = False
+            row_num += 1
+
+    # Auto-filter on header row
+    ws.auto_filter.ref = "A1:{}1".format(get_column_letter(6))
+
+    wb.save(str(xlsx_file))
+    return xlsx_file

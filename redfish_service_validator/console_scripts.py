@@ -166,6 +166,8 @@ def run_validator(args):
     print_summary(sut)
     results_file = report.html_report(sut, report_dir, test_time, tool_version)
     logger.log_print("HTML Report: {}".format(results_file))
+    xlsx_file = report.xlsx_report(sut, report_dir, test_time, tool_version)
+    logger.log_print("XLSX Report: {}".format(xlsx_file))
 
     sut.logout()
 

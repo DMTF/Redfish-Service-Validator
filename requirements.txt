@@ -1,3 +1,4 @@
 redfish>=3.1.5
 requests
 colorama
+openpyxl
