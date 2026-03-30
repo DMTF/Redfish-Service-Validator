@@ -921,11 +921,14 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
         return Font(bold=bold, color=color, size=size)
 
     def _border():
-        thin = Side(style="thin", color="C8D3E0")
+        thin = Side(style="thin", color="000000")
         return Border(left=thin, right=thin, top=thin, bottom=thin)
 
     def _center():
         return Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    def _data():
+        return Alignment(horizontal="center", vertical="center", wrap_text=False)
 
     def _left():
         return Alignment(horizontal="left", vertical="top", wrap_text=True)
@@ -946,6 +949,7 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
     # ════════════════════════════════════════════════════════════════════
     ws_summary = wb.active
     ws_summary.title = "Summary"
+    ws_summary.sheet_view.showGridLines = False
     ws_summary.column_dimensions["A"].width = 22
     ws_summary.column_dimensions["B"].width = 45
 
@@ -1004,16 +1008,18 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
     # ════════════════════════════════════════════════════════════════════
     ws = wb.create_sheet(title="Results")
 
-    # Column widths
-    col_widths = [55, 30, 35, 50, 12, 60]
+    # Column widths: S#, URI, Resource Type, Property, Value, Result, Message
+    col_widths = [6, 55, 30, 35, 50, 12, 60]
     for ci, w in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(ci)].width = w
 
-    _write_header(ws, 1, ["URI", "Resource Type", "Property", "Value", "Result", "Message"])
+    ws.sheet_view.showGridLines = False
+    _write_header(ws, 1, ["S#", "URI", "Resource Type", "Property", "Value", "Result", "Message"])
     ws.row_dimensions[1].height = 18
     ws.freeze_panes = "A2"
 
     row_num = 2
+    serial_num = 1
     uris = sorted(sut._resources.keys(), key=str.lower)
 
     result_fill = {
@@ -1055,39 +1061,47 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
                 val_str = val_str[len("[Link to: "):-1]
 
             # Always fill URI and Resource Type on every row
-            uri_cell   = ws.cell(row=row_num, column=1, value=uri)
-            rtype_cell = ws.cell(row=row_num, column=2, value=rtype)
-            prop_cell  = ws.cell(row=row_num, column=3, value=prop_name)
-            val_cell   = ws.cell(row=row_num, column=4, value=val_str)
-            res_cell   = ws.cell(row=row_num, column=5, value=result)
-            msg_cell   = ws.cell(row=row_num, column=6, value=message)
+            sn_cell    = ws.cell(row=row_num, column=1, value=serial_num)
+            uri_cell   = ws.cell(row=row_num, column=2, value=uri)
+            rtype_cell = ws.cell(row=row_num, column=3, value=rtype)
+            prop_cell  = ws.cell(row=row_num, column=4, value=prop_name)
+            val_cell   = ws.cell(row=row_num, column=5, value=val_str)
+            res_cell   = ws.cell(row=row_num, column=6, value=result)
+            msg_cell   = ws.cell(row=row_num, column=7, value=message)
+
+            # S# cell
+            sn_cell.fill = _fill("C7D9F1" if not first_row else C_URI_BG)
+            sn_cell.font = _font(bold=first_row, color="0D1B2A")
+            sn_cell.alignment = _data()
+            sn_cell.border = _border()
 
             # URI / type columns — bold + darker background on first row of each URI group
             for c in (uri_cell, rtype_cell):
                 c.fill = _fill("C7D9F1" if not first_row else C_URI_BG)
                 c.font = _font(bold=first_row, color="0D1B2A")
-                c.alignment = _left()
+                c.alignment = _data()
                 c.border = _border()
 
-            prop_cell.alignment = _left()
+            prop_cell.alignment = _data()
             prop_cell.border = _border()
-            val_cell.alignment = _left()
+            val_cell.alignment = _data()
             val_cell.border = _border()
-            msg_cell.alignment = _left()
+            msg_cell.alignment = _data()
             msg_cell.border = _border()
 
             # Result cell colouring
             fill, font = result_fill.get(result, (_fill("FFFFFF"), _font()))
             res_cell.fill = fill
             res_cell.font = font
-            res_cell.alignment = _center()
+            res_cell.alignment = _data()
             res_cell.border = _border()
 
             first_row = False
+            serial_num += 1
             row_num += 1
 
     # Auto-filter on header row
-    ws.auto_filter.ref = "A1:{}1".format(get_column_letter(6))
+    ws.auto_filter.ref = "A1:{}1".format(get_column_letter(7))
 
     wb.save(str(xlsx_file))
     return xlsx_file
