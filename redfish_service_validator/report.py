@@ -636,6 +636,29 @@ html_template = """
       function copyToClipboard(btn, targetId) {{
         var el = document.getElementById(targetId);
         var text = el ? el.innerText : '';
+        _doCopy(btn, text);
+      }}
+      function copyTableAsMarkdown(btn, tableContainerId) {{
+        var container = document.getElementById(tableContainerId);
+        var table = container ? container.querySelector('table') : null;
+        if (!table) {{ _doCopy(btn, ''); return; }}
+        var rows = Array.from(table.querySelectorAll('tr'));
+        var mdLines = [];
+        rows.forEach(function(tr, i) {{
+          var cells = Array.from(tr.querySelectorAll('th,td')).map(function(c) {{
+            return c.innerText.replace(/\\n/g,' ').replace(/\\|/g,'\\\\|').trim();
+          }});
+          mdLines.push('| ' + cells.join(' | ') + ' |');
+          if (i === 0) {{
+            var sep = cells.map(function(c, ci) {{
+              return ci === cells.length - 1 ? ':---:' : ':---';
+            }});
+            mdLines.push('| ' + sep.join(' | ') + ' |');
+          }}
+        }});
+        _doCopy(btn, mdLines.join('\\n'));
+      }}
+      function _doCopy(btn, text) {{
         var orig = btn.innerHTML;
         function done() {{
           btn.innerHTML = '&#10003; Copied!';
@@ -643,9 +666,7 @@ html_template = """
           setTimeout(function() {{ btn.innerHTML = orig; btn.classList.remove('copied'); }}, 1800);
         }}
         if (navigator.clipboard) {{
-          navigator.clipboard.writeText(text).then(done).catch(function() {{
-            fallbackCopy(text); done();
-          }});
+          navigator.clipboard.writeText(text).then(done).catch(function() {{ fallbackCopy(text); done(); }});
         }} else {{ fallbackCopy(text); done(); }}
       }}
       function fallbackCopy(text) {{
@@ -709,7 +730,7 @@ def build_resource_detail(results_id, results_str, payload_id, payload_str):
     return """
     <div class="results" id="{rid}">
       <div class="panel-toolbar">
-        <span class="btn-copy btn-copy-light" onclick="copyToClipboard(this, '{rid}-inner')" title="Copy table as text">&#128203; Copy</span>
+        <span class="btn-copy btn-copy-light" onclick="copyTableAsMarkdown(this, '{rid}-inner')" title="Copy as Markdown table">&#128203; Copy</span>
       </div>
       <div id="{rid}-inner">
       <table class="prop-table">
