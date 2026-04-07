@@ -330,7 +330,7 @@ class RSVGui:
 
         # Launch the validator
         try:
-            args = {"collectionlimit": ["LogEntry", "20"]}
+            args = {"collectionlimit": ["LogEntry", "20"], "timeout": None}
             for section in self.config:
                 for option in self.config[section]:
                     if self.config[section][option]["value"] == "":

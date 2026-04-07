@@ -84,6 +84,12 @@ def main():
     )
     argget.add_argument("--nooemcheck", action="store_true", help="Don't check OEM items")
     argget.add_argument(
+        "--timeout",
+        "-timeout",
+        type=int,
+        help="The timeout, in seconds, for the service to respond to HTTP requests",
+    )
+    argget.add_argument(
         "--debugging",
         action="store_true",
         help="Controls the verbosity of the debugging output; if not specified only INFO and higher are logged",
@@ -140,6 +146,7 @@ def run_validator(args):
             args["rhost"],
             args["user"],
             args["password"],
+            args["timeout"],
             args["authtype"],
             args["serv_http_proxy"],
             args["serv_https_proxy"],

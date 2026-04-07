@@ -46,17 +46,19 @@ If installing from GitHub, you may install the external packages by running:
 ## Usage
 
 ```
-usage: rf_service_validator [-h] --user USER --password PASSWORD --rhost RHOST
-                            [--authtype {Basic,Session}]
-                            [--ext_http_proxy EXT_HTTP_PROXY]
-                            [--ext_https_proxy EXT_HTTPS_PROXY]
-                            [--serv_http_proxy SERV_HTTP_PROXY]
-                            [--serv_https_proxy SERV_HTTPS_PROXY]
-                            [--logdir LOGDIR]
-                            [--schema_directory SCHEMA_DIRECTORY]
-                            [--payload PAYLOAD PAYLOAD] [--mockup MOCKUP]
-                            [--collectionlimit COLLECTIONLIMIT [COLLECTIONLIMIT ...]]
-                            [--nooemcheck] [--debugging]
+usage: RedfishServiceValidator.py [-h] --user USER --password PASSWORD --rhost
+                                  RHOST [--authtype {Basic,Session}]
+                                  [--ext_http_proxy EXT_HTTP_PROXY]
+                                  [--ext_https_proxy EXT_HTTPS_PROXY]
+                                  [--serv_http_proxy SERV_HTTP_PROXY]
+                                  [--serv_https_proxy SERV_HTTPS_PROXY]
+                                  [--logdir LOGDIR]
+                                  [--schema_directory SCHEMA_DIRECTORY]
+                                  [--payload PAYLOAD PAYLOAD]
+                                  [--mockup MOCKUP]
+                                  [--collectionlimit COLLECTIONLIMIT [COLLECTIONLIMIT ...]]
+                                  [--nooemcheck] [--timeout TIMEOUT]
+                                  [--debugging]
 
 Validate Redfish services against schemas
 
@@ -97,6 +99,9 @@ options:
                         Applies a limit to testing resources in collections;
                         format: RESOURCE1 COUNT1 RESOURCE2 COUNT2 ...
   --nooemcheck          Don't check OEM items
+  --timeout TIMEOUT, -timeout TIMEOUT
+                        The timeout, in seconds, for the service to respond to
+                        HTTP requests
   --debugging           Controls the verbosity of the debugging output; if not
                         specified only INFO and higher are logged
 ```
