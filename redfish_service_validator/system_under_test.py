@@ -12,6 +12,7 @@ Brief : This file contains the definitions for tracking data for the test
 """
 
 import re
+import time
 import redfish
 from pathlib import Path
 
@@ -278,6 +279,8 @@ class SystemUnderTest(object):
             "Fail": 0,
             "Skip": 0,
             "Mockup": False,
+            "StatusCode": None,
+            "ResponseTime": None,
         }
         try:
             if self._mockup_dir:
@@ -293,8 +296,13 @@ class SystemUnderTest(object):
                             mockup_resp = {"Status": 200, "Content": mockup_data.read()}
                             self._resources[uri]["Response"] = redfish.rest.v1.StaticRestResponse(**mockup_resp)
                             self._resources[uri]["Mockup"] = True
+                            self._resources[uri]["StatusCode"] = 200
+                            self._resources[uri]["ResponseTime"] = 0
                             return self._resources[uri]
+            _t0 = time.time()
             self._resources[uri]["Response"] = self._redfish_obj.get(uri)
+            self._resources[uri]["ResponseTime"] = round((time.time() - _t0) * 1000)  # ms
+            self._resources[uri]["StatusCode"] = self._resources[uri]["Response"].status
             if self._resources[uri]["Response"].status != 200:
                 logger.critical(
                     "Could not access {}; HTTP status: {}".format(uri, self._resources[uri]["Response"].status)

@@ -115,13 +115,12 @@ def run_validator(args):
     if not schema_dir.is_dir():
         schema_dir.mkdir(parents=True)
 
-    # Create report directory if needed
-    report_dir = Path(args["logdir"])
-    if not report_dir.is_dir():
-        report_dir.mkdir(parents=True)
-
     # Get the current time for report files
     test_time = datetime.now()
+
+    # Create a timestamped subdirectory inside the log directory
+    report_dir = Path(args["logdir"]) / test_time.strftime("%m_%d_%Y_%H%M%S")
+    report_dir.mkdir(parents=True, exist_ok=True)
 
     # Set the logging level
     log_level = logging.INFO
@@ -164,8 +163,10 @@ def run_validator(args):
     # Results
     logger.log_print("")
     print_summary(sut)
-    results_file = report.html_report(sut, report_dir, test_time, tool_version)
+    results_file = report.html_report(sut, report_dir, test_time, tool_version, args)
     logger.log_print("HTML Report: {}".format(results_file))
+    xlsx_file = report.xlsx_report(sut, report_dir, test_time, tool_version, args)
+    logger.log_print("XLSX Report: {}".format(xlsx_file))
 
     sut.logout()
 
