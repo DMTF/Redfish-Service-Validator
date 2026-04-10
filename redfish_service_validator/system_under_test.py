@@ -21,7 +21,7 @@ from redfish_service_validator import validate
 
 
 class SystemUnderTest(object):
-    def __init__(self, rhost, username, password, authtype, http_proxy, https_proxy, mockup, collection_limits, no_oem):
+    def __init__(self, rhost, username, password, timeout, authtype, http_proxy, https_proxy, mockup, collection_limits, no_oem):
         """
         Constructor for new system under test
 
@@ -29,6 +29,7 @@ class SystemUnderTest(object):
             rhost: The address of the Redfish service (with scheme)
             username: The username for authentication
             password: The password for authentication
+            timeout: The HTTP timeout limit
             authtype: The authorization type to use
             http_proxy: The HTTP proxy for accessing the service
             https_proxy: The HTTPS proxy for accessing the service
@@ -46,7 +47,7 @@ class SystemUnderTest(object):
             if https_proxy:
                 proxies["https"] = https_proxy
         self._redfish_obj = redfish.redfish_client(
-            base_url=rhost, username=username, password=password, proxies=proxies, timeout=15, max_retry=3
+            base_url=rhost, username=username, password=password, proxies=proxies, timeout=timeout, max_retry=3
         )
         self._redfish_obj.login(auth=authtype.lower())
         self._mockup_dir = mockup
