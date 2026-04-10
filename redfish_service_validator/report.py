@@ -219,6 +219,46 @@ html_template = """
         min-width: 90px;
       }}
 
+      /* Configuration toggle */
+      .btn-config {{
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 4px 12px; border-radius: 5px; cursor: pointer;
+        font-size: 11px; font-weight: 600; border: none;
+        background: #0d6efd; color: #fff;
+        box-shadow: 0 2px 5px rgba(13,110,253,0.3);
+        transition: background 0.15s; user-select: none;
+        margin-bottom: 6px;
+      }}
+      .btn-config:hover {{ background: #0b5ed7; }}
+      .config-panel {{ display: none; }}
+      .config-panel.open {{ display: block; }}
+      .config-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        margin-top: 6px;
+      }}
+      .config-table tr:nth-child(even) td {{ background: #f5f7fa; }}
+      .config-table tr:nth-child(odd) td {{ background: #ffffff; }}
+      .config-table td {{
+        padding: 5px 8px;
+        border: 1px solid #dde3ec;
+        vertical-align: top;
+        word-break: break-all;
+        color: #333;
+      }}
+      .config-table td:first-child {{
+        font-weight: 700;
+        color: #1a3a5c;
+        white-space: nowrap;
+        width: 45%;
+        background: #eef4fb;
+      }}
+      .config-table td:last-child {{
+        font-weight: 400;
+        color: #444;
+      }}
+
       /* Tally tables in sidebar */
       .tally-panel {{
         margin-bottom: 0;
@@ -378,6 +418,8 @@ html_template = """
       .badge-pass {{ background:#d4edda; color:#145a32; }}
       .badge-warn {{ background:#fff3cd; color:#7d6008; }}
       .badge-fail {{ background:#f8d7da; color:#7b241c; }}
+      .badge-status {{ background:#e8f0fe; color:#1565c0; }}
+      .badge-time {{ background:#f3e5f5; color:#6a1b9a; }}
 
       /* Collapsible panels */
       .results {{ display: none; }}
@@ -569,7 +611,19 @@ html_template = """
           {}
         </div>
 
-
+        <!-- Configuration -->
+        <div class="sidebar-section">
+          <div class="sidebar-label">Configuration</div>
+          <span class="btn-config" id="btnConfig"
+            onclick="(function(){{var p=document.getElementById('configPanel'),b=document.getElementById('btnConfig');if(p.classList.contains('open')){{p.classList.remove('open');b.innerHTML='&#9881; Show Configuration';}}else{{p.classList.add('open');b.innerHTML='&#9650; Hide Configuration';}}}})()">
+            &#9881; Show Configuration
+          </span>
+          <div class="config-panel" id="configPanel">
+            <table class="config-table">
+              {}
+            </table>
+          </div>
+        </div>
 
       </aside>
 
@@ -691,8 +745,19 @@ html_template = """
 error_tally_html = ""  # unused placeholder kept for compatibility
 
 
-def build_resource_header(uri, resource_type, uri_summary, payload_id, results_id):
+def build_resource_header(uri, resource_type, uri_summary, payload_id, results_id, status_code=None, response_time=None):
     """Builds the enterprise-styled resource card header row."""
+    # Status code badge
+    status_bg = "badge-status"
+    if status_code is not None and status_code != 200:
+        status_bg = "badge-fail"
+    status_badge = '<span class="badge {}">{}</span>'.format(
+        status_bg, "HTTP {}".format(status_code) if status_code is not None else "HTTP -"
+    )
+    # Response time badge
+    time_badge = '<span class="badge badge-time">&#128336; {} ms</span>'.format(
+        response_time if response_time is not None else "-"
+    )
     return """
   <div class="resource-card">
     <div class="resource-header">
@@ -700,7 +765,7 @@ def build_resource_header(uri, resource_type, uri_summary, payload_id, results_i
         <div class="resource-uri">{uri}</div>
         <div class="resource-type">{rtype}</div>
       </div>
-      <div class="resource-badges">{badges}</div>
+      <div class="resource-badges">{badges} {status} {rtime}</div>
       <div class="btn-group">
         <span class="btn btn-results"
           onclick="(function(btn){{var r=document.getElementById('{rid}'),p=document.getElementById('{pid}'),bp=btn.parentNode.querySelector('.btn-payload'),bb=btn.parentNode.querySelector('.btn-both');if(btn.getAttribute('data-state')==='on'){{r.classList.remove('resultsShow');btn.setAttribute('data-state','');btn.innerHTML='&#9776; Results';}}else{{r.classList.add('resultsShow');p.classList.remove('resultsShow');btn.setAttribute('data-state','on');btn.innerHTML='&#9650; Hide';if(bp){{bp.setAttribute('data-state','');bp.innerHTML='&#123;&#125; Payload';}}if(bb){{bb.setAttribute('data-state','');bb.innerHTML='&#9783; Both';}}}}}})(this)">
@@ -720,6 +785,8 @@ def build_resource_header(uri, resource_type, uri_summary, payload_id, results_i
         uri=html_mod.escape(uri),
         rtype=html_mod.escape(resource_type),
         badges=uri_summary,
+        status=status_badge,
+        rtime=time_badge,
         pid=payload_id,
         rid=results_id,
     )
@@ -784,7 +851,7 @@ def build_error_tally(error_classes, panel_title=None):
     ).format(heading, rows)
 
 
-def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
+def html_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None):
     """
     Creates the HTML report for the system under test
 
@@ -793,6 +860,7 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
         report_dir: The directory for the report
         time: The time the tests finished
         tool_version: The version of the tool
+        args: The parsed CLI arguments dict
 
     Returns:
         The path to the HTML report
@@ -840,7 +908,11 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
         # Insert the URI results header
         results_id = "results{}".format(index)
         payload_id = "payload{}".format(index)
-        html += build_resource_header(uri, resource_type, uri_summary, payload_id, results_id)
+        html += build_resource_header(
+            uri, resource_type, uri_summary, payload_id, results_id,
+            status_code=sut._resources[uri].get("StatusCode"),
+            response_time=sut._resources[uri].get("ResponseTime"),
+        )
 
         # Insert the URI results details
         results_str = ""
@@ -881,6 +953,31 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
     # Append the not-tested summary section (empty — removed per requirements)
     html += build_not_tested_section(sut, uris)
 
+    # Build configuration rows for sidebar
+    _config_keys = [
+        "authtype", "certificatecheck", "config", "debugging", "ext_https_proxy",
+        "logdir", "mockup", "payload", "requesttimeout", "serv_http_proxy",
+        "token", "username", "verbose", "collectionlimit", "configuri",
+        "ext_http_proxy", "forceauth", "metadatafilepath", "oemcheck",
+        "requestattempts", "schema_directory", "serv_https_proxy", "uricheck", "usessl",
+    ]
+    config_rows_html = ""
+    if args:
+        for key in _config_keys:
+            val = args.get(key, "")
+            if val is None:
+                val = ""
+            elif isinstance(val, list):
+                val = " ".join(str(v) for v in val)
+            else:
+                val = str(val)
+            # Mask passwords/tokens
+            if key in ("password", "token"):
+                val = "********" if val else ""
+            config_rows_html += "<tr><td>{}</td><td>{}</td></tr>".format(
+                html_mod.escape(key), html_mod.escape(val)
+            )
+
     with open(str(file), "w", encoding="utf-8") as fd:
         fd.write(
             html_template.format(
@@ -899,13 +996,14 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version):
                 sut.fail_count,
                 sut.skip_count,
                 combined_tally,
+                config_rows_html,
                 html,
             )
         )
     return file
 
 
-def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
+def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None):
     """
     Creates an XLSX report for the system under test alongside the HTML report.
 
@@ -1024,18 +1122,57 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
         else:
             ca.fill = _fill(C_ALT_BG)
 
+    # Configuration section in Summary sheet
+    if args:
+        _config_keys = [
+            "authtype", "certificatecheck", "config", "debugging", "ext_https_proxy",
+            "logdir", "mockup", "payload", "requesttimeout", "serv_http_proxy",
+            "token", "username", "verbose", "collectionlimit", "configuri",
+            "ext_http_proxy", "forceauth", "metadatafilepath", "oemcheck",
+            "requestattempts", "schema_directory", "serv_https_proxy", "uricheck", "usessl",
+        ]
+        # Blank separator row
+        cfg_start = len([r for r in summary_rows if r[0] is not None]) + 3
+        ws_summary.merge_cells("A{}:B{}".format(cfg_start, cfg_start))
+        cfg_hdr = ws_summary["A{}".format(cfg_start)]
+        cfg_hdr.value = "Configuration"
+        cfg_hdr.fill = _fill(C_HEADER_BG)
+        cfg_hdr.font = _font(bold=True, color=C_HEADER_FG, size=11)
+        cfg_hdr.alignment = _center()
+        cfg_hdr.border = _border()
+
+        for ci, key in enumerate(_config_keys, start=cfg_start + 1):
+            val = args.get(key, "")
+            if val is None:
+                val = ""
+            elif isinstance(val, list):
+                val = " ".join(str(v) for v in val)
+            else:
+                val = str(val)
+            if key in ("password", "token"):
+                val = "********" if val else ""
+            ca = ws_summary.cell(row=ci, column=1, value=key)
+            cb = ws_summary.cell(row=ci, column=2, value=val)
+            ca.font = _font(bold=True, color=C_SUMMARY_LBL)
+            cb.font = _font()
+            ca.fill = _fill(C_ALT_BG)
+            ca.alignment = _left()
+            cb.alignment = _left()
+            ca.border = _border()
+            cb.border = _border()
+
     # ════════════════════════════════════════════════════════════════════
     # Sheet 2 — Detailed Results
     # ════════════════════════════════════════════════════════════════════
     ws = wb.create_sheet(title="Results")
 
-    # Column widths: S#, URI, Resource Type, Property, Value, Result, Message
-    col_widths = [6, 55, 30, 35, 50, 12, 60]
+    # Column widths: S#, URI, HTTP Status, Response Time (ms), Resource Type, Property, Value, Result, Message
+    col_widths = [6, 55, 14, 18, 30, 35, 50, 12, 60]
     for ci, w in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(ci)].width = w
 
     ws.sheet_view.showGridLines = False
-    _write_header(ws, 1, ["S#", "URI", "Resource Type", "Property", "Value", "Result", "Message"])
+    _write_header(ws, 1, ["S#", "URI", "HTTP Status", "Response Time (ms)", "Resource Type", "Property", "Value", "Result", "Message"])
     ws.row_dimensions[1].height = 18
     ws.freeze_panes = "A2"
 
@@ -1082,13 +1219,17 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
                 val_str = val_str[len("[Link to: "):-1]
 
             # Always fill URI and Resource Type on every row
+            status_code  = resource.get("StatusCode")
+            resp_time    = resource.get("ResponseTime")
             sn_cell    = ws.cell(row=row_num, column=1, value=serial_num)
             uri_cell   = ws.cell(row=row_num, column=2, value=uri)
-            rtype_cell = ws.cell(row=row_num, column=3, value=rtype)
-            prop_cell  = ws.cell(row=row_num, column=4, value=prop_name)
-            val_cell   = ws.cell(row=row_num, column=5, value=val_str)
-            res_cell   = ws.cell(row=row_num, column=6, value=result)
-            msg_cell   = ws.cell(row=row_num, column=7, value=message)
+            sc_cell    = ws.cell(row=row_num, column=3, value=status_code if status_code is not None else "")
+            rt_cell    = ws.cell(row=row_num, column=4, value=resp_time if resp_time is not None else "")
+            rtype_cell = ws.cell(row=row_num, column=5, value=rtype)
+            prop_cell  = ws.cell(row=row_num, column=6, value=prop_name)
+            val_cell   = ws.cell(row=row_num, column=7, value=val_str)
+            res_cell   = ws.cell(row=row_num, column=8, value=result)
+            msg_cell   = ws.cell(row=row_num, column=9, value=message)
 
             # S# cell
             sn_cell.fill = _fill("C7D9F1" if not first_row else C_URI_BG)
@@ -1110,6 +1251,20 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
             msg_cell.alignment = _data()
             msg_cell.border = _border()
 
+            # HTTP Status cell — red if not 200
+            sc_fill = _fill(C_FAIL_BG) if (status_code is not None and status_code != 200) else _fill("E8F0FE")
+            sc_font = _font(bold=True, color=C_FAIL_FG) if (status_code is not None and status_code != 200) else _font(bold=True, color="1565C0")
+            sc_cell.fill = sc_fill
+            sc_cell.font = sc_font
+            sc_cell.alignment = _data()
+            sc_cell.border = _border()
+
+            # Response Time cell — purple tint
+            rt_cell.fill = _fill("F3E5F5")
+            rt_cell.font = _font(color="6A1B9A")
+            rt_cell.alignment = _data()
+            rt_cell.border = _border()
+
             # Result cell colouring
             fill, font = result_fill.get(result, (_fill("FFFFFF"), _font()))
             res_cell.fill = fill
@@ -1122,7 +1277,7 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version):
             row_num += 1
 
     # Auto-filter on header row
-    ws.auto_filter.ref = "A1:{}1".format(get_column_letter(7))
+    ws.auto_filter.ref = "A1:{}1".format(get_column_letter(9))
 
     wb.save(str(xlsx_file))
     return xlsx_file
