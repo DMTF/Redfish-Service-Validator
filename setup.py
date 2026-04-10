@@ -32,5 +32,5 @@ setup(
             "rf_service_validator_gui=redfish_service_validator.gui:main",
         ]
     },
-    install_requires=["redfish>=3.1.5", "requests", "colorama"],
+    install_requires=["redfish>=3.1.5", "requests", "colorama", "openpyxl"],
 )
