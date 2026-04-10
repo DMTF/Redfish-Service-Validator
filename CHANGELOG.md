@@ -1,5 +1,13 @@
 # Change Log
 
+## [3.1.1] - 2026-04-10
+- Added '--timeout' option to override default HTTP timeout value
+- Added new buttons in the HTML report to allow individual control over showing resource results and payloads
+- Added option in the HTML report to show configuration option details
+- Added timing information to the test reports
+- Improved the 'copy' button for the results view to copy as a Markdown table
+- Created timestamped subdirectories for logs for ease of use
+
 ## [3.1.0] - 2026-03-27
 - Large enhancement to HTML report UI
 - Fixed URI discovery to protect against cases where '@odata.type' is an incorrect data type

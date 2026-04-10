@@ -745,7 +745,9 @@ html_template = """
 error_tally_html = ""  # unused placeholder kept for compatibility
 
 
-def build_resource_header(uri, resource_type, uri_summary, payload_id, results_id, status_code=None, response_time=None):
+def build_resource_header(
+    uri, resource_type, uri_summary, payload_id, results_id, status_code=None, response_time=None
+):
     """Builds the enterprise-styled resource card header row."""
     # Status code badge
     status_bg = "badge-status"
@@ -909,7 +911,11 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
         results_id = "results{}".format(index)
         payload_id = "payload{}".format(index)
         html += build_resource_header(
-            uri, resource_type, uri_summary, payload_id, results_id,
+            uri,
+            resource_type,
+            uri_summary,
+            payload_id,
+            results_id,
             status_code=sut._resources[uri].get("StatusCode"),
             response_time=sut._resources[uri].get("ResponseTime"),
         )
@@ -955,11 +961,30 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
 
     # Build configuration rows for sidebar
     _config_keys = [
-        "authtype", "certificatecheck", "config", "debugging", "ext_https_proxy",
-        "logdir", "mockup", "payload", "requesttimeout", "serv_http_proxy",
-        "token", "username", "verbose", "collectionlimit", "configuri",
-        "ext_http_proxy", "forceauth", "metadatafilepath", "oemcheck",
-        "requestattempts", "schema_directory", "serv_https_proxy", "uricheck", "usessl",
+        "authtype",
+        "certificatecheck",
+        "config",
+        "debugging",
+        "ext_https_proxy",
+        "logdir",
+        "mockup",
+        "payload",
+        "requesttimeout",
+        "serv_http_proxy",
+        "token",
+        "username",
+        "verbose",
+        "collectionlimit",
+        "configuri",
+        "ext_http_proxy",
+        "forceauth",
+        "metadatafilepath",
+        "oemcheck",
+        "requestattempts",
+        "schema_directory",
+        "serv_https_proxy",
+        "uricheck",
+        "usessl",
     ]
     config_rows_html = ""
     if args:
@@ -974,9 +999,7 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
             # Mask passwords/tokens
             if key in ("password", "token"):
                 val = "********" if val else ""
-            config_rows_html += "<tr><td>{}</td><td>{}</td></tr>".format(
-                html_mod.escape(key), html_mod.escape(val)
-            )
+            config_rows_html += "<tr><td>{}</td><td>{}</td></tr>".format(html_mod.escape(key), html_mod.escape(val))
 
     with open(str(file), "w", encoding="utf-8") as fd:
         fd.write(
@@ -1019,18 +1042,18 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
     xlsx_file = report_dir / datetime.strftime(time, "RedfishServiceValidatorReport_%m_%d_%Y_%H%M%S.xlsx")
 
     # ── Colour palette ──────────────────────────────────────────────────
-    C_HEADER_BG   = "1565C0"
-    C_HEADER_FG   = "FFFFFF"
-    C_PASS_BG     = "D4EDDA"
-    C_PASS_FG     = "145A32"
-    C_FAIL_BG     = "F8D7DA"
-    C_FAIL_FG     = "7B241C"
-    C_WARN_BG     = "FFF3CD"
-    C_WARN_FG     = "7D6008"
-    C_SKIP_BG     = "F5F7FA"
-    C_SKIP_FG     = "7F8C8D"
-    C_ALT_BG      = "F0F4F8"
-    C_URI_BG      = "E8F0FE"
+    C_HEADER_BG = "1565C0"
+    C_HEADER_FG = "FFFFFF"
+    C_PASS_BG = "D4EDDA"
+    C_PASS_FG = "145A32"
+    C_FAIL_BG = "F8D7DA"
+    C_FAIL_FG = "7B241C"
+    C_WARN_BG = "FFF3CD"
+    C_WARN_FG = "7D6008"
+    C_SKIP_BG = "F5F7FA"
+    C_SKIP_FG = "7F8C8D"
+    C_ALT_BG = "F0F4F8"
+    C_URI_BG = "E8F0FE"
     C_SUMMARY_LBL = "2C3E50"
 
     def _fill(hex_color):
@@ -1073,26 +1096,26 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
     ws_summary.column_dimensions["B"].width = 45
 
     summary_rows = [
-        ("Tool Version",    str(tool_version)),
-        ("Generated",       time.strftime("%c")),
-        ("Host",            str(sut.rhost)),
-        ("User",            str(sut.username)),
-        ("Product",         str(sut.product)),
-        ("Manufacturer",    str(sut.manufacturer)),
-        ("Model",           str(sut.model)),
-        ("Firmware",        str(sut.firmware_version)),
+        ("Tool Version", str(tool_version)),
+        ("Generated", time.strftime("%c")),
+        ("Host", str(sut.rhost)),
+        ("User", str(sut.username)),
+        ("Product", str(sut.product)),
+        ("Manufacturer", str(sut.manufacturer)),
+        ("Model", str(sut.model)),
+        ("Firmware", str(sut.firmware_version)),
         (None, None),
-        ("Pass",            sut.pass_count),
-        ("Warning",         sut.warn_count),
-        ("Fail",            sut.fail_count),
-        ("Not Tested",      sut.skip_count),
+        ("Pass", sut.pass_count),
+        ("Warning", sut.warn_count),
+        ("Fail", sut.fail_count),
+        ("Not Tested", sut.skip_count),
     ]
 
     result_colors = {
-        "Pass":        (C_PASS_BG,  C_PASS_FG),
-        "Warning":     (C_WARN_BG,  C_WARN_FG),
-        "Fail":        (C_FAIL_BG,  C_FAIL_FG),
-        "Not Tested":  (C_SKIP_BG,  C_SKIP_FG),
+        "Pass": (C_PASS_BG, C_PASS_FG),
+        "Warning": (C_WARN_BG, C_WARN_FG),
+        "Fail": (C_FAIL_BG, C_FAIL_FG),
+        "Not Tested": (C_SKIP_BG, C_SKIP_FG),
     }
 
     ws_summary.merge_cells("A1:B1")
@@ -1117,19 +1140,40 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
         cb.border = _border()
         if label in result_colors:
             bg, fg = result_colors[label]
-            ca.fill = _fill(bg); ca.font = _font(bold=True, color=fg)
-            cb.fill = _fill(bg); cb.font = _font(bold=True, color=fg)
+            ca.fill = _fill(bg)
+            ca.font = _font(bold=True, color=fg)
+            cb.fill = _fill(bg)
+            cb.font = _font(bold=True, color=fg)
         else:
             ca.fill = _fill(C_ALT_BG)
 
     # Configuration section in Summary sheet
     if args:
         _config_keys = [
-            "authtype", "certificatecheck", "config", "debugging", "ext_https_proxy",
-            "logdir", "mockup", "payload", "requesttimeout", "serv_http_proxy",
-            "token", "username", "verbose", "collectionlimit", "configuri",
-            "ext_http_proxy", "forceauth", "metadatafilepath", "oemcheck",
-            "requestattempts", "schema_directory", "serv_https_proxy", "uricheck", "usessl",
+            "authtype",
+            "certificatecheck",
+            "config",
+            "debugging",
+            "ext_https_proxy",
+            "logdir",
+            "mockup",
+            "payload",
+            "requesttimeout",
+            "serv_http_proxy",
+            "token",
+            "username",
+            "verbose",
+            "collectionlimit",
+            "configuri",
+            "ext_http_proxy",
+            "forceauth",
+            "metadatafilepath",
+            "oemcheck",
+            "requestattempts",
+            "schema_directory",
+            "serv_https_proxy",
+            "uricheck",
+            "usessl",
         ]
         # Blank separator row
         cfg_start = len([r for r in summary_rows if r[0] is not None]) + 3
@@ -1172,7 +1216,11 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
         ws.column_dimensions[get_column_letter(ci)].width = w
 
     ws.sheet_view.showGridLines = False
-    _write_header(ws, 1, ["S#", "URI", "HTTP Status", "Response Time (ms)", "Resource Type", "Property", "Value", "Result", "Message"])
+    _write_header(
+        ws,
+        1,
+        ["S#", "URI", "HTTP Status", "Response Time (ms)", "Resource Type", "Property", "Value", "Result", "Message"],
+    )
     ws.row_dimensions[1].height = 18
     ws.freeze_panes = "A2"
 
@@ -1209,27 +1257,27 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
         for prop in props:
             prop_name = "-" if prop == "" else prop[1:]
             res_data = resource["Results"][prop]
-            result   = res_data.get("Result", "")
-            raw_val  = res_data.get("Value")
-            message  = res_data.get("Message", "") or ""
+            result = res_data.get("Result", "")
+            raw_val = res_data.get("Value")
+            message = res_data.get("Message", "") or ""
 
             val_str = str(raw_val) if raw_val is not None else ""
             # Strip "[Link to: ...]" wrapper — show the bare path instead
             if val_str.startswith("[Link to: ") and val_str.endswith("]"):
-                val_str = val_str[len("[Link to: "):-1]
+                val_str = val_str[len("[Link to: ") : -1]
 
             # Always fill URI and Resource Type on every row
-            status_code  = resource.get("StatusCode")
-            resp_time    = resource.get("ResponseTime")
-            sn_cell    = ws.cell(row=row_num, column=1, value=serial_num)
-            uri_cell   = ws.cell(row=row_num, column=2, value=uri)
-            sc_cell    = ws.cell(row=row_num, column=3, value=status_code if status_code is not None else "")
-            rt_cell    = ws.cell(row=row_num, column=4, value=resp_time if resp_time is not None else "")
+            status_code = resource.get("StatusCode")
+            resp_time = resource.get("ResponseTime")
+            sn_cell = ws.cell(row=row_num, column=1, value=serial_num)
+            uri_cell = ws.cell(row=row_num, column=2, value=uri)
+            sc_cell = ws.cell(row=row_num, column=3, value=status_code if status_code is not None else "")
+            rt_cell = ws.cell(row=row_num, column=4, value=resp_time if resp_time is not None else "")
             rtype_cell = ws.cell(row=row_num, column=5, value=rtype)
-            prop_cell  = ws.cell(row=row_num, column=6, value=prop_name)
-            val_cell   = ws.cell(row=row_num, column=7, value=val_str)
-            res_cell   = ws.cell(row=row_num, column=8, value=result)
-            msg_cell   = ws.cell(row=row_num, column=9, value=message)
+            prop_cell = ws.cell(row=row_num, column=6, value=prop_name)
+            val_cell = ws.cell(row=row_num, column=7, value=val_str)
+            res_cell = ws.cell(row=row_num, column=8, value=result)
+            msg_cell = ws.cell(row=row_num, column=9, value=message)
 
             # S# cell
             sn_cell.fill = _fill("C7D9F1" if not first_row else C_URI_BG)
@@ -1253,7 +1301,11 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
 
             # HTTP Status cell — red if not 200
             sc_fill = _fill(C_FAIL_BG) if (status_code is not None and status_code != 200) else _fill("E8F0FE")
-            sc_font = _font(bold=True, color=C_FAIL_FG) if (status_code is not None and status_code != 200) else _font(bold=True, color="1565C0")
+            sc_font = (
+                _font(bold=True, color=C_FAIL_FG)
+                if (status_code is not None and status_code != 200)
+                else _font(bold=True, color="1565C0")
+            )
             sc_cell.fill = sc_fill
             sc_cell.font = sc_font
             sc_cell.alignment = _data()

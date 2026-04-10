@@ -21,7 +21,9 @@ from redfish_service_validator import validate
 
 
 class SystemUnderTest(object):
-    def __init__(self, rhost, username, password, timeout, authtype, http_proxy, https_proxy, mockup, collection_limits, no_oem):
+    def __init__(
+        self, rhost, username, password, timeout, authtype, http_proxy, https_proxy, mockup, collection_limits, no_oem
+    ):
         """
         Constructor for new system under test
 
