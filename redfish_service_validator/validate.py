@@ -582,6 +582,33 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                     if value["@odata.id"].startswith("/") and "#" not in value["@odata.id"]:
                         # Get the referenced resource
                         resource = sut.get_resource(value["@odata.id"])
+
+                        # Special handling for OriginOfCondition with 404 responses
+                        if prop_name == "OriginOfCondition":
+                            origin_unavailable = payload.get("OriginOfConditionUnavailable")
+
+                            # Case 1: OriginOfConditionUnavailable is true - skip validation entirely
+                            if origin_unavailable is True:
+                                return pass_or_deprecated(value_deprecated_ver)
+
+                            # Check if the resource returned 404
+                            if resource["Response"] is not None:
+                                status_code = resource["Response"].status
+                                if status_code == 404:
+                                    # Case 2: OriginOfConditionUnavailable is false but got 404 - ERROR
+                                    if origin_unavailable is False:
+                                        return (
+                                            "FAIL",
+                                            "Reference Object Error: OriginOfCondition received HTTP {} but OriginOfConditionUnavailable is false (link should be available).".format(status_code)
+                                        )
+
+                                    # Case 3: OriginOfConditionUnavailable doesn't exist and got 404 - WARNING
+                                    else:
+                                        return (
+                                            "WARN",
+                                            "Reference Link Warning: OriginOfCondition received HTTP {} when accessing the URI (resource may be deleted/expired).".format(status_code)
+                                        )
+
                         link_payload, result = validate_response(resource)
                         if link_payload is None:
                             return result
