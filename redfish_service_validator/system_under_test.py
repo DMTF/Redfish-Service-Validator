@@ -83,6 +83,7 @@ class SystemUnderTest(object):
         self._resources = {}
         self._annotation_uris = []
         self._collection_capabilities_uris = []
+        self._excluded_uris = []
 
         # Build collection limits
         self._collection_limits = {}
@@ -255,6 +256,16 @@ class SystemUnderTest(object):
             A boolean indicating if the URI is from a collection capabilities annotation
         """
         return uri in self._collection_capabilities_uris
+
+    def exclude_uri_from_validation(self, uri):
+        """
+        Marks a URI to be excluded from validation
+
+        Args:
+            uri: The URI to exclude
+        """
+        if uri not in self._excluded_uris:
+            self._excluded_uris.append(uri)
 
     def get_resource(self, uri):
         """
@@ -499,6 +510,9 @@ class SystemUnderTest(object):
         resource = self.get_resource(uri)
         if resource["Validated"]:
             # Already tested
+            return
+        if uri in self._excluded_uris:
+            # URI is excluded from validation
             return
         logger.log_print("Validating {}...".format(uri))
 
