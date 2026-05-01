@@ -456,6 +456,10 @@ class SystemUnderTest(object):
                 if item == "Oem" and self._no_oem:
                     continue
 
+                # Skip OriginOfCondition
+                if item == "OriginOfCondition":
+                    continue
+
                 # If the item is a reference, go to the resource
                 if (
                     item == "@odata.id"
