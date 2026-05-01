@@ -14,6 +14,7 @@ Brief : This file contains the definitions for tracking data for the test
 import re
 import time
 import redfish
+import redfish_utilities
 from pathlib import Path
 
 from redfish_service_validator import logger
