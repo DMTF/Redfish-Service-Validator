@@ -1,5 +1,9 @@
 # Change Log
 
+## [3.1.3] - 2026-05-01
+- Added check for 'OriginOfConditionUnavailable' to assist with testing 'OriginOfCondition' link
+- Added missing import of 'redfish_utilities'
+
 ## [3.1.2] - 2026-04-17
 - Added missing check for usage of annotations from 'Message'
 - Added minimum version of openpyxl

@@ -599,14 +599,18 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                                     if origin_unavailable is False:
                                         return (
                                             "FAIL",
-                                            "Reference Object Error: OriginOfCondition received HTTP {} but OriginOfConditionUnavailable is false (link should be available).".format(status_code)
+                                            "Reference Object Error: OriginOfCondition received HTTP {} but OriginOfConditionUnavailable is false (link should be available).".format(
+                                                status_code
+                                            ),
                                         )
 
                                     # Case 3: OriginOfConditionUnavailable doesn't exist and got 404 - WARNING
                                     else:
                                         return (
                                             "WARN",
-                                            "Reference Link Warning: OriginOfCondition received HTTP {} when accessing the URI (resource may be deleted/expired).".format(status_code)
+                                            "Reference Link Warning: OriginOfCondition received HTTP {} when accessing the URI (resource may be deleted/expired).".format(
+                                                status_code
+                                            ),
                                         )
 
                         link_payload, result = validate_response(resource)
