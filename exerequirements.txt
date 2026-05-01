@@ -2,5 +2,5 @@ redfish>=3.1.5
 redfish_utilities>=3.4.8
 requests
 colorama
-openpyxl
+openpyxl>=3.1.3
 setuptools<70.0.0

@@ -186,7 +186,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
                 )
                 continue
             cur_definition = definition["Properties"][prop]
-        elif "@Redfish." in prop or "@odata." in prop:
+        elif "@Redfish." in prop or "@odata." in prop or "@Message." in prop:
             # Payload annotation
             # TODO: Add support to verify annotations
             # @Redfish.Copyright is just for mockups (except for MessageRegistry resources)

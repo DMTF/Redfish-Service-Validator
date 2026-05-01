@@ -1,5 +1,9 @@
 # Change Log
 
+## [3.1.2] - 2026-04-17
+- Added missing check for usage of annotations from 'Message'
+- Added minimum version of openpyxl
+
 ## [3.1.1] - 2026-04-10
 - Added '--timeout' option to override default HTTP timeout value
 - Added new buttons in the HTML report to allow individual control over showing resource results and payloads

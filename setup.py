@@ -11,7 +11,7 @@ with open("README.md", "r", "utf-8") as f:
 
 setup(
     name="redfish_service_validator",
-    version="3.1.1",
+    version="3.1.2",
     description="Redfish Service Validator",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -32,5 +32,5 @@ setup(
             "rf_service_validator_gui=redfish_service_validator.gui:main",
         ]
     },
-    install_requires=["redfish>=3.1.5", "redfish_utilities>=3.4.8", "requests", "colorama", "openpyxl"],
+    install_requires=["redfish>=3.1.5", "redfish_utilities>=3.4.8", "requests", "colorama", "openpyxl>=3.1.3"],
 )
