@@ -525,7 +525,7 @@ class SystemUnderTest(object):
                 payload.pop("Members@odata.nextLink", None)
 
         # Validate the payload
-        validate.validate_object(self, uri, payload, None, None, None, "")
+        validate.validate_object(self, uri, payload, payload, None, None, None, "")
         if resource["Mockup"]:
             self.add_resource_result(
                 uri, "", False, None, ("WARN", "Mockup Used Warning: Response was populated from a mockup file.")
