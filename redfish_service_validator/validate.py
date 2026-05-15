@@ -284,7 +284,17 @@ def validate_object(sut, uri, payload, payload_full, resource_type, object_type,
         elif not isinstance(payload[prop], list) and not cur_definition["Array"]:
             # Singular; validate the individual property
             result = validate_value(
-                sut, uri, payload, payload_full, prop, payload[prop], resource_type, definition, cur_definition, excerpt, cur_path
+                sut,
+                uri,
+                payload,
+                payload_full,
+                prop,
+                payload[prop],
+                resource_type,
+                definition,
+                cur_definition,
+                excerpt,
+                cur_path,
             )
             sut.add_resource_result(uri, cur_path, True, payload[prop], result)
         elif isinstance(payload[prop], list) and not cur_definition["Array"]:
@@ -510,7 +520,9 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
     return pass_or_deprecated(version_deprecated)
 
 
-def validate_value(sut, uri, payload, payload_full, prop_name, value, resource_type, obj_def, prop_def, excerpt, prop_path):
+def validate_value(
+    sut, uri, payload, payload_full, prop_name, value, resource_type, obj_def, prop_def, excerpt, prop_path
+):
     """
     Validates a property within a JSON object
 
@@ -828,8 +840,10 @@ def validate_value(sut, uri, payload, payload_full, prop_name, value, resource_t
                         prop_name, value, suggestion
                     )
                 else:
-                    error_msg = "Property Value Error: The property '{}' is not one of the listed allowable values: {}.".format(
-                        prop_name, ", ".join(values_allowed_values)
+                    error_msg = (
+                        "Property Value Error: The property '{}' is not one of the listed allowable values: {}.".format(
+                            prop_name, ", ".join(values_allowed_values)
+                        )
                     )
 
                 return ("FAIL", error_msg)

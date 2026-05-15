@@ -1,5 +1,9 @@
 # Change Log
 
+## [3.1.4] - 2026-05-15
+- Fixed 'OriginOfConditionUnavailable' check to reference it from the root of the resource
+- Added logic to detect cases where property names an enumeration values are incorrect for their casing
+
 ## [3.1.3] - 2026-05-01
 - Added check for 'OriginOfConditionUnavailable' to assist with testing 'OriginOfCondition' link
 - Added missing import of 'redfish_utilities'
