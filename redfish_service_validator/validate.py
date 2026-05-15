@@ -58,7 +58,7 @@ def validate_response(resource):
     return payload, None
 
 
-def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop_path):
+def validate_object(sut, uri, payload, payload_full, resource_type, object_type, excerpt, prop_path):
     """
     Validates the contents of a JSON object in a response
 
@@ -66,6 +66,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
         sut: The system under test
         uri: The URI under test
         payload: The JSON object to validate as a dictionary
+        payload_full: The entire payload from the resource
         resource_type: The original type for the resource containing the object
         object_type: The matching type for the object from schema
         excerpt: For excerpts, the type of excerpt for this object
@@ -240,6 +241,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
                     sut,
                     uri,
                     payload,
+                    payload_full,
                     prop,
                     array_value,
                     resource_type,
@@ -252,7 +254,7 @@ def validate_object(sut, uri, payload, resource_type, object_type, excerpt, prop
         elif not isinstance(payload[prop], list) and not cur_definition["Array"]:
             # Singular; validate the individual property
             result = validate_value(
-                sut, uri, payload, prop, payload[prop], resource_type, definition, cur_definition, excerpt, cur_path
+                sut, uri, payload, payload_full, prop, payload[prop], resource_type, definition, cur_definition, excerpt, cur_path
             )
             sut.add_resource_result(uri, cur_path, True, payload[prop], result)
         elif isinstance(payload[prop], list) and not cur_definition["Array"]:
@@ -478,15 +480,17 @@ def validate_action(sut, uri, prop_name, value, resource_type, prop_path):
     return pass_or_deprecated(version_deprecated)
 
 
-def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, prop_def, excerpt, prop_path):
+def validate_value(sut, uri, payload, payload_full, prop_name, value, resource_type, obj_def, prop_def, excerpt, prop_path):
     """
     Validates a property within a JSON object
 
     Args:
         sut: The system under test
         uri: The URI under test
+        payload: The JSON object containing the property to validate as a dictionary
+        payload_full: The entire payload from the resource
         prop_name: The name of the action property
-        value: The action object to validate as a dictionary
+        value: The value of the property to validate
         resource_type: The original type for the resource containing the object
         obj_def: The schema definition of the object containing the property
         prop_def: The schema definition of the property
@@ -584,8 +588,9 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                         resource = sut.get_resource(value["@odata.id"])
 
                         # Special handling for OriginOfCondition with 404 responses
+                        # In logs, OriginOfCondition can reference a resource that no longer exists
                         if prop_name == "OriginOfCondition":
-                            origin_unavailable = payload.get("OriginOfConditionUnavailable")
+                            origin_unavailable = payload_full.get("OriginOfConditionUnavailable")
 
                             # Case 1: OriginOfConditionUnavailable is true - skip validation entirely
                             if origin_unavailable is True:
@@ -599,7 +604,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                                     if origin_unavailable is False:
                                         return (
                                             "FAIL",
-                                            "Reference Object Error: OriginOfCondition received HTTP {} but OriginOfConditionUnavailable is false (link should be available).".format(
+                                            "Resource Error: Received HTTP {} when accessing the URI, but 'OriginOfConditionUnavailable' is false.".format(
                                                 status_code
                                             ),
                                         )
@@ -608,7 +613,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                                     else:
                                         return (
                                             "WARN",
-                                            "Reference Link Warning: OriginOfCondition received HTTP {} when accessing the URI (resource may be deleted/expired).".format(
+                                            "Resource Warning: Received HTTP {} when accessing the URI; the resource may be deleted or expired.".format(
                                                 status_code
                                             ),
                                         )
@@ -654,7 +659,7 @@ def validate_value(sut, uri, payload, prop_name, value, resource_type, obj_def, 
                     return pass_or_deprecated(value_deprecated_ver)
 
             # Validate the object's contents
-            validate_object(sut, uri, value, resource_type, value_type, excerpt, prop_path)
+            validate_object(sut, uri, value, payload_full, resource_type, value_type, excerpt, prop_path)
             return pass_or_deprecated(value_deprecated_ver)
         elif type_definition:
             # Typedef
