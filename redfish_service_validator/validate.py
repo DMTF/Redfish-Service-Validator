@@ -22,6 +22,30 @@ OEM_ACTIONS_PATTERN = r"^(.+)?/Actions/Oem/#[A-Za-z0-9_.]+$"
 BASIC_TYPES = ["Integer", "Number", "String", "Boolean", "Primitive"]
 
 
+def find_case_insensitive_match(target, candidates):
+    """
+    Finds a case-insensitive match for a target string in a list of candidates
+
+    Args:
+        target: The string to match
+        candidates: Iterable of candidate strings to search
+
+    Returns:
+        The matching candidate string with correct casing if found; None otherwise
+    """
+    if not isinstance(target, str):
+        return None
+
+    target_lower = target.lower()
+
+    # Look for exact case-insensitive match
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.lower() == target_lower:
+            return candidate
+
+    return None
+
+
 def validate_response(resource):
     """
     Performs basic validation of a response prior to any detailed JSON inspections
@@ -214,18 +238,24 @@ def validate_object(sut, uri, payload, payload_full, resource_type, object_type,
             # Dynamic property
             cur_definition = definition["DynamicProperties"]
         else:
-            # Unknown property
+            # Unknown property - check for case-insensitive match
+            suggestion = find_case_insensitive_match(prop, definition["Properties"].keys())
+
+            if suggestion:
+                error_msg = "Unknown Property Error: The property '{}' is not defined in the '{}' type. Did you mean '{}'?".format(
+                    prop, lookup_object_type, suggestion
+                )
+            else:
+                error_msg = "Unknown Property Error: The property '{}' is not defined in the '{}' type.".format(
+                    prop, lookup_object_type
+                )
+
             sut.add_resource_result(
                 uri,
                 cur_path,
                 True,
                 payload[prop],
-                (
-                    "FAIL",
-                    "Unknown Property Error: The property '{}' is not defined in the '{}' type.".format(
-                        prop, lookup_object_type
-                    ),
-                ),
+                ("FAIL", error_msg),
             )
             continue
 
@@ -790,12 +820,19 @@ def validate_value(sut, uri, payload, payload_full, prop_name, value, resource_t
         if values_allowed_values is not None:
             # Check if the value is even defined
             if value not in values_allowed_values:
-                return (
-                    "FAIL",
-                    "Property Value Error: The property '{}' is not one of the listed allowable values: {}.".format(
+                # Check for case-insensitive match
+                suggestion = find_case_insensitive_match(value, values_allowed_values)
+
+                if suggestion:
+                    error_msg = "Property Value Error: The property '{}' contains '{}' which is not one of the listed allowable values. Did you mean '{}'?".format(
+                        prop_name, value, suggestion
+                    )
+                else:
+                    error_msg = "Property Value Error: The property '{}' is not one of the listed allowable values: {}.".format(
                         prop_name, ", ".join(values_allowed_values)
-                    ),
-                )
+                    )
+
+                return ("FAIL", error_msg)
             value_index = values_allowed_values.index(value)
 
             # Check versioning if the definition is from the same schema
