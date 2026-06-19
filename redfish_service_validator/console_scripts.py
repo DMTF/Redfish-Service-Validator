@@ -124,8 +124,8 @@ def run_validator(args):
     # Get the current time for report files
     test_time = datetime.now()
 
-    # Create a timestamped subdirectory inside the log directory
-    report_dir = Path(args["logdir"]) / test_time.strftime("%m_%d_%Y_%H%M%S")
+    # Create report directory with timestamped subfolder (YYYY-MM-DD-HHMMSS)
+    report_dir = Path(args["logdir"]) / test_time.strftime("%Y-%m-%d-%H%M%S")
     report_dir.mkdir(parents=True, exist_ok=True)
 
     # Set the logging level
@@ -170,10 +170,13 @@ def run_validator(args):
     # Results
     logger.log_print("")
     print_summary(sut)
+    logger.log_print("")
     results_file = report.html_report(sut, report_dir, test_time, tool_version, args)
-    logger.log_print("HTML Report: {}".format(results_file))
     xlsx_file = report.xlsx_report(sut, report_dir, test_time, tool_version, args)
-    logger.log_print("XLSX Report: {}".format(xlsx_file))
+    logger.log_print("HTML Report:  {}".format(results_file))
+    logger.log_print("Excel Report: {}".format(xlsx_file))
+    logger.log_print("Debug Log:    {}".format(log_file))
+    logger.log_print("")
 
     sut.logout()
 
@@ -211,21 +214,24 @@ def print_summary(sut):
     warn_start, warned, warn_end = summary_format("WARN", sut.warn_count)
     fail_start, failed, fail_end = summary_format("FAIL", sut.fail_count)
     no_test_start, not_tested, no_test_end = summary_format("SKIP", sut.skip_count)
-    logger.log_print(
-        "Summary - %sPASS: %s%s, %sWARN: %s%s, %sFAIL: %s%s, %sNOT TESTED: %s%s"
-        % (
-            pass_start,
-            passed,
-            pass_end,
-            warn_start,
-            warned,
-            warn_end,
-            fail_start,
-            failed,
-            fail_end,
-            no_test_start,
-            not_tested,
-            no_test_end,
-        )
+
+    col_w = 14
+    sep = "+" + ("-" * col_w + "+") * 4
+    header = "| {:^{w}} | {:^{w}} | {:^{w}} | {:^{w}} |".format(
+        "PASS", "WARN", "FAIL", "NOT TESTED", w=col_w - 2
     )
+    values = "| {}{:^{w}}{} | {}{:^{w}}{} | {}{:^{w}}{} | {}{:^{w}}{} |".format(
+        pass_start, str(passed), pass_end,
+        warn_start, str(warned), warn_end,
+        fail_start, str(failed), fail_end,
+        no_test_start, str(not_tested), no_test_end,
+        w=col_w - 2,
+    )
+    logger.log_print("")
+    logger.log_print(sep)
+    logger.log_print(header)
+    logger.log_print(sep)
+    logger.log_print(values)
+    logger.log_print(sep)
+    logger.log_print("")
     colorama.deinit()
