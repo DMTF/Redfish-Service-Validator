@@ -1,5 +1,8 @@
 # Change Log
 
+## [3.1.5] - 2026-06-19
+- Updated console output for the test results to align with changes in the Redfish Use Case Checkers
+
 ## [3.1.4] - 2026-05-15
 - Fixed 'OriginOfConditionUnavailable' check to reference it from the root of the resource
 - Added logic to detect cases where property names an enumeration values are incorrect for their casing

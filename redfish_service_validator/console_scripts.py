@@ -25,7 +25,7 @@ from redfish_service_validator import metadata
 from redfish_service_validator import report
 from redfish_service_validator import schema_pack
 
-tool_version = "3.1.4"
+tool_version = "3.1.5"
 
 
 def main():
@@ -217,14 +217,20 @@ def print_summary(sut):
 
     col_w = 14
     sep = "+" + ("-" * col_w + "+") * 4
-    header = "| {:^{w}} | {:^{w}} | {:^{w}} | {:^{w}} |".format(
-        "PASS", "WARN", "FAIL", "NOT TESTED", w=col_w - 2
-    )
+    header = "| {:^{w}} | {:^{w}} | {:^{w}} | {:^{w}} |".format("PASS", "WARN", "FAIL", "NOT TESTED", w=col_w - 2)
     values = "| {}{:^{w}}{} | {}{:^{w}}{} | {}{:^{w}}{} | {}{:^{w}}{} |".format(
-        pass_start, str(passed), pass_end,
-        warn_start, str(warned), warn_end,
-        fail_start, str(failed), fail_end,
-        no_test_start, str(not_tested), no_test_end,
+        pass_start,
+        str(passed),
+        pass_end,
+        warn_start,
+        str(warned),
+        warn_end,
+        fail_start,
+        str(failed),
+        fail_end,
+        no_test_start,
+        str(not_tested),
+        no_test_end,
         w=col_w - 2,
     )
     logger.log_print("")
