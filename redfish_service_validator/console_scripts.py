@@ -90,6 +90,11 @@ def main():
         help="The timeout, in seconds, for the service to respond to HTTP requests",
     )
     argget.add_argument(
+        "--skipschema",
+        action="store_true",
+        help="Skip downloading schema files and use only cached schemas in the schema directory",
+    )
+    argget.add_argument(
         "--debugging",
         action="store_true",
         help="Controls the verbosity of the debugging output; if not specified only INFO and higher are logged",
@@ -158,8 +163,11 @@ def run_validator(args):
         return 1, None
 
     # Update the schema cache
-    schema_pack.update_dsp8010_files(args["schema_directory"], proxies)
-    schema_pack.update_service_metadata(args["schema_directory"], sut.session, proxies)
+    if not args["skipschema"]:
+        schema_pack.update_dsp8010_files(args["schema_directory"], proxies)
+        schema_pack.update_service_metadata(args["schema_directory"], sut.session, proxies)
+    else:
+        logger.log_print("Skipping schema download; using cached schemas only\n")
 
     # Build the schema database
     metadata.parse_schema_files(args["schema_directory"])

@@ -87,6 +87,12 @@ g_config_defaults = {
             "options": ["True", "False"],
             "destination": "nooemcheck",
         },
+        "Skip Schema": {
+            "value": "False",
+            "description": "Skip downloading schema files and use only cached schemas in the schema directory",
+            "options": ["True", "False"],
+            "destination": "skipschema",
+        },
         "Debugging": {
             "value": "False",
             "description": "Controls the verbosity of the debugging output",

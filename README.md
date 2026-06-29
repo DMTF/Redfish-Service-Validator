@@ -58,7 +58,7 @@ usage: RedfishServiceValidator.py [-h] --user USER --password PASSWORD --rhost
                                   [--mockup MOCKUP]
                                   [--collectionlimit COLLECTIONLIMIT [COLLECTIONLIMIT ...]]
                                   [--nooemcheck] [--timeout TIMEOUT]
-                                  [--debugging]
+                                  [--skipschema] [--debugging]
 
 Validate Redfish services against schemas
 
@@ -102,6 +102,8 @@ options:
   --timeout TIMEOUT, -timeout TIMEOUT
                         The timeout, in seconds, for the service to respond to
                         HTTP requests
+  --skipschema          Skip downloading schema files and use only cached
+                        schemas in the schema directory
   --debugging           Controls the verbosity of the debugging output; if not
                         specified only INFO and higher are logged
 ```
