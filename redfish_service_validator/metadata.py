@@ -144,6 +144,7 @@ class Metadata:
             if base_type in matched_def["TypeTree"]:
                 # Break circular reference
                 # This is an invalid schema; stop processing and return whatever we could find
+                logger.critical("{} contains a circular reference when looking up {}".format(self._name, typename))
                 matched_def["BaseType"] = None
                 break
             matched_def["TypeTree"].append(base_type)
