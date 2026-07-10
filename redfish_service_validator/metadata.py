@@ -141,6 +141,12 @@ class Metadata:
                 # Either the definition jumps schema files (ideally) or it's a bad reference...
                 break
             # The update will bring over the next base type to inspect
+            if base_type in matched_def["TypeTree"]:
+                # Break circular reference
+                # This is an invalid schema; stop processing and return whatever we could find
+                logger.critical("{} contains a circular reference when looking up {}".format(self._name, typename))
+                matched_def["BaseType"] = None
+                break
             matched_def["TypeTree"].append(base_type)
             matched_def["BaseType"] = self._objects[base_type]["BaseType"]
             matched_def["Properties"].update(self._objects[base_type]["Properties"])
