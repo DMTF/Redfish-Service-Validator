@@ -1,5 +1,10 @@
 # Change Log
 
+## [3.1.6] - 2026-07-10
+- Added protection against circular base type references
+- Added '--skipschema' option to skip schema downloading and use already cached schema files
+- Refactored HTML reports to allow for reuse in other tools
+
 ## [3.1.5] - 2026-06-19
 - Updated console output for the test results to align with changes in the Redfish Use Case Checkers
 

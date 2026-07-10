@@ -168,8 +168,6 @@ _RSV_EXTRA_JS = r"""
 html_template = None
 
 
-
-
 def build_resource_header(
     uri, resource_type, uri_summary, payload_id, results_id, status_code=None, response_time=None
 ):
@@ -426,17 +424,13 @@ def html_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
                 val = "********" if val else ""
             config_rows_html += "<tr><td>{}</td><td>{}</td></tr>".format(html_mod.escape(key), html_mod.escape(val))
 
-    sidebar_extra = (
-        '<div class="sidebar-section">{}</div>'.format(combined_tally)
-        if combined_tally else ""
-    )
+    sidebar_extra = '<div class="sidebar-section">{}</div>'.format(combined_tally) if combined_tally else ""
     main_content = (
         '<div id="resourceList">{}</div>'
         '<div class="filter-no-match" id="filterNoMatch">No resources match your filter.</div>'
     ).format(html)
     main_prefix = (
-        '<div class="section-heading">Resources Validated'
-        '<span class="sh-count" id="totalCount"></span></div>'
+        '<div class="section-heading">Resources Validated' '<span class="sh-count" id="totalCount"></span></div>'
     )
 
     with open(str(file), "w", encoding="utf-8") as fd:
