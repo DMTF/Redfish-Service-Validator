@@ -13,7 +13,9 @@ Brief : This file contains the definitions and functionalities for invoking
 
 import argparse
 import colorama
+import configparser
 import logging
+import os
 import redfish
 import sys
 from datetime import datetime
@@ -28,6 +30,115 @@ from redfish_service_validator import schema_pack
 tool_version = "3.1.6"
 
 
+def load_config(config_file):
+    """
+    Load configuration from a config.ini file
+
+    Args:
+        config_file: Path to the configuration file
+
+    Returns:
+        A dictionary containing the configuration values
+    """
+    config = configparser.ConfigParser()
+    config_values = {}
+
+    try:
+        if not os.path.isfile(config_file):
+            return config_values
+
+        config.read(config_file)
+
+        # Authentication section
+        if config.has_section('Authentication'):
+            if config.has_option('Authentication', 'user'):
+                user = config.get('Authentication', 'user').strip()
+                if user:
+                    config_values['user'] = user
+            if config.has_option('Authentication', 'password'):
+                password = config.get('Authentication', 'password').strip()
+                if password:
+                    config_values['password'] = password
+            if config.has_option('Authentication', 'authtype'):
+                authtype = config.get('Authentication', 'authtype').strip()
+                if authtype:
+                    config_values['authtype'] = authtype
+
+        # Connection section
+        if config.has_section('Connection'):
+            if config.has_option('Connection', 'rhost'):
+                rhost = config.get('Connection', 'rhost').strip()
+                if rhost:
+                    config_values['rhost'] = rhost
+            if config.has_option('Connection', 'timeout'):
+                timeout = config.get('Connection', 'timeout').strip()
+                if timeout:
+                    config_values['timeout'] = int(timeout)
+
+        # Proxy section
+        if config.has_section('Proxy'):
+            if config.has_option('Proxy', 'ext_http_proxy'):
+                ext_http_proxy = config.get('Proxy', 'ext_http_proxy').strip()
+                if ext_http_proxy:
+                    config_values['ext_http_proxy'] = ext_http_proxy
+            if config.has_option('Proxy', 'ext_https_proxy'):
+                ext_https_proxy = config.get('Proxy', 'ext_https_proxy').strip()
+                if ext_https_proxy:
+                    config_values['ext_https_proxy'] = ext_https_proxy
+            if config.has_option('Proxy', 'serv_http_proxy'):
+                serv_http_proxy = config.get('Proxy', 'serv_http_proxy').strip()
+                if serv_http_proxy:
+                    config_values['serv_http_proxy'] = serv_http_proxy
+            if config.has_option('Proxy', 'serv_https_proxy'):
+                serv_https_proxy = config.get('Proxy', 'serv_https_proxy').strip()
+                if serv_https_proxy:
+                    config_values['serv_https_proxy'] = serv_https_proxy
+
+        # Paths section
+        if config.has_section('Paths'):
+            if config.has_option('Paths', 'logdir'):
+                logdir = config.get('Paths', 'logdir').strip()
+                if logdir:
+                    config_values['logdir'] = logdir
+            if config.has_option('Paths', 'schema_directory'):
+                schema_directory = config.get('Paths', 'schema_directory').strip()
+                if schema_directory:
+                    config_values['schema_directory'] = schema_directory
+            if config.has_option('Paths', 'mockup'):
+                mockup = config.get('Paths', 'mockup').strip()
+                if mockup:
+                    config_values['mockup'] = mockup
+
+        # Validation section
+        if config.has_section('Validation'):
+            # Handle payload (scope and uri)
+            if config.has_option('Validation', 'payload_scope') and config.has_option('Validation', 'payload_uri'):
+                payload_scope = config.get('Validation', 'payload_scope').strip()
+                payload_uri = config.get('Validation', 'payload_uri').strip()
+                if payload_scope and payload_uri:
+                    config_values['payload'] = [payload_scope, payload_uri]
+
+            # Handle collection limit
+            if config.has_option('Validation', 'collectionlimit'):
+                collectionlimit = config.get('Validation', 'collectionlimit').strip()
+                if collectionlimit:
+                    config_values['collectionlimit'] = collectionlimit.split()
+
+            # Boolean flags
+            if config.has_option('Validation', 'nooemcheck'):
+                config_values['nooemcheck'] = config.getboolean('Validation', 'nooemcheck')
+            if config.has_option('Validation', 'skipschema'):
+                config_values['skipschema'] = config.getboolean('Validation', 'skipschema')
+            if config.has_option('Validation', 'debugging'):
+                config_values['debugging'] = config.getboolean('Validation', 'debugging')
+
+    except Exception as err:
+        print("WARNING: Error reading config file {}: {}".format(config_file, err))
+        return {}
+
+    return config_values
+
+
 def main():
     """
     Entry point for the service validator
@@ -36,14 +147,17 @@ def main():
     # Get the input arguments
     argget = argparse.ArgumentParser(description="Validate Redfish services against schemas")
     argget.add_argument(
-        "--user", "-u", "-user", "--username", type=str, required=True, help="The username for authentication"
-    )
-    argget.add_argument("--password", "-p", type=str, required=True, help="The password for authentication")
-    argget.add_argument(
-        "--rhost", "-r", "--ip", "-i", type=str, required=True, help="The address of the Redfish service (with scheme)"
+        "--config", "-c", type=str, default="config.ini", help="Path to configuration file; default: 'config.ini'"
     )
     argget.add_argument(
-        "--authtype", type=str, default="Session", choices=["Basic", "Session"], help="The authorization type"
+        "--user", "-u", "-user", "--username", type=str, help="The username for authentication"
+    )
+    argget.add_argument("--password", "-p", type=str, help="The password for authentication")
+    argget.add_argument(
+        "--rhost", "-r", "--ip", "-i", type=str, help="The address of the Redfish service (with scheme)"
+    )
+    argget.add_argument(
+        "--authtype", type=str, choices=["Basic", "Session"], help="The authorization type"
     )
     argget.add_argument("--ext_http_proxy", type=str, help="The URL of the HTTP proxy for accessing external sites")
     argget.add_argument("--ext_https_proxy", type=str, help="The URL of the HTTPS proxy for accessing external sites")
@@ -57,13 +171,11 @@ def main():
         "--logdir",
         "--report-dir",
         type=str,
-        default="logs",
         help="The directory for generated report files; default: 'logs'",
     )
     argget.add_argument(
         "--schema_directory",
         type=str,
-        default="SchemaFiles",
         help="Directory for local schema files; default: 'SchemaFiles'",
     )
     argget.add_argument(
@@ -78,7 +190,6 @@ def main():
     argget.add_argument(
         "--collectionlimit",
         type=str,
-        default=["LogEntry", "20"],
         help="Applies a limit to testing resources in collections; format: RESOURCE1 COUNT1 RESOURCE2 COUNT2 ...",
         nargs="+",
     )
@@ -99,7 +210,64 @@ def main():
         action="store_true",
         help="Controls the verbosity of the debugging output; if not specified only INFO and higher are logged",
     )
+
+    # Parse command-line arguments
     args = argget.parse_args()
+
+    # Load configuration from file
+    config_values = load_config(args.config)
+
+    # Required arguments: rhost, user, password
+    if args.rhost is None:
+        args.rhost = config_values.get('rhost')
+    if args.user is None:
+        args.user = config_values.get('user')
+    if args.password is None:
+        args.password = config_values.get('password')
+
+    # Check if required arguments are present
+    if args.rhost is None:
+        print("ERROR: Redfish service host is required (provide via --rhost or config file)")
+        sys.exit(1)
+    if args.user is None:
+        print("ERROR: Username is required (provide via --user or config file)")
+        sys.exit(1)
+    if args.password is None:
+        print("ERROR: Password is required (provide via --password or config file)")
+        sys.exit(1)
+
+    # Optional string arguments
+    if args.authtype is None:
+        args.authtype = config_values.get('authtype', 'Session')
+    if args.logdir is None:
+        args.logdir = config_values.get('logdir', 'logs')
+    if args.schema_directory is None:
+        args.schema_directory = config_values.get('schema_directory', 'SchemaFiles')
+    if args.mockup is None:
+        args.mockup = config_values.get('mockup')
+    if args.timeout is None:
+        args.timeout = config_values.get('timeout')
+    if args.ext_http_proxy is None:
+        args.ext_http_proxy = config_values.get('ext_http_proxy')
+    if args.ext_https_proxy is None:
+        args.ext_https_proxy = config_values.get('ext_https_proxy')
+    if args.serv_http_proxy is None:
+        args.serv_http_proxy = config_values.get('serv_http_proxy')
+    if args.serv_https_proxy is None:
+        args.serv_https_proxy = config_values.get('serv_https_proxy')
+    if args.payload is None:
+        args.payload = config_values.get('payload')
+    if args.collectionlimit is None:
+        args.collectionlimit = config_values.get('collectionlimit', ['LogEntry', '20'])
+
+    # Optional Boolean arguments
+    if not args.nooemcheck and 'nooemcheck' in config_values:
+        args.nooemcheck = config_values['nooemcheck']
+    if not args.skipschema and 'skipschema' in config_values:
+        args.skipschema = config_values['skipschema']
+    if not args.debugging and 'debugging' in config_values:
+        args.debugging = config_values['debugging']
+
     code, file = run_validator(vars(args))
     if code != 0:
         sys.exit(code)
