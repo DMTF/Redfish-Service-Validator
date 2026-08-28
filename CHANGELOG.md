@@ -1,5 +1,8 @@
 # Change Log
 
+## [3.1.7] - 2026-08-28
+- Added support for loading settings from a config file
+
 ## [3.1.6] - 2026-07-10
 - Added protection against circular base type references
 - Added '--skipschema' option to skip schema downloading and use already cached schema files
