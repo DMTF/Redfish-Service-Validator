@@ -715,7 +715,11 @@ def xlsx_report(sut: SystemUnderTest, report_dir, time, tool_version, args=None)
             rt_cell = ws.cell(row=row_num, column=4, value=resp_time if resp_time is not None else "")
             rtype_cell = ws.cell(row=row_num, column=5, value=rtype)
             prop_cell = ws.cell(row=row_num, column=6, value=prop_name)
-            val_cell = ws.cell(row=row_num, column=7, value=val_str)
+            try:
+                val_cell = ws.cell(row=row_num, column=7, value=val_str)
+            except:
+                val_str_clean = "".join(char for char in val_str if char.isprintable())
+                val_cell = ws.cell(row=row_num, column=7, value=val_str_clean)
             res_cell = ws.cell(row=row_num, column=8, value=result)
             msg_cell = ws.cell(row=row_num, column=9, value=message)
 
