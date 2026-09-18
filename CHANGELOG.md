@@ -1,5 +1,8 @@
 # Change Log
 
+## [3.1.8] - 2026-09-18
+- Added fallback to remove control characters from string values when generating the XLSX report
+
 ## [3.1.7] - 2026-08-28
 - Added support for loading settings from a config file
 

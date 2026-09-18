@@ -27,7 +27,7 @@ from redfish_service_validator import metadata
 from redfish_service_validator import report
 from redfish_service_validator import schema_pack
 
-tool_version = "3.1.7"
+tool_version = "3.1.8"
 
 
 def load_config(config_file):
